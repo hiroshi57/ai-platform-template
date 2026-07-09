@@ -1,0 +1,5 @@
+# コア(core/)は標準ライブラリのみで動作。以下は API 実行とテスト用。
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.6
+pytest>=8.0
