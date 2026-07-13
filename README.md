@@ -21,15 +21,24 @@ AI エージェント / RAG アプリを **最短で本番稼働**させるた�
 core/
   llm_router.py     # 差別化コア: コスト/レイテンシ考慮ルーティング + フォールバック
   providers.py      # プロバイダ抽象 + MockProvider(APIキー不要)
+  real_providers.py # 実プロバイダ切替(Claude/GPT/Gemini)。キー無しは自動mock
   observability.py  # コスト/レイテンシ/フォールバック率の集計
+  logging.py        # 構造化(JSON)ロギング + request_id 相関
+  config.py         # 設定の一元管理(env)
   auth.py           # APIキー認証(テナント解決)
   rate_limit.py     # テナント別トークンバケット
 app_template/
-  main.py           # 新規アプリの雛形(FastAPI)。これをコピーして機能追加
+  main.py           # 新規アプリの雛形(FastAPI, request-id中間層, /v1/providers)
 infra/
-  Dockerfile
-tests/              # 外部依存なしで PASS
+  Dockerfile, deploy.yaml  # コンテナ + Cloud Run manifest
+tests/              # 外部依存なしで PASS(20件)
 ```
+
+## 全機能(標準装備)
+
+認証 / レート制限 / 構造化ロギング(request_id相関) / LLM切替(Claude/GPT/Gemini) を標準装備。
+`GET /v1/providers` で各プロバイダが real(キーあり) か mock(キー無し) かを可視化できる。
+新規アプリはこのテンプレートを clone し、`app_template/main.py` に機能を足すだけ。
 
 ## クイックスタート
 

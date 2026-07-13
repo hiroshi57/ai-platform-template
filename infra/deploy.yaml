@@ -1,0 +1,28 @@
+# Cloud Run 相当のデプロイ manifest(サンプル). 新規アプリは image 名を差し替えるだけ。
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ai-platform-app
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
+    spec:
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT/ai-platform/app:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AI_PLATFORM_STRATEGY
+              value: "balanced"
+            - name: AI_PLATFORM_LOG_JSON
+              value: "true"
+            # APIキーはSecret Managerから注入(未設定ならmockで起動)
+            - name: ANTHROPIC_API_KEY
+              valueFrom: { secretKeyRef: { name: anthropic-api-key, key: latest } }
+            - name: OPENAI_API_KEY
+              valueFrom: { secretKeyRef: { name: openai-api-key, key: latest } }
+          resources:
+            limits: { cpu: "1", memory: "512Mi" }

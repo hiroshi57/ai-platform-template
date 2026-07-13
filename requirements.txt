@@ -3,3 +3,7 @@ fastapi>=0.110
 uvicorn>=0.29
 pydantic>=2.6
 pytest>=8.0
+# 実プロバイダ接続時のみ(未インストール/キー無しなら自動でmock):
+# anthropic>=0.30
+# openai>=1.30
+# google-generativeai>=0.7

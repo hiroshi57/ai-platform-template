@@ -3,14 +3,26 @@ from __future__ import annotations
 
 import json
 
-from core import LLMRouter, RoutingStrategy
+from core import (
+    LLMRouter, RoutingStrategy, Settings, build_providers, provider_mode,
+    configure_logging, new_request_id,
+)
 
 
 def main() -> None:
-    router = LLMRouter()  # 既定の mock プロバイダ(claude/openai/gemini)
+    settings = Settings.from_env()
+    configure_logging(level=settings.log_level, json_format=settings.log_json)
+    new_request_id()
+
+    # キーがあれば実API、無ければ mock に自動フォールバック
+    print("=== プロバイダ切替(real/mock) ===")
+    for name in settings.enabled_providers:
+        print(f"  {name:7} -> {provider_mode(name)}")
+
+    router = LLMRouter(providers=build_providers(settings.enabled_providers))
     prompt = "社内規程のうち経費精算の締め日を教えて"
 
-    print("=== 戦略別ルーティング(APIキー不要) ===")
+    print("\n=== 戦略別ルーティング(APIキー不要) ===")
     for strategy in RoutingStrategy:
         c = router.route(prompt, strategy=strategy)
         print(f"[{strategy.value:8}] -> {c.provider:7} model={c.model:16} "

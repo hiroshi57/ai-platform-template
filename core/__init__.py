@@ -11,6 +11,9 @@ from .providers import (
     default_mock_providers,
 )
 from .rate_limit import RateLimiter
+from .config import Settings
+from .logging import configure_logging, new_request_id, get_request_id, set_request_id
+from .real_providers import build_providers, build_provider, provider_mode, PROVIDER_REGISTRY
 
 __all__ = [
     "APIKeyStore",
@@ -26,4 +29,13 @@ __all__ = [
     "ProviderSpec",
     "default_mock_providers",
     "RateLimiter",
+    "Settings",
+    "configure_logging",
+    "new_request_id",
+    "get_request_id",
+    "set_request_id",
+    "build_providers",
+    "build_provider",
+    "provider_mode",
+    "PROVIDER_REGISTRY",
 ]
