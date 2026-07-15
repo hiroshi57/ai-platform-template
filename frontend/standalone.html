@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI基盤テンプレート(スタンドアロン)</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#f7f8fa;margin:0;padding:24px;color:#1a1a2e}
+    .wrap{max-width:720px;margin:0 auto} h1{color:#4361ee;font-size:22px}
+    .card{background:#fff;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+    .metrics{display:flex;gap:16px} .metric{flex:1;background:#eaeefb;border-radius:8px;padding:12px;text-align:center}
+    .metric .val{font-size:24px;font-weight:bold;color:#4361ee}
+    table{border-collapse:collapse;width:100%} th,td{border:1px solid #dde;padding:6px 8px} th{background:#eaeefb}
+    nav button{margin-right:8px} textarea,select{padding:6px;border:1px solid #ccd;border-radius:6px}
+    button.primary{background:#4361ee;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;margin-top:8px}
+  </style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel" data-presets="react">
+  const RESULT={text:"[claude:claude-3-5-sonnet] response to: 経費精算の締め日は?",
+    provider:"claude",model:"claude-3-5-sonnet",cost_usd:0.000096,latency_ms:900};
+  const SUMMARY={count:4,total_cost_usd:0.000257,p95_latency_ms:1300,fallback_rate:0.0,
+    by_provider:{claude:{count:2,cost_usd:0.000192},gemini:{count:2,cost_usd:0.000066}}};
+  function App(){
+    const [tab,setTab]=React.useState("play");
+    return (<div className="wrap"><h1>AI基盤テンプレート <small style={{fontSize:12,color:"#889"}}>(デモ)</small></h1>
+      <nav><button onClick={()=>setTab("play")} disabled={tab==="play"}>プレイグラウンド</button>
+        <button onClick={()=>setTab("obs")} disabled={tab==="obs"}>観測性</button></nav>
+      {tab==="play"?(<div className="card"><h2>LLMプレイグラウンド</h2>
+        <textarea rows="3" style={{width:"100%"}} defaultValue="経費精算の締め日は?"></textarea>
+        <div><select><option>balanced</option><option>cost</option><option>latency</option><option>quality</option></select></div>
+        <button className="primary">送信</button>
+        <div className="result"><p>{RESULT.text}</p>
+          <small>provider={RESULT.provider} / cost=${RESULT.cost_usd.toFixed(6)} / latency={RESULT.latency_ms}ms</small></div>
+      </div>):(<div className="card"><h2>観測性ダッシュボード</h2>
+        <div className="metrics">
+          <div className="metric"><div>総リクエスト</div><div className="val">{SUMMARY.count}</div></div>
+          <div className="metric"><div>総コスト</div><div className="val">${SUMMARY.total_cost_usd.toFixed(4)}</div></div>
+          <div className="metric"><div>p95</div><div className="val">{SUMMARY.p95_latency_ms}ms</div></div>
+          <div className="metric"><div>FB率</div><div className="val">{Math.round(SUMMARY.fallback_rate*100)}%</div></div></div>
+        <table><tr><th>プロバイダ</th><th>件数</th><th>コスト</th></tr>
+          {Object.entries(SUMMARY.by_provider).map(([k,v])=>(<tr key={k}><td>{k}</td><td>{v.count}</td><td>${v.cost_usd}</td></tr>))}</table>
+      </div>)}</div>);
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script></body></html>

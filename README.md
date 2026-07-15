@@ -34,6 +34,20 @@ infra/
 tests/              # 外部依存なしで PASS(20件)
 ```
 
+## 本番構成（SQLite + HTMLレポート + Vite 2画面）
+
+- **DB**: `service/db.py`（SQLite）。LLM呼び出しメトリクスをテナント別に永続化＝**テナント分離**
+- **API**: `service/api.py`（FastAPI）。chat(ルーティング+メトリクス保存) / metrics / providers / report(HTML)
+- **HTMLレポート**: `service/report_html.py`（総コスト・p95・フォールバック率・プロバイダ別）
+- **フロント**: `frontend/`（React+Vite）。**LLMプレイグラウンド**＋**観測性ダッシュボード**の2画面。ビルド不要は `frontend/standalone.html`
+- **CI**: `.github/workflows/ci.yml`
+
+```bash
+uvicorn service.api:app --reload
+cd frontend && npm install && npm run dev     # or: open frontend/standalone.html
+python -m pytest -q                            # テスト25件(DB/テナント分離/HTMLレポート/API E2E含む)
+```
+
 ## 全機能(標準装備)
 
 認証 / レート制限 / 構造化ロギング(request_id相関) / LLM切替(Claude/GPT/Gemini) を標準装備。
