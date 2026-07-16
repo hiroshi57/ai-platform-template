@@ -2,6 +2,7 @@
 テナント分離(X-Tenant-Id)。`uvicorn service.api:app --reload`
 """
 from core import LLMRouter, RoutingStrategy, Settings, build_providers, provider_mode
+from core import BudgetGuard
 from .db import ServiceDB
 from .report_html import build_html_report
 
@@ -50,6 +51,13 @@ def create_app():  # pragma: no cover
     @app.get("/v1/providers")
     def providers():
         return {name: provider_mode(name) for name in SETTINGS.enabled_providers}
+
+    @app.get("/v1/budget")
+    def budget(budget_usd: float, day_of_month: int = 15, days_in_month: int = 30,
+               t: str = Depends(tenant)):
+        # FinOps: 現時点の消費から月末着地を予測し予算アラート
+        spent = DB.summary(t)["total_cost_usd"]
+        return BudgetGuard(budget_usd).status(spent, day_of_month, days_in_month).as_dict()
 
     @app.get("/v1/report", response_class=HTMLResponse)
     def report(t: str = Depends(tenant)):

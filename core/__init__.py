@@ -14,6 +14,9 @@ from .rate_limit import RateLimiter
 from .config import Settings
 from .logging import configure_logging, new_request_id, get_request_id, set_request_id
 from .real_providers import build_providers, build_provider, provider_mode, PROVIDER_REGISTRY
+from .finops import (
+    BudgetGuard, BudgetStatus, project_month_end, detect_cost_anomaly, CostAnomaly,
+)
 
 __all__ = [
     "APIKeyStore",
@@ -38,4 +41,9 @@ __all__ = [
     "build_provider",
     "provider_mode",
     "PROVIDER_REGISTRY",
+    "BudgetGuard",
+    "BudgetStatus",
+    "project_month_end",
+    "detect_cost_anomaly",
+    "CostAnomaly",
 ]
