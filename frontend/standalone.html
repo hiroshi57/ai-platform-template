@@ -2,119 +2,245 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI基盤（マルチAI使い分け・コスト見える化）</title>
+  <title>AI基盤（実コスト計算・最適配分）</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
   <style>
     body{font-family:system-ui,sans-serif;background:#f5f7f9;margin:0;padding:24px;color:#152238}
-    .wrap{max-width:880px;margin:0 auto} h1{color:#4361ee;font-size:22px}
+    .wrap{max-width:920px;margin:0 auto} h1{color:#4361ee;font-size:22px}
     h2{font-size:16px;margin:2px 0 8px} h3{font-size:14px;margin:10px 0 4px} .sub{color:#8a97a6;font-size:12px}
     .card{background:#fff;border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+    .real{background:#eef2fd;border:1px solid #d8e0fb;border-radius:10px;padding:8px 12px;font-size:13px;color:#2b3ea8;margin-bottom:8px}
     .explain{background:#eef2fd;border:1px solid #d8e0fb;border-radius:12px;padding:14px 16px}
     .explain dt{font-weight:bold;color:#2b3ea8;margin-top:8px} .explain dd{margin:2px 0 0;font-size:13px;line-height:1.7;color:#334}
-    table{border-collapse:collapse;width:100%;font-size:13px} th,td{border:1px solid #e3e8ee;padding:8px;text-align:center} th{background:#eaeefb} td.l,th.l{text-align:left}
-    .seg{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
-    .seg button{border:1px solid #cdd6df;background:#fff;border-radius:9px;padding:8px 12px;cursor:pointer;font-size:13px;text-align:left}
-    .seg button.on{background:#4361ee;color:#fff;border-color:#4361ee}
-    .answer{background:#eef7f0;border-radius:10px;padding:14px;margin-top:10px}
+    table{border-collapse:collapse;width:100%;font-size:12.5px} th,td{border:1px solid #e3e8ee;padding:6px;text-align:center} th{background:#eaeefb} td.l,th.l{text-align:left}
+    td input{width:64px;border:1px solid #cdd6df;border-radius:5px;padding:3px 4px;font-size:12.5px;text-align:right}
+    td input.nm{width:118px;text-align:left} td select{border:1px solid #cdd6df;border-radius:5px;padding:3px;font-size:12px}
     .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .kpi{flex:1;min-width:120px;background:#f6f8ff;border-radius:10px;padding:10px;text-align:center}
-    .kpi .v{font-size:20px;font-weight:bold;color:#4361ee} .kpi .l{font-size:11px;color:#667}
-    input.num{width:90px;border:1px solid #cdd6df;border-radius:6px;padding:5px 8px;text-align:right}
+    .kpi{flex:1;min-width:130px;background:#f6f8ff;border-radius:10px;padding:11px;text-align:center}
+    .kpi .v{font-size:20px;font-weight:bold;color:#4361ee} .kpi .l{font-size:11px;color:#667;margin-top:2px}
+    input.num{width:100px;border:1px solid #cdd6df;border-radius:6px;padding:6px 8px;text-align:right;font-size:14px}
+    .ai{background:linear-gradient(135deg,#eef2fd,#eafaf3);border-left:4px solid #4361ee;border-radius:10px;padding:14px;font-size:14px;line-height:1.7}
+    .plan{background:#f7f9ff;border:1px solid #dde3f8;border-radius:10px;padding:12px;margin-top:8px}
+    .plan li{margin:7px 0;line-height:1.6;font-size:13px} .tierlabel{font-weight:bold;color:#2b3ea8;margin-top:4px}
+    .over{background:#fdeeee;border:1px solid #f0caca;border-radius:10px;padding:12px;font-size:13px;color:#c0392b;margin-top:8px}
+    .okbox{background:#e7f7ef;border:1px solid #b6e3cc;border-radius:10px;padding:12px;font-size:13px;color:#0f7a54;margin-top:8px}
+    .barrow{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
+    .barrow .name{width:120px;flex-shrink:0} .track{flex:1;background:#eef1f5;border-radius:6px;height:16px;overflow:hidden} .fill{height:16px;border-radius:6px}
+    button{border:0;border-radius:8px;cursor:pointer;font-size:13px;padding:7px 12px}
+    button.add{background:#4361ee;color:#fff;margin-top:6px} button.ghost{background:#eef2fd;color:#2b3ea8;margin-left:6px}
+    button.del{background:#f4dede;color:#c0392b;padding:2px 8px}
     .note{color:#8a97a6;font-size:12px} .save{color:#17a673;font-weight:bold}
-    @media(max-width:640px){body{padding:14px} .wrap{max-width:100%} h1{font-size:19px} table{display:block;overflow-x:auto;white-space:nowrap;font-size:12px}}
+    @media(max-width:640px){body{padding:14px} .wrap{max-width:100%} h1{font-size:19px}
+      table{display:block;overflow-x:auto;white-space:nowrap;font-size:12px} .barrow .name{width:80px}}
   </style>
 </head>
-<body><div style="max-width:880px;margin:0 auto 4px;background:#fff8e1;border:1px solid #f0d98a;border-radius:10px;padding:8px 14px;font:13px system-ui;color:#7a5b00">🔬 <b>デモ版</b>：数値は<b>サンプル（実測・実データではありません）</b>。ロジックの見せ方を確認するためのプロトタイプです。</div>
+<body><div style="max-width:880px;margin:0 auto 4px;background:#fff8e1;border:1px solid #f0d98a;border-radius:10px;padding:8px 14px;font:13px system-ui;color:#7a5b00">🔬 <b>実コスト計算版</b>：公開されている<b>トークン単価</b>と、入力した<b>用途別の件数・文字数</b>から月額コストを実計算し、<b>最適なAI配分</b>を算出します。単価は編集可（各社の最新価格に合わせてください）。</div>
 <div id="root"></div>
 <script type="text/plain" id="__jsx">
-// 3つのAIの特性(1回あたりの目安・円/秒/品質) — 分かりやすく円と秒で表記
-const AIS={
-  claude:{label:"Claude (Anthropic)", yen:3.0, sec:0.9, q:3},
-  gpt:{label:"GPT-4o (OpenAI)", yen:4.2, sec:1.1, q:3},
-  gemini:{label:"Gemini (Google)", yen:1.0, sec:1.3, q:2},
-};
-const STRATS=[
-  {id:"cost", name:"コスト優先", desc:"いちばん安いAIを選ぶ（大量処理・要約向き）", pick:"gemini"},
-  {id:"latency", name:"速度優先", desc:"いちばん速いAIを選ぶ（チャット・リアルタイム向き）", pick:"claude"},
-  {id:"quality", name:"品質優先", desc:"いちばん賢いAIを選ぶ（重要な判断・文章生成向き）", pick:"gpt"},
-  {id:"balanced", name:"バランス", desc:"コスト・速度・品質の総合で選ぶ（ふだん使い）", pick:"claude"},
+// 1Mトークンあたりの単価(USD)。公開価格の目安。ユーザーが編集可能。
+const MODELS0=[
+  {key:"haiku",  label:"Claude Haiku",  inUsd:0.80, outUsd:4.00, sec:0.8, q:2},
+  {key:"sonnet", label:"Claude Sonnet", inUsd:3.00, outUsd:15.00, sec:1.2, q:3},
+  {key:"gpt4o",  label:"GPT-4o",        inUsd:2.50, outUsd:10.00, sec:1.1, q:3},
+  {key:"mini",   label:"GPT-4o mini",   inUsd:0.15, outUsd:0.60, sec:0.9, q:2},
+  {key:"flash",  label:"Gemini Flash",  inUsd:0.10, outUsd:0.40, sec:0.7, q:2},
+  {key:"pro",    label:"Gemini Pro",    inUsd:1.25, outUsd:5.00, sec:1.5, q:3},
 ];
-const ANSWER="経費精算の締め日は毎月20日です。20日を過ぎた申請は翌月扱いになります。（社内規程 第3条より）";
+// 用途(ワークロード)。件数・入出力文字数・必要品質を入力
+const WL0=[
+  {name:"社内FAQ回答", count:20000, inChars:800,  outChars:300, needQ:2},
+  {name:"議事録要約",   count:600,   inChars:8000, outChars:1200, needQ:2},
+  {name:"提案書ドラフト", count:200, inChars:2000, outChars:3000, needQ:3},
+  {name:"契約書チェック", count:150, inChars:6000, outChars:800, needQ:3},
+];
+const USDJPY0=155;
+const CHARS_PER_TOKEN=2.2; // 日本語のおおよそのトークン換算(1トークン≒2.2文字)
+const AXIS=["コスト効率","応答速度","品質充足","予算余裕","モデル分散","要件適合"];
 const stars=n=>"★★★☆☆".slice(3-n,6-n);
 
+function costOf(m,wl,rate){
+  const inTok=wl.inChars/CHARS_PER_TOKEN, outTok=wl.outChars/CHARS_PER_TOKEN;
+  const perCallUsd=(inTok*m.inUsd+outTok*m.outUsd)/1e6;
+  return {perCallYen:perCallUsd*rate, monthYen:perCallUsd*rate*wl.count};
+}
+const color=v=>v>=70?"#17a673":v>=50?"#f0a500":"#e0533b";
+function level(t){return t>=80?["最適化済","#0f7a54"]:t>=65?["良好","#17a673"]:t>=50?["改善余地あり","#f0a500"]:["要見直し","#e0533b"];}
+
+function Radar({own}){
+  const cx=150,cy=145,R=100,N=own.length;
+  const ang=i=>-Math.PI/2+i*2*Math.PI/N;
+  const pt=(i,r)=>[cx+Math.cos(ang(i))*R*r, cy+Math.sin(ang(i))*R*r];
+  const poly=arr=>arr.map((v,i)=>pt(i,Math.max(0,Math.min(1,v/100))).join(",")).join(" ");
+  return (<svg width="100%" viewBox="0 0 300 300" style={{maxWidth:340}}>
+    {[0.33,0.66,1].map((rr,k)=>(<polygon key={k} points={own.map((_,i)=>pt(i,rr).join(",")).join(" ")} fill="none" stroke="#e3e8ee"/>))}
+    {own.map((_,i)=>{const[x,y]=pt(i,1);return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e3e8ee"/>;})}
+    <polygon points={poly(own.map(()=>60))} fill="none" stroke="#8aa9d6" strokeWidth="2" strokeDasharray="4 3"/>
+    <polygon points={poly(own)} fill="#4361ee33" stroke="#4361ee" strokeWidth="2.5"/>
+    {AXIS.map((a,i)=>{const[x,y]=pt(i,1.17);return <text key={i} x={x} y={y} textAnchor="middle" fontSize="9" fill="#556">{a}</text>;})}
+  </svg>);
+}
+
 function App(){
-  const [strat,setStrat]=React.useState("balanced");
-  const [vol,setVol]=React.useState(10000);
-  const s=STRATS.find(x=>x.id===strat), ai=AIS[s.pick];
-  const monthly=Math.round(ai.yen*vol);
-  const cheapest=Math.round(AIS.gemini.yen*vol), dearest=Math.round(AIS.gpt.yen*vol);
+  const [models,setModels]=React.useState(MODELS0);
+  const [wls,setWls]=React.useState(WL0);
+  const [rate,setRate]=React.useState(USDJPY0);
+  const [budget,setBudget]=React.useState(300000);
+  const [strat,setStrat]=React.useState("optimal");
+
+  // 各ワークロードごとに、戦略に応じたモデルを選ぶ
+  const pickFor=(wl)=>{
+    const ok=models.filter(m=>m.q>=wl.needQ);
+    const pool=ok.length?ok:models;
+    if(strat==="cheapest") return [...models].sort((a,b)=>costOf(a,wl,rate).monthYen-costOf(b,wl,rate).monthYen)[0];
+    if(strat==="fastest")  return [...pool].sort((a,b)=>a.sec-b.sec)[0];
+    if(strat==="best")     return [...models].sort((a,b)=>b.q-a.q||a.inUsd-b.inUsd)[0];
+    // optimal: 必要品質を満たす中で最安
+    return [...pool].sort((a,b)=>costOf(a,wl,rate).monthYen-costOf(b,wl,rate).monthYen)[0];
+  };
+  const rows=wls.map(wl=>{
+    const m=pickFor(wl); const c=costOf(m,wl,rate);
+    const cheapest=[...models].sort((a,b)=>costOf(a,wl,rate).monthYen-costOf(b,wl,rate).monthYen)[0];
+    const dearest=[...models].sort((a,b)=>costOf(b,wl,rate).monthYen-costOf(a,wl,rate).monthYen)[0];
+    return {wl, m, ...c, minYen:costOf(cheapest,wl,rate).monthYen, maxYen:costOf(dearest,wl,rate).monthYen, qOk:m.q>=wl.needQ};
+  });
+  const total=rows.reduce((a,r)=>a+r.monthYen,0);
+  const allMin=rows.reduce((a,r)=>a+r.minYen,0);
+  const allMax=rows.reduce((a,r)=>a+r.maxYen,0);
+  const maxRow=Math.max(1,...rows.map(r=>r.monthYen));
+  const over=total-budget;
+  const usedModels=new Set(rows.map(r=>r.m.key)).size;
+  const avgSec=rows.length?rows.reduce((a,r)=>a+r.m.sec*r.wl.count,0)/rows.reduce((a,r)=>a+r.wl.count,0):0;
+  const qOkCount=rows.filter(r=>r.qOk).length;
+  const own=[
+    Math.max(0,Math.min(100,Math.round(allMax>allMin?(allMax-total)/(allMax-allMin)*100:100))), // コスト効率
+    Math.max(0,Math.min(100,Math.round((2.0-avgSec)/1.5*100))),                                  // 応答速度
+    Math.round(rows.length?qOkCount/rows.length*100:0),                                          // 品質充足
+    Math.max(0,Math.min(100,Math.round(budget>0?(budget-total)/budget*100+50:0))),                // 予算余裕
+    Math.round(usedModels/models.length*100),                                                     // モデル分散
+    Math.round(rows.length?rows.filter(r=>r.qOk&&r.monthYen<=r.maxYen*0.7).length/rows.length*100:0), // 要件適合(品質満たしつつ高額でない)
+  ].map(v=>Math.max(0,Math.min(100,v)));
+  const score=Math.round(own.reduce((a,b)=>a+b,0)/own.length);
+  const [lvl,lvlc]=level(score);
+  const biggest=[...rows].sort((a,b)=>b.monthYen-a.monthYen)[0];
+
+  const updM=(i,k,v)=>setModels(ms=>ms.map((m,j)=>j===i?{...m,[k]:Number(v)||0}:m));
+  const updW=(i,k,v)=>setWls(ws=>ws.map((w,j)=>j===i?{...w,[k]:k==="name"?v:(Number(v)||0)}:w));
+  const delW=i=>setWls(ws=>ws.filter((_,j)=>j!==i));
+  const addW=()=>setWls(ws=>[...ws,{name:"新しい用途",count:1000,inChars:1000,outChars:500,needQ:2}]);
+  const yen=n=>Math.round(n).toLocaleString();
 
   return (<div className="wrap">
-    <h1>AI基盤 <span className="sub">複数AI(Claude/GPT/Gemini)を賢く使い分け、コストと速度を見える化</span></h1>
+    <h1>AI基盤 <span className="sub">複数AIを用途別に最適配分し、月額コストを実計算</span></h1>
 
     <div className="card explain">
       <h2 style={{color:"#2b3ea8"}}>このツールは何？（3行で）</h2>
       <dl>
-        <dt>できること</dt><dd>Claude・GPT・Gemini など複数のAIを<b>1つの窓口で使い分け</b>ます。1社のAIに縛られません。</dd>
-        <dt>分かること</dt><dd><b>どのAIが安い/速い/賢いか</b>、質問1回<b>いくらか</b>、月にすると<b>いくらか</b>を可視化します。</dd>
-        <dt>取れるアクション</dt><dd>用途に合わせて選び方(戦略)を切替 → <b>コストを節約</b>／<b>予算オーバーを防止</b>できます。</dd>
+        <dt>できること</dt><dd>Claude・GPT・Gemini など複数AIを<b>用途ごとに使い分け</b>、1社に縛られない構成にします。</dd>
+        <dt>分かること</dt><dd>各用途を<b>どのモデルで動かすと月いくらか</b>、必要な品質を満たしつつ<b>いくら削れるか</b>。</dd>
+        <dt>取れるアクション</dt><dd>予算超過を検知し、<b>安いモデルへ振り替える具体案</b>を金額つきで提示します。</dd>
       </dl>
     </div>
 
     <div className="card">
-      <h2>使える3つのAIの比較</h2>
-      <table><thead><tr><th className="l">AI</th><th>1回の目安料金</th><th>応答速度</th><th>品質</th></tr></thead>
-        <tbody>{Object.values(AIS).map((a,i)=>(<tr key={i}><td className="l">{a.label}</td><td>{a.yen.toFixed(1)}円</td><td>{a.sec}秒</td><td>{stars(a.q)}</td></tr>))}</tbody></table>
-      <p className="sub">※料金・速度は代表的な短い応答の目安（実際は文章の長さで変わります）。</p>
-    </div>
-
-    <div className="card">
-      <h2>① 使ってみる（質問→自動で最適なAIが回答）</h2>
-      <p className="sub">「選び方(戦略)」を選ぶと、その方針に合うAIが自動で選ばれます。何を優先するかで選ばれるAIと料金が変わります。</p>
-      <div className="sub" style={{margin:"6px 0"}}>質問例: <b>「経費精算の締め日は？」</b></div>
-      <div className="seg">{STRATS.map(x=>(<button key={x.id} className={x.id===strat?"on":""} onClick={()=>setStrat(x.id)}>
-        <b>{x.name}</b><br/><span style={{fontSize:11,opacity:.85}}>{x.desc}</span></button>))}</div>
-      <div className="answer">
-        <div><b>AIの回答:</b> {ANSWER}</div>
-        <div className="kpis">
-          <div className="kpi"><div className="v">{ai.label.split(" ")[0]}</div><div className="l">選ばれたAI（{s.name}のため）</div></div>
-          <div className="kpi"><div className="v">{ai.yen.toFixed(1)}円</div><div className="l">この回答の料金</div></div>
-          <div className="kpi"><div className="v">{ai.sec}秒</div><div className="l">応答時間</div></div>
-          <div className="kpi"><div className="v">{stars(ai.q)}</div><div className="l">品質</div></div>
-        </div>
+      <div className="real">✏️ <b>用途(ワークロード)を入力</b>：月間件数・1件の入力/出力文字数・必要品質(2=標準/3=高)。ここから実際のトークン数を換算してコストを計算します。</div>
+      <table><thead><tr><th className="l">用途</th><th>月間件数</th><th>入力文字/件</th><th>出力文字/件</th><th>必要品質</th><th></th></tr></thead>
+        <tbody>{wls.map((w,i)=>(<tr key={i}>
+          <td className="l"><input className="nm" value={w.name} onChange={e=>updW(i,"name",e.target.value)}/></td>
+          <td><input value={w.count} onChange={e=>updW(i,"count",e.target.value)}/></td>
+          <td><input value={w.inChars} onChange={e=>updW(i,"inChars",e.target.value)}/></td>
+          <td><input value={w.outChars} onChange={e=>updW(i,"outChars",e.target.value)}/></td>
+          <td><select value={w.needQ} onChange={e=>updW(i,"needQ",e.target.value)}><option value="2">標準(2)</option><option value="3">高(3)</option></select></td>
+          <td><button className="del" onClick={()=>delW(i)}>×</button></td></tr>))}
+        </tbody></table>
+      <button className="add" onClick={addW}>＋ 用途を追加</button>
+      <button className="ghost" onClick={()=>setWls(WL0)}>サンプルに戻す</button>
+      <div style={{marginTop:10}}>
+        為替 <input className="num" type="number" value={rate} onChange={e=>setRate(Number(e.target.value)||0)}/> 円/USD ／
+        月予算 <input className="num" type="number" value={budget} onChange={e=>setBudget(Number(e.target.value)||0)}/> 円
+      </div>
+      <div style={{marginTop:8}}>選び方:
+        {[["optimal","必要品質を満たす中で最安（推奨）"],["cheapest","とにかく最安"],["fastest","速度優先"],["best","品質最優先"]].map(([k,d])=>(
+          <button key={k} className={strat===k?"add":"ghost"} style={{marginLeft:6,marginTop:4}} onClick={()=>setStrat(k)}>{d}</button>))}
       </div>
     </div>
 
-    <div className="card">
-      <h2>② いくらかかる？（コストの見える化）</h2>
-      <div style={{margin:"6px 0"}}>月に <input className="num" type="number" value={vol} onChange={e=>setVol(Number(e.target.value)||0)}/> 回 使うと…</div>
-      <div className="kpis">
-        <div className="kpi"><div className="v">{monthly.toLocaleString()}円</div><div className="l">今の戦略(「{s.name}」)の月額</div></div>
-        <div className="kpi"><div className="v">{cheapest.toLocaleString()}円</div><div className="l">最安(コスト優先)の月額</div></div>
-        <div className="kpi"><div className="v">{dearest.toLocaleString()}円</div><div className="l">最高品質の月額</div></div>
-        <div className="kpi"><div className="v">{(dearest-cheapest).toLocaleString()}円</div><div className="l">選び方による差(節約余地)</div></div>
+    <div className="card" style={{display:"flex",gap:24,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{textAlign:"center"}}>
+        <h2>月額コスト（実計算）</h2>
+        <div style={{fontSize:40,fontWeight:"bold",color:color(own[0])}}>{yen(total)}<span style={{fontSize:16,color:"#8a97a6"}}> 円/月</span></div>
+        <span style={{display:"inline-block",padding:"3px 12px",borderRadius:20,fontWeight:"bold",fontSize:13,color:"#fff",background:lvlc}}>構成評価: {lvl}（{score}点）</span>
+        <div style={{marginTop:8,fontSize:13}}>全部最安なら {yen(allMin)}円 ／ 全部最上位なら {yen(allMax)}円</div>
       </div>
-      <p className="sub">👉 用途に応じて戦略を使い分けると、月<b>{(dearest-cheapest).toLocaleString()}円</b>ぶんの差をコントロールできます（＝FinOps）。予算を超えそうな時は自動で「コスト優先」に切替も可能。</p>
+      <div><Radar own={own}/><div className="sub" style={{textAlign:"center"}}>■現構成 ／ ┈基準ライン(60)</div></div>
+    </div>
+
+    {over>0
+      ? <div className="card"><div className="over"><b>⚠ 予算オーバー</b>：月予算{yen(budget)}円に対し <b>{yen(over)}円 超過</b>しています。下の「① まず削る」を実行してください。</div></div>
+      : <div className="card"><div className="okbox">✅ <b>予算内</b>：月予算{yen(budget)}円に対し {yen(total)}円（余裕 {yen(-over)}円）。</div></div>}
+
+    <div className="card">
+      <h2>用途別の内訳（選ばれたモデルと月額）</h2>
+      <table><thead><tr><th className="l">用途</th><th>選ばれたモデル</th><th>1件あたり</th><th>月額</th><th>最安なら</th><th>削減余地</th></tr></thead>
+        <tbody>{rows.map((r,i)=>(<tr key={i}>
+          <td className="l"><b>{r.wl.name}</b><br/><span className="sub">{r.wl.count.toLocaleString()}件・品質{r.wl.needQ}要</span></td>
+          <td>{r.m.label}<br/><span className="sub">{stars(r.m.q)} {r.m.sec}秒</span></td>
+          <td>{r.perCallYen.toFixed(2)}円</td>
+          <td><b>{yen(r.monthYen)}円</b></td>
+          <td>{yen(r.minYen)}円</td>
+          <td style={{color:r.monthYen-r.minYen>0?"#c0392b":"#0f7a54"}}>{r.monthYen-r.minYen>0?"-"+yen(r.monthYen-r.minYen)+"円可":"最安"}</td></tr>))}
+        </tbody></table>
+      <h3 style={{marginTop:12}}>コストが大きい用途（どこにお金がかかっているか）</h3>
+      {rows.slice().sort((a,b)=>b.monthYen-a.monthYen).map((r,i)=>(<div className="barrow" key={i}>
+        <span className="name">{r.wl.name}</span>
+        <div className="track"><div className="fill" style={{width:(r.monthYen/maxRow*100)+"%",background:i===0?"#e0533b":"#4361ee"}}></div></div>
+        <span style={{width:82,textAlign:"right"}}>{yen(r.monthYen)}円</span>
+      </div>))}
     </div>
 
     <div className="card">
-      <h2>③ 使用状況の集計（観測性 ＝ 使った履歴の見える化）</h2>
-      <p className="sub">「誰がどのAIを何回使い、合計いくらかかったか」を集計します。使いすぎ・偏りの発見に使います。</p>
-      <div className="kpis">
-        <div className="kpi"><div className="v">4回</div><div className="l">今週のリクエスト</div></div>
-        <div className="kpi"><div className="v">約8円</div><div className="l">合計コスト</div></div>
-        <div className="kpi"><div className="v">1.1秒</div><div className="l">平均応答時間</div></div>
-        <div className="kpi"><div className="v">0回</div><div className="l">自動切替(障害時)</div></div>
-      </div>
-      <h3>AI別の内訳</h3>
-      <table><thead><tr><th className="l">AI</th><th>使った回数</th><th>コスト</th></tr></thead>
-        <tbody><tr><td className="l">Claude</td><td>2回</td><td>約6円</td></tr>
-        <tr><td className="l">Gemini</td><td>2回</td><td>約2円</td></tr></tbody></table>
-      <p className="sub">この例では Claude を2回・Gemini を2回使用。障害時の自動切替(フォールバック)は0回＝安定稼働。</p>
+      <h2>モデル単価（1Mトークンあたり・USD／編集可）</h2>
+      <table><thead><tr><th className="l">モデル</th><th>入力$/1M</th><th>出力$/1M</th><th>応答秒</th><th>品質</th></tr></thead>
+        <tbody>{models.map((m,i)=>(<tr key={m.key}>
+          <td className="l">{m.label}</td>
+          <td><input value={m.inUsd} onChange={e=>updM(i,"inUsd",e.target.value)}/></td>
+          <td><input value={m.outUsd} onChange={e=>updM(i,"outUsd",e.target.value)}/></td>
+          <td><input value={m.sec} onChange={e=>updM(i,"sec",e.target.value)}/></td>
+          <td>{stars(m.q)}</td></tr>))}
+        </tbody></table>
+      <p className="sub">※単価は各社の公開価格の目安です。最新価格に更新すると全計算に即反映されます。日本語は1トークン≒{CHARS_PER_TOKEN}文字で換算。</p>
     </div>
-    <p className="note">※数値は分かりやすさ優先のサンプルです。実運用では各AIの実料金・実測速度に置き換わります。</p>
+
+    <div className="card">
+      <h2>🤖 分析と最適化プラン</h2>
+      <div className="ai">
+        現構成の月額は <b>{yen(total)}円</b>。最もコストが大きいのは <b>{biggest.wl.name}</b>（{yen(biggest.monthYen)}円／全体の{Math.round(biggest.monthYen/(total||1)*100)}%）です。
+        全用途を最安モデルにすると {yen(allMin)}円まで下がりますが、品質要件を満たさない用途が出ます。
+        {over>0?<span> 現在<b>予算を{yen(over)}円超過</b>しています。</span>:<span> 予算内に収まっています。</span>}
+      </div>
+      <div className="plan">
+        <div className="tierlabel">① まず削る（金額つきの具体策）</div>
+        <ul>
+          {rows.filter(r=>r.monthYen-r.minYen>0).sort((a,b)=>(b.monthYen-b.minYen)-(a.monthYen-a.minYen)).slice(0,3).map((r,k)=>(
+            <li key={k}><b>{r.wl.name}</b>：{r.m.label} → 最安モデルに替えると <b style={{color:"#0f7a54"}}>-{yen(r.monthYen-r.minYen)}円/月</b>
+              {r.wl.needQ>=3?<span className="sub">（ただし高品質要件のため、品質検証をしてから切替）</span>:<span className="sub">（標準品質の用途なので切替しやすい）</span>}</li>))}
+          {biggest.wl.outChars>1000 && <li><b>{biggest.wl.name}</b>の出力文字数({biggest.wl.outChars}字)を短くする：出力単価は入力の約4倍なので、<b>出力を半分にすると約{yen(biggest.monthYen*0.4)}円/月削減</b>。</li>}
+          {rows.every(r=>r.monthYen===r.minYen) && <li>すでに全用途が最安構成です。件数・文字数の削減か、キャッシュ活用を検討してください。</li>}
+        </ul>
+      </div>
+      <div className="plan">
+        <div className="tierlabel">② さらに強くする</div>
+        <ul>
+          <li><b>予算アラートの自動化</b>：月額が予算の80%（{yen(budget*0.8)}円）を超えたら自動で安価モデルへ切替。</li>
+          <li><b>キャッシュ活用</b>：同じ質問の再問い合わせをキャッシュすれば、FAQ用途は件数ベースで直接削減できます。</li>
+          <li><b>モデル分散</b>：現在{usedModels}種類を使用中。1社障害時のフォールバック先を必ず別社に確保。</li>
+          <li><b>品質検証</b>：安価モデルへ切替える前に、同じ入力で出力を比較する評価セットを用意。</li>
+        </ul>
+      </div>
+    </div>
+
+    <p className="note">※コストは「入力/出力文字数→トークン換算→公開単価×為替」の実計算です。トークン換算は日本語の概算（1トークン≒{CHARS_PER_TOKEN}文字）で、実際は文章により±20%程度ぶれます。応答速度・品質は代表値であり実測ではありません。実運用では各モデルの実測レイテンシと評価スコアに置き換えてください。</p>
   </div>);
 }
 </script>
