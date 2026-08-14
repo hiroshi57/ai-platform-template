@@ -39,15 +39,18 @@
 <body><div style="max-width:880px;margin:0 auto 4px;background:#fff8e1;border:1px solid #f0d98a;border-radius:10px;padding:8px 14px;font:13px system-ui;color:#7a5b00">🔬 <b>実コスト計算版</b>：公開されている<b>トークン単価</b>と、入力した<b>用途別の件数・文字数</b>から月額コストを実計算し、<b>最適なAI配分</b>を算出します。単価は編集可（各社の最新価格に合わせてください）。</div>
 <div id="root"></div>
 <script type="text/plain" id="__jsx">
-// 1Mトークンあたりの単価(USD)。公開価格の目安。ユーザーが編集可能。
+// 1Mトークンあたりの単価(USD)。★2026-08-10に各社公式ページで確認した値。価格は頻繁に変わるため必ずご自身で更新してください。
+const PRICE_CHECKED="2026-08-10";
 const MODELS0=[
-  {key:"haiku",  label:"Claude Haiku",  inUsd:0.80, outUsd:4.00, sec:0.8, q:2},
-  {key:"sonnet", label:"Claude Sonnet", inUsd:3.00, outUsd:15.00, sec:1.2, q:3},
-  {key:"gpt4o",  label:"GPT-4o",        inUsd:2.50, outUsd:10.00, sec:1.1, q:3},
-  {key:"mini",   label:"GPT-4o mini",   inUsd:0.15, outUsd:0.60, sec:0.9, q:2},
-  {key:"flash",  label:"Gemini Flash",  inUsd:0.10, outUsd:0.40, sec:0.7, q:2},
-  {key:"pro",    label:"Gemini Pro",    inUsd:1.25, outUsd:5.00, sec:1.5, q:3},
+  {key:"haiku45", label:"Claude Haiku 4.5",  inUsd:1.00, outUsd:5.00,  sec:0.8, q:2, src:"anthropic", note:"公式確認済"},
+  {key:"sonnet5", label:"Claude Sonnet 5",   inUsd:2.00, outUsd:10.00, sec:1.2, q:3, src:"anthropic", note:"導入価格(2026/8/31まで)。9/1以降は $3/$15"},
+  {key:"sonnet46",label:"Claude Sonnet 4.6", inUsd:3.00, outUsd:15.00, sec:1.2, q:3, src:"anthropic", note:"公式確認済"},
+  {key:"g3flash", label:"Gemini 3 Flash",    inUsd:0.375,outUsd:1.875, sec:0.7, q:2, src:"google",    note:"2026/12/31まで。以降は倍額"},
+  {key:"gpt",     label:"OpenAI GPT（要確認）",inUsd:2.50, outUsd:10.00, sec:1.1, q:3, src:"openai",   note:"⚠本セッションで単価を確認できませんでした。公式ページで確認し上書きしてください"},
 ];
+const SRCURL={anthropic:"https://docs.anthropic.com/en/docs/about-claude/pricing",
+  google:"https://ai.google.dev/gemini-api/docs/pricing", openai:"https://platform.openai.com/docs/pricing"};
+const SRCNAME={anthropic:"Anthropic公式",google:"Google公式",openai:"OpenAI公式"};
 // 用途(ワークロード)。件数・入出力文字数・必要品質を入力
 const WL0=[
   {name:"社内FAQ回答", count:20000, inChars:800,  outChars:300, needQ:2},
@@ -201,15 +204,22 @@ function App(){
 
     <div className="card">
       <h2>モデル単価（1Mトークンあたり・USD／編集可）</h2>
-      <table><thead><tr><th className="l">モデル</th><th>入力$/1M</th><th>出力$/1M</th><th>応答秒</th><th>品質</th></tr></thead>
+      <div className="over" style={{background:"#fff8e6",borderColor:"#f0c86a",color:"#7a5b00"}}>
+        <b>⚠ 価格は頻繁に変わります（確認日: {PRICE_CHECKED}）</b><br/>
+        下記は確認日時点で各社公式ページに掲載されていた値です。<b>ご利用前に必ず公式ページで最新価格を確認し、この表を上書きしてください。</b>
+        値を書き換えると、上の月額計算に即座に反映されます。
+      </div>
+      <table><thead><tr><th className="l">モデル</th><th>入力$/1M</th><th>出力$/1M</th><th>応答秒</th><th>品質</th><th className="l">出典・注意</th></tr></thead>
         <tbody>{models.map((m,i)=>(<tr key={m.key}>
           <td className="l">{m.label}</td>
           <td><input value={m.inUsd} onChange={e=>updM(i,"inUsd",e.target.value)}/></td>
           <td><input value={m.outUsd} onChange={e=>updM(i,"outUsd",e.target.value)}/></td>
           <td><input value={m.sec} onChange={e=>updM(i,"sec",e.target.value)}/></td>
-          <td>{stars(m.q)}</td></tr>))}
+          <td>{stars(m.q)}</td>
+          <td className="l" style={{fontSize:11.5,lineHeight:1.6}}>
+            <a href={SRCURL[m.src]} target="_blank" rel="noopener">{SRCNAME[m.src]}</a><br/>{m.note}</td></tr>))}
         </tbody></table>
-      <p className="sub">※単価は各社の公開価格の目安です。最新価格に更新すると全計算に即反映されます。日本語は1トークン≒{CHARS_PER_TOKEN}文字で換算。</p>
+      <p className="sub">※日本語は1トークン≒{CHARS_PER_TOKEN}文字で概算しています（文章により±20%程度ぶれます）。<b>応答秒と品質★は実測ではなく代表値</b>です。厳密な比較には自社データでの実測が必要です。</p>
     </div>
 
     <div className="card">
