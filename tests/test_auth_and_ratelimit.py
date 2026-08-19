@@ -1,10 +1,7 @@
 """認証とレート制限の検証."""
-import os
-import sys
+import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core import APIKeyStore, RateLimiter  # noqa: E402
+from core import APIKeyStore, RateLimiter, generate_api_key
 
 
 def test_api_key_resolves_tenant():

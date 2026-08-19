@@ -1,9 +1,6 @@
-import os
-import sys
+import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core import BudgetGuard, project_month_end, detect_cost_anomaly, RoutingStrategy  # noqa: E402
+from core import BudgetGuard, project_month_end, detect_cost_anomaly, RoutingStrategy
 
 
 def test_project_month_end():

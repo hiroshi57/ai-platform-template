@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-platform-template"
+version = "1.1.0"
+description = "AI/RAGアプリを最短本番化する社内AI基盤テンプレート(LLMコスト/レイテンシ自動ルーティング + 観測性 + FinOps)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110,<1.0", "uvicorn>=0.29,<1.0", "pydantic>=2.6,<3.0"]
+test = ["pytest>=8.0,<9.0", "httpx>=0.27,<1.0"]
+providers = ["anthropic>=0.30", "openai>=1.30", "google-generativeai>=0.7"]
+
+[tool.setuptools]
+packages = ["core", "service", "app_template"]
+
+[tool.pytest.ini_options]
+# rootdir を sys.path に入れる。各テストファイル冒頭の
+# sys.path.insert(...) 定型句(5ファイルに重複)を不要にする。
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = [
+    "-q",
+    # 依存不足でテストが黙ってスキップされ「CI 緑」に見える事故を防ぐ
+    "-r", "fEsxX",
+    "--strict-markers",
+]
+filterwarnings = ["error::DeprecationWarning:core.*", "error::DeprecationWarning:service.*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = ["S101"]   # テストの assert は許可
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "E501"]

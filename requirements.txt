@@ -1,8 +1,17 @@
 # コア(core/)は標準ライブラリのみで動作。以下は API 実行とテスト用。
-fastapi>=0.110
-uvicorn>=0.29
-pydantic>=2.6
-pytest>=8.0
+# 上限を固定する: fastapi>=0.110 のような下限のみの指定だと、将来の破壊的
+# メジャーリリースを自動で取り込んでビルドが突然壊れる(再現性が無い)。
+fastapi>=0.110,<1.0
+uvicorn>=0.29,<1.0
+pydantic>=2.6,<3.0
+
+# --- テスト ---
+pytest>=8.0,<9.0
+# httpx は fastapi.testclient(starlette TestClient)の必須依存。
+# 旧 requirements には無く、CI で E2E テストが importorskip により
+# **黙ってスキップ** されていた(CI 緑 = API が動く、ではなかった)。
+httpx>=0.27,<1.0
+
 # 実プロバイダ接続時のみ(未インストール/キー無しなら自動でmock):
 # anthropic>=0.30
 # openai>=1.30

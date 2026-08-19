@@ -1,0 +1,94 @@
+/* Vite 版のスタイル。旧構成では CSS が 1 ファイルも存在せず、
+   App.jsx / 各画面が参照する .wrap / .card / .metric / .primary が
+   すべて未定義だったため、画面は完全に無スタイルで表示されていた。 */
+
+:root {
+  --brand: #4361ee;
+  --ink: #1a1a2e;
+  --line: #e3e7f5;
+  --bg: #fafbff;
+  --warn-bg: #fff6e0;
+  --warn-line: #f0c36d;
+  --err-bg: #fdecea;
+  --err-line: #f5c2c7;
+  --err-ink: #b3261e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  line-height: 1.6;
+}
+
+.wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { color: var(--brand); font-size: 24px; margin: 0 0 12px; }
+h2 { font-size: 19px; margin: 0 0 12px; }
+h3 { font-size: 16px; margin: 20px 0 8px; }
+
+.authbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.authbar label { font-size: 13px; color: #555; white-space: nowrap; }
+.authbar input {
+  flex: 1; min-width: 220px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; font-size: 14px; background: #fff;
+}
+.authbar input:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.banner { padding: 10px 12px; border-radius: 8px; margin: 10px 0; font-size: 13px; }
+.banner.warn { background: var(--warn-bg); border: 1px solid var(--warn-line); }
+.banner.error { background: var(--err-bg); border: 1px solid var(--err-line); color: var(--err-ink); }
+
+nav { display: flex; gap: 8px; margin: 14px 0; }
+nav button {
+  padding: 8px 16px; border: 1px solid var(--line); background: #fff;
+  border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--ink);
+}
+nav button:disabled { background: var(--brand); color: #fff; border-color: var(--brand); cursor: default; }
+
+.card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+
+.metrics { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.metric {
+  flex: 1 1 130px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 12px; text-align: center; font-size: 12px; color: #555;
+}
+.metric .val { font-size: 22px; font-weight: 700; color: var(--brand); }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+th { background: #eaeefb; font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.empty { text-align: center; color: #888; }
+
+textarea, select {
+  font-family: inherit; font-size: 14px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+}
+textarea { resize: vertical; }
+label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; margin: 10px 0; }
+
+button.primary {
+  padding: 9px 20px; border: none; border-radius: 8px;
+  background: var(--brand); color: #fff; font-size: 14px; cursor: pointer;
+}
+button.primary:disabled { background: #a9b6e8; cursor: not-allowed; }
+button.primary:not(:disabled):hover { filter: brightness(1.08); }
+
+.result { margin-top: 14px; padding: 12px; background: var(--bg); border-radius: 8px; }
+.result p { margin: 0 0 8px; white-space: pre-wrap; word-break: break-word; }
+.result small { color: #666; }
+
+.tag { padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #e8f0fe; margin-left: 8px; }
+.tag.demo { background: var(--warn-bg); color: #8a6100; }
+
+.note { font-size: 12px; color: #777; margin-top: 14px; }
+
+.hint { font-size: 12px; color: #777; }
+
+@media (max-width: 600px) {
+  .metric { flex-basis: calc(50% - 5px); }
+  table { display: block; overflow-x: auto; }
+}

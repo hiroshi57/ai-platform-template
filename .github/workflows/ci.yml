@@ -1,13 +1,84 @@
 name: CI
+
 on:
   push: { branches: [main] }
   pull_request: { branches: [main] }
+
+# 同一ブランチの古い実行を打ち切って CI 時間を節約する
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 単一バージョンだけだと、開発機(3.13)と CI(3.11)の差分で壊れても気づけない
+        python-version: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify test dependencies are present
+        # importorskip でテストが黙ってスキップされ「CI 緑」に見える事故を防ぐ
+        run: python -c "import fastapi, httpx, pydantic; print('test deps ok')"
+
+      - name: Run tests
+        # -p no:randomly で順序依存を排除しない代わりに、スキップを可視化する
+        run: python -m pytest -q -r fEsxX
+
+      - name: Fail if any test was skipped
+        run: |
+          python -m pytest -q --collect-only >/dev/null
+          OUT=$(python -m pytest -q -r s 2>&1 | grep -c "^SKIPPED" || true)
+          if [ "$OUT" != "0" ]; then
+            echo "::error::$OUT test(s) skipped — 依存不足の可能性があります"
+            python -m pytest -q -r s 2>&1 | grep "^SKIPPED" || true
+            exit 1
+          fi
+
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install -r requirements.txt
-      - run: python -m pytest -q
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install ruff
+      - name: Ruff (lint)
+        run: ruff check .
+      - name: Ruff (format check)
+        run: ruff format --check . || echo "::warning::formatting drift detected"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: frontend }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        # package-lock.json が無い初回でも通るようにする
+        run: npm install --no-audit --no-fund
+      - name: Build
+        # 旧構成には package.json が無く、README の
+        # `npm install && npm run dev` は実行不可能だった。ビルドを CI で担保する。
+        run: npm run build

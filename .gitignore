@@ -6,3 +6,16 @@ venv/
 .pytest_cache/
 *.egg-info/
 .DS_Store
+.ruff_cache/
+
+# SQLite(コスト履歴。コミットしない)
+*.db
+*.db-wal
+*.db-shm
+
+# 実単価カタログ(社外秘の契約単価が入りうる)
+pricing.json
+
+# frontend
+node_modules/
+dist/

@@ -1,16 +1,14 @@
 """全機能拡張の検証: 設定 / ロギング / 実プロバイダ切替(mockフォールバック)."""
 import json
 import logging
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pytest
 
-from core import (  # noqa: E402
+from core import (
     Settings, RoutingStrategy, build_providers, build_provider, provider_mode,
     configure_logging, new_request_id, get_request_id, MockProvider,
 )
-from core.real_providers import AnthropicProvider  # noqa: E402
+from core.real_providers import AnthropicProvider
 
 
 # --- Settings ---

@@ -1,10 +1,7 @@
 """LLMRouter の選択・フォールバック・観測性の検証."""
-import os
-import sys
+import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core import (  # noqa: E402
+from core import (
     FailingProvider,
     LLMRouter,
     MockProvider,
