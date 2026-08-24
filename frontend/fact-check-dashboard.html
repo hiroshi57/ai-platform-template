@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ファクトチェック・ダッシュボード</title>
+<meta property="og:title" content="ファクトチェック・ダッシュボード" />
+<meta property="og:type" content="website" />
+<meta property="og:description" content="テキスト・画像・音声・映像の主張を、情報源確認/一次情報比較/クロスチェック/AI活用の手順に沿って記録し、多面的に集計するオフライン動作の記録・集計ツール。インストール不要・登録不要・データは端末内(localStorage)に保存されます。" />
+<meta name="description" content="ファクトチェックの進め方(情報源確認・一次情報比較・クロスチェック・事実と意見の切り分け・AI活用)を標準化して記録し、判定内訳や時系列トレンドを可視化するダッシュボード。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232b6cb0'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E2%9C%93%3C/text%3E%3C/svg%3E" />
+<!-- OFFLINE-BUNDLED: 外部通信なしで動作します(外部リンクはユーザーが手動で開くリンクのみ) -->
+<style>
+  :root{
+    --blue:#2b6cb0; --blue-dark:#1f4f85; --ink:#152238; --sub:#6b7686; --bg:#f5f7f9;
+    --card:#ffffff; --line:#e3e8ee; --green:#0f7a54; --amber:#b7791f; --red:#c0392b; --gray:#7a8699;
+  }
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);margin:0;padding:20px;color:var(--ink)}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{color:var(--blue);font-size:21px;margin:0 0 2px}
+  .sub{color:var(--sub);font-size:12.5px}
+  .banner{background:#eef2fd;border:1px solid #d8e0fb;border-radius:10px;padding:10px 14px;font-size:12.5px;color:#2b3ea8;margin:10px 0 14px;line-height:1.7}
+  .banner b{color:#1f4f85}
+  nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 16px}
+  nav.tabs button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer}
+  nav.tabs button.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:bold}
+  .card{background:var(--card);border-radius:14px;padding:16px 18px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+  .card h2{font-size:15px;margin:0 0 10px;color:#1f2d47}
+  .card h3{font-size:13px;margin:12px 0 6px;color:#334}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+  label{display:block;font-size:12px;color:var(--sub);margin:8px 0 3px}
+  input[type=text],input[type=date],input[type=number],input[type=url],textarea,select{
+    width:100%;border:1px solid #cdd6df;border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit;background:#fff;color:var(--ink)}
+  textarea{min-height:64px;resize:vertical;line-height:1.6}
+  .helper{font-size:11.5px;color:var(--sub);margin-top:3px}
+  .row-list{border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:6px;background:#fbfcfe}
+  .row-item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:start}
+  .row-item.seg{grid-template-columns:2fr 1fr auto}
+  .row-item.ai{grid-template-columns:1fr 1fr 2fr auto}
+  @media(max-width:760px){.row-item,.row-item.seg,.row-item.ai{grid-template-columns:1fr}}
+  button{border:0;border-radius:8px;cursor:pointer;font-size:12.5px;padding:7px 12px;font-family:inherit}
+  button.primary{background:var(--blue);color:#fff}
+  button.ghost{background:#eef2fd;color:#2b3ea8}
+  button.danger{background:#fdeeee;color:var(--red)}
+  button.add{background:#eafaf3;color:var(--green);margin-top:6px}
+  button.small{padding:4px 9px;font-size:11.5px}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{border:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
+  th{background:#eaeefb;text-align:center}
+  td.center,th.center{text-align:center}
+  .badge{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:bold;color:#fff}
+  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .kpi{flex:1;min-width:140px;background:#f6f8ff;border-radius:10px;padding:12px;text-align:center}
+  .kpi .v{font-size:21px;font-weight:bold;color:var(--blue)}
+  .kpi .l{font-size:11px;color:#667;margin-top:2px}
+  .barrow{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12.5px}
+  .barrow .name{width:190px;flex-shrink:0}
+  .barrow .track{flex:1;background:#eef1f5;border-radius:6px;height:16px;overflow:hidden}
+  .barrow .fill{height:16px;border-radius:6px}
+  .barrow .num{width:90px;text-align:right;flex-shrink:0;color:#555}
+  .insight-list{margin:0;padding-left:18px;font-size:13px;line-height:1.9}
+  .insight-list li{margin-bottom:4px}
+  .toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:6px}
+  .toolcard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fbfcfe}
+  .toolcard a{color:var(--blue);font-weight:bold;font-size:13px;text-decoration:none}
+  .toolcard .note{font-size:11.5px;color:var(--sub);margin-top:3px}
+  .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px}
+  .filterbar > div{min-width:140px}
+  .empty{color:var(--sub);font-size:13px;text-align:center;padding:24px 0}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .note-box{background:#fff8e1;border:1px solid #f0d98a;border-radius:10px;padding:9px 13px;font-size:12px;color:#7a5b00;margin:8px 0}
+  .verdict-hint{font-size:11.5px;color:var(--sub);margin-top:4px}
+  .segstats{display:flex;gap:6px;flex-wrap:wrap;font-size:11.5px;margin-top:6px}
+  .segstats span{background:#eef1f5;border-radius:999px;padding:2px 9px}
+  .save-status{font-size:12px;color:var(--green);margin-left:8px}
+  footer.refs{font-size:11.5px;color:var(--sub);line-height:1.9;margin-top:20px}
+  footer.refs a{color:var(--blue)}
+  .svg-chart text{font-size:10px;fill:#667}
+  @media(max-width:640px){body{padding:12px} .kpi{min-width:110px}}
+  @media print{
+    body{background:#fff!important;padding:0!important}
+    nav.tabs,.noprint,.banner,.filterbar,button{display:none!important}
+    .card{box-shadow:none!important;border:1px solid #ccc!important;break-inside:avoid;page-break-inside:avoid}
+    #print-root{display:none}
+    body.print-mode #app{display:none!important}
+    body.print-mode #print-root{display:block!important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔎 ファクトチェック・ダッシュボード</h1>
+  <div class="sub">テキスト / 画像 / 音声 / 映像 の主張を、標準的な検証手順に沿って記録・集計します</div>
+
+  <div class="banner noprint">
+    <b>本ツールの位置づけ(正直な説明)</b>：これは AI やファクトチェックサービスに<b>自動照会する仕組みではありません</b>。
+    「情報源の確認 → 一次情報との比較 → 複数メディアでのクロスチェック → 事実/意見/推測の切り分け → AIツールの参照」という
+    標準的な検証手順を<b>記録・採点・集計するための道具</b>です。各リンクは手動で開いて確認し、結果をこの画面に記録してください。
+    <b>最終的な真偽判定は必ず人が行ってください。</b>データはすべて端末内(ブラウザの localStorage)に保存され、外部送信は一切ありません。
+  </div>
+
+  <nav class="tabs noprint" id="tabs"></nav>
+  <div id="app"></div>
+
+  <footer class="refs noprint">
+    <div><b>参考資料</b></div>
+    <div id="ref-links"></div>
+  </footer>
+</div>
+
+<div id="print-root"></div>
+
+<script>
+'use strict';
+
+/* ============================= 定数 ============================= */
+var STORAGE_KEY = 'fc_dashboard_v1';
+
+var MEDIA_TYPES = [
+  {id:'text', label:'テキスト', icon:'📝'},
+  {id:'image', label:'画像', icon:'🖼️'},
+  {id:'audio', label:'音声', icon:'🎙️'},
+  {id:'video', label:'映像', icon:'🎬'}
+];
+
+var SOURCE_CATEGORIES = [
+  {id:'politician', label:'政治家・公人の発言'},
+  {id:'government', label:'政府・自治体の発表'},
+  {id:'media', label:'新聞・テレビ・ネットメディアの報道'},
+  {id:'sns', label:'SNS投稿(X/Facebook/Instagram/TikTok/YouTube等)'},
+  {id:'blog', label:'個人ブログ・Webサイト'},
+  {id:'ad', label:'広告・マーケティング'},
+  {id:'ai_generated', label:'AI生成コンテンツ'},
+  {id:'other', label:'その他'}
+];
+
+var VERDICTS = [
+  {id:'true', label:'真実', color:'var(--green)'},
+  {id:'mostly_true', label:'ほぼ真実', color:'#3d8f6b'},
+  {id:'mixed', label:'一部誤り/ミスリード', color:'var(--amber)'},
+  {id:'false', label:'誤り', color:'var(--red)'},
+  {id:'unverifiable', label:'検証不能', color:'var(--gray)'}
+];
+
+var RESULT_OPTIONS = [
+  {id:'', label:'(未確認)'},
+  {id:'match', label:'一致(裏付けあり)'},
+  {id:'partial', label:'部分一致'},
+  {id:'mismatch', label:'不一致(矛盾)'},
+  {id:'not_found', label:'情報なし/確認不能'}
+];
+
+var SEGMENT_TAGS = [
+  {id:'fact', label:'事実'},
+  {id:'opinion', label:'意見'},
+  {id:'speculation', label:'推測'},
+  {id:'unverified', label:'未検証'}
+];
+
+var STANCE_OPTIONS = [
+  {id:'', label:'(未記録)'},
+  {id:'support', label:'主張を支持'},
+  {id:'partial', label:'部分的に支持'},
+  {id:'inconclusive', label:'判断できず'},
+  {id:'refute', label:'主張を否定'}
+];
+
+var TOOL_FINDING_OPTIONS = [
+  {id:'', label:'(未記録)'},
+  {id:'supports', label:'主張を裏付ける'},
+  {id:'inconclusive', label:'判断できず'},
+  {id:'contradicts', label:'主張と矛盾する'},
+  {id:'not_applicable', label:'非該当'}
+];
+
+var AI_TOOL_OPTIONS = [
+  {id:'chatgpt', label:'ChatGPT', url:'https://chat.openai.com/'},
+  {id:'gemini', label:'Gemini', url:'https://gemini.google.com/'},
+  {id:'claude', label:'Claude', url:'https://claude.ai/'},
+  {id:'grok', label:'Grok', url:'https://x.com/i/grok'},
+  {id:'other', label:'その他のAI', url:''}
+];
+
+var FACT_CHECK_TOOLS = [
+  {label:'Google ファクトチェック エクスプローラー', url:'https://toolbox.google.com/factcheck/explorer', note:'既出のファクトチェック記事を横断検索できる。'},
+  {label:'日本ファクトチェックセンター(JFC)', url:'https://www.factcheckcenter.jp/', note:'国内の検証記事データベースとガイドライン。'},
+  {label:'IFCN 綱領・署名団体一覧', url:'https://ifcncodeofprinciples.poynter.org/signatories', note:'世界の認定ファクトチェック機関を確認できる。'},
+  {label:'InVID-WeVerify', url:'https://weverify.eu/verification-plugin/', note:'画像/映像の逆検索・改ざん検知ブラウザ拡張。'},
+  {label:'Google画像検索(逆画像検索)', url:'https://images.google.com/', note:'画像の初出・転用元・過去の文脈を確認する。'},
+  {label:'TinEye', url:'https://tineye.com/', note:'逆画像検索で画像の出所・初出時期を確認する。'}
+];
+
+var GUIDE_LINKS = [
+  {label:'JFC「ファクトチェックとは(101)」', url:'https://www.factcheckcenter.jp/explainer/fact-check/jfc-fact-checking-101/'},
+  {label:'JFC ガイドライン', url:'https://www.factcheckcenter.jp/guidelines/'},
+  {label:'Meta「ファクトチェックの仕組み」', url:'https://transparency.meta.com/ja-jp/features/how-fact-checking-works/'},
+  {label:'総務省 情報通信白書(令和5年版)', url:'https://www.soumu.go.jp/johotsusintokei/whitepaper/ja/r05/html/nd123400.html'},
+  {label:'Fungry「ファクトチェックとは」', url:'https://fungry.co.jp/cnaps/blog/fact-check/'},
+  {label:'富士通 Trustable Internet', url:'https://documents.research.global.fujitsu.com/trustable-internet/'},
+  {label:'DXPO College「AI時代のファクトチェック」', url:'https://dxpo.jp/college/front/fact-checking-in-the-ai-era.html'},
+  {label:'Beekle コラム「AIファクトチェック」', url:'https://beekle.jp/column/ai-factcheck'},
+  {label:'FIJ「動画で学ぶファクトチェック」', url:'https://navi.fij.info/fc-video/'},
+  {label:'FIJ「IFCN綱領」', url:'https://fij.info/introduction/ifcn-code'},
+  {label:'FIJ「ガイドライン」', url:'https://fij.info/introduction/guideline'},
+  {label:'NPO法人 SFSS「ファクトチェック運営方針」', url:'https://nposfss.com/fact-check/02_operation_policy/'},
+  {label:'兵庫県立健康科学研究所 コラム第15回', url:'https://hfnet.nibn.go.jp/column/%E3%80%90%E7%AC%AC15%E5%9B%9E%E3%80%91-%E3%83%95%E3%82%A1%E3%82%AF%E3%83%88%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF%E3%81%AE%E5%8F%96%E7%B5%84%E3%81%BF%E3%81%A8%E6%83%85%E5%A0%B1%E5%88%A9%E6%B4%BB/'},
+  {label:'Seven Design「ファクトチェックのやり方」', url:'https://www.sevendesign.biz/blog/fact-check-howto/'},
+  {label:'Simplique「ファクトチェックとは」', url:'https://simplique.jp/fact-checking/'}
+];
+
+var DEFAULT_WEIGHTS = {official:25, primary:25, cross:25, ai:15, tool:10};
+
+/* ============================= 状態 ============================= */
+var state = loadState();
+if (!state.weights) state.weights = Object.assign({}, DEFAULT_WEIGHTS);
+if (!state.items) state.items = [];
+state.activeTab = state.items.length ? 'dashboard' : 'new';
+state.draft = null;
+state.editingId = null;
+state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:''};
+
+function loadState(){
+  try{
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  }catch(e){}
+  return {items:[], weights: Object.assign({}, DEFAULT_WEIGHTS)};
+}
+function persist(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({items: state.items, weights: state.weights}));
+  }catch(e){}
+}
+
+/* ============================= ユーティリティ ============================= */
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function labelOf(list, id){ var f = list.filter(function(x){return x.id === id;})[0]; return f ? f.label : ''; }
+function findOf(list, id){ return list.filter(function(x){return x.id === id;})[0]; }
+function fmtDate(iso){
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.getFullYear() + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0');
+}
+function monthKey(iso){
+  if (!iso) return '不明';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '不明';
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function setPath(obj, path, value){
+  var parts = path.split('.');
+  var cur = obj;
+  for (var i=0;i<parts.length-1;i++){ cur = cur[parts[i]]; }
+  cur[parts[parts.length-1]] = value;
+}
+function getPath(obj, path){
+  var parts = path.split('.');
+  var cur = obj;
+  for (var i=0;i<parts.length;i++){ if (cur == null) return undefined; cur = cur[parts[i]]; }
+  return cur;
+}
+function download(filename, text){
+  var blob = new Blob([text], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+function copyToClipboard(text){
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).catch(function(){ fallbackCopy(text); });
+  } else { fallbackCopy(text); }
+}
+function fallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* ============================= スコアリング ============================= */
+function scoreFromResult(result){
+  if (result === 'match') return 100;
+  if (result === 'partial') return 60;
+  if (result === 'mismatch') return 0;
+  return null; // '' / not_found / undefined
+}
+function scoreFromStance(stance){
+  if (stance === 'support') return 100;
+  if (stance === 'partial') return 60;
+  if (stance === 'refute') return 0;
+  return null; // '' / inconclusive
+}
+function scoreFromFinding(finding){
+  if (finding === 'supports') return 100;
+  if (finding === 'contradicts') return 0;
+  return null; // '' / inconclusive / not_applicable
+}
+function avgOrNull(vals){
+  var v = vals.filter(function(x){ return x != null; });
+  if (!v.length) return null;
+  return v.reduce(function(a,b){return a+b;},0) / v.length;
+}
+function axisScores(item){
+  return {
+    official: scoreFromResult(item.officialCheck.result),
+    primary: scoreFromResult(item.primaryCheck.result),
+    cross: avgOrNull(item.crossChecks.map(function(r){ return scoreFromResult(r.result); })),
+    ai: avgOrNull(item.aiChecks.map(function(r){ return scoreFromStance(r.stance); })),
+    tool: avgOrNull(item.toolChecks.map(function(r){ return scoreFromFinding(r.finding); }))
+  };
+}
+function computeOverall(item, weights){
+  var axes = axisScores(item);
+  var keys = ['official','primary','cross','ai','tool'];
+  var sumW = 0, sumWV = 0, n = 0;
+  keys.forEach(function(k){
+    var v = axes[k];
+    var w = Number(weights[k]) || 0;
+    if (v != null && w > 0){ sumW += w; sumWV += w*v; n++; }
+  });
+  if (n === 0) return null;
+  return Math.round(sumWV / sumW);
+}
+function suggestVerdict(score){
+  if (score == null) return 'unverifiable';
+  if (score >= 85) return 'true';
+  if (score >= 65) return 'mostly_true';
+  if (score >= 35) return 'mixed';
+  return 'false';
+}
+function segStats(item){
+  var counts = {fact:0, opinion:0, speculation:0, unverified:0};
+  item.segments.forEach(function(s){ if (counts.hasOwnProperty(s.tag)) counts[s.tag]++; });
+  var total = item.segments.length;
+  return {counts: counts, total: total};
+}
+
+/* ============================= データモデル ============================= */
+function newItem(){
+  return {
+    id: uid(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    mediaType: 'text',
+    sourceCategory: 'media',
+    claimTitle: '',
+    claimText: '',
+    sourceUrl: '',
+    collectedAt: '',
+    segments: [],
+    officialCheck: {result:'', agency:'', note:'', link:''},
+    primaryCheck: {result:'', sourceType:'', note:'', link:''},
+    crossChecks: [],
+    aiChecks: [],
+    toolChecks: [],
+    verdict: '',
+    summary: '',
+    reviewer: ''
+  };
+}
+function cloneItem(it){ return JSON.parse(JSON.stringify(it)); }
+
+/* ============================= レンダリング: 共通 ============================= */
+var TABS = [
+  {id:'new', label:'✏️ 新規/編集'},
+  {id:'list', label:'📋 チェック一覧'},
+  {id:'dashboard', label:'📊 ダッシュボード'},
+  {id:'guide', label:'📚 ガイド・参考ツール'}
+];
+
+function renderTabs(){
+  var el = document.getElementById('tabs');
+  el.innerHTML = TABS.map(function(t){
+    return '<button data-tab="' + t.id + '" class="' + (state.activeTab === t.id ? 'active' : '') + '">' + t.label + '</button>';
+  }).join('');
+  el.querySelectorAll('button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      state.activeTab = btn.dataset.tab;
+      if (state.activeTab === 'new' && !state.draft){ state.draft = newItem(); state.editingId = null; }
+      renderAll();
+    });
+  });
+}
+
+function renderRefLinks(){
+  var el = document.getElementById('ref-links');
+  el.innerHTML = GUIDE_LINKS.map(function(g){
+    return '<div><a href="' + esc(g.url) + '" target="_blank" rel="noopener">' + esc(g.label) + '</a></div>';
+  }).join('');
+}
+
+function renderAll(){
+  renderTabs();
+  var app = document.getElementById('app');
+  if (state.activeTab === 'new') app.innerHTML = '', renderNewCheckTab(app);
+  else if (state.activeTab === 'list') app.innerHTML = '', renderListTab(app);
+  else if (state.activeTab === 'dashboard') app.innerHTML = '', renderDashboardTab(app);
+  else if (state.activeTab === 'guide') app.innerHTML = '', renderGuideTab(app);
+}
+
+/* ============================= 新規/編集タブ ============================= */
+function renderNewCheckTab(app){
+  var d = state.draft;
+  var isEdit = !!state.editingId;
+
+  var html = '';
+  html += '<div class="card">';
+  html += '<h2>' + (isEdit ? '✏️ チェックを編集' : '✏️ 新規チェックを記録') + '</h2>';
+  html += '<div class="note-box">個人の意見・感想・価値判断・未来予測はファクトチェックの対象外です。検証対象は「事実として提示されている言明」に限定してください。</div>';
+  html += '<div class="grid2">';
+  html += field('対象の種別', selectHtml('f-mediaType', MEDIA_TYPES, d.mediaType));
+  html += field('情報源の区分', selectHtml('f-sourceCategory', SOURCE_CATEGORIES, d.sourceCategory));
+  html += '</div>';
+  html += field('主張の要約(タイトル)', '<input type="text" id="f-claimTitle" value="' + esc(d.claimTitle) + '" placeholder="例: 〇〇氏「△△の予算は前年比2倍になった」と発言" />');
+  html += field('主張の本文・書き起こし', '<textarea id="f-claimText" placeholder="検証対象の発言・投稿・記事本文などをできるだけそのまま記録">' + esc(d.claimText) + '</textarea>');
+  html += '<div class="grid2">';
+  html += field('出典URL', '<input type="url" id="f-sourceUrl" value="' + esc(d.sourceUrl) + '" placeholder="https://..." />');
+  html += field('収集日', '<input type="date" id="f-collectedAt" value="' + esc(d.collectedAt) + '" />');
+  html += '</div>';
+  html += '</div>';
+
+  // 事実/意見/推測 切り分け
+  html += '<div class="card">';
+  html += '<h2>① 事実・意見・推測の切り分け</h2>';
+  html += '<div class="helper">本文を意味のまとまりごとに分け、それぞれが「事実の言明」か「意見・感想」か「推測」かをタグ付けします。</div>';
+  html += '<div class="row-list" id="segments-list">' + d.segments.map(segRowHtml).join('') + '</div>';
+  html += '<button class="add" data-add="segments">＋ 記述を追加</button>';
+  html += segStatsHtml(d);
+  html += '</div>';
+
+  // 情報源の確認
+  html += '<div class="card">';
+  html += '<h2>② 情報源の確認(公的機関・公式発表との照合)</h2>';
+  html += '<div class="grid2">';
+  html += field('照合結果', selectHtml('f-officialCheck.result', RESULT_OPTIONS, d.officialCheck.result));
+  html += field('照合先(省庁・自治体・公式サイト等)', '<input type="text" id="f-officialCheck.agency" value="' + esc(d.officialCheck.agency) + '" />');
+  html += '</div>';
+  html += field('根拠リンク', '<input type="url" id="f-officialCheck.link" value="' + esc(d.officialCheck.link) + '" placeholder="https://..." />');
+  html += field('メモ', '<textarea id="f-officialCheck.note">' + esc(d.officialCheck.note) + '</textarea>');
+  html += '</div>';
+
+  // 一次情報との比較
+  html += '<div class="card">';
+  html += '<h2>③ 一次情報との比較</h2>';
+  html += '<div class="helper">原文・生データ・実験データ・統計データ・議事録・取材記録・報告書など、一次情報そのものと突き合わせます。</div>';
+  html += '<div class="grid2">';
+  html += field('比較結果', selectHtml('f-primaryCheck.result', RESULT_OPTIONS, d.primaryCheck.result));
+  html += field('一次情報の種類', '<input type="text" id="f-primaryCheck.sourceType" value="' + esc(d.primaryCheck.sourceType) + '" placeholder="例: 統計データ / 議事録 / 実験データ" />');
+  html += '</div>';
+  html += field('根拠リンク', '<input type="url" id="f-primaryCheck.link" value="' + esc(d.primaryCheck.link) + '" placeholder="https://..." />');
+  html += field('メモ', '<textarea id="f-primaryCheck.note">' + esc(d.primaryCheck.note) + '</textarea>');
+  html += '</div>';
+
+  // 複数メディア クロスチェック
+  html += '<div class="card">';
+  html += '<h2>④ 二次情報・複数メディアでのクロスチェック</h2>';
+  html += '<div class="row-list" id="cross-list">' + d.crossChecks.map(crossRowHtml).join('') + '</div>';
+  html += '<button class="add" data-add="crossChecks">＋ 参照メディアを追加</button>';
+  html += '</div>';
+
+  // AIツール参照
+  html += '<div class="card">';
+  html += '<h2>⑤ AIツールでの参照(ChatGPT/Grok/Gemini/Claude)</h2>';
+  html += '<div class="helper">各ツールに主張を貼り付けて確認した結果を記録します。AIの回答は<b>参考情報</b>であり、検証の代替にはなりません。</div>';
+  html += '<div class="toolbar"><button class="ghost small" id="btn-copy-prompt">📋 確認用プロンプトをコピー</button></div>';
+  html += '<div class="row-list" id="ai-list">' + d.aiChecks.map(aiRowHtml).join('') + '</div>';
+  html += '<button class="add" data-add="aiChecks">＋ AIツールの参照を追加</button>';
+  html += '</div>';
+
+  // 専用ツール活用
+  html += '<div class="card">';
+  html += '<h2>⑥ ファクトチェック専用ツール・サービスの活用</h2>';
+  html += '<div class="row-list" id="tool-list">' + d.toolChecks.map(toolRowHtml).join('') + '</div>';
+  html += '<button class="add" data-add="toolChecks">＋ ツール利用記録を追加</button>';
+  html += '</div>';
+
+  // 判定
+  var axes = axisScores(d);
+  var overall = computeOverall(d, state.weights);
+  var suggested = suggestVerdict(overall);
+  html += '<div class="card">';
+  html += '<h2>総合判定</h2>';
+  html += '<div class="kpis">';
+  html += kpi(overall == null ? '—' : overall, '算出スコア(0-100)');
+  html += kpi(labelOf(VERDICTS, suggested), '推奨判定(参考)');
+  html += '</div>';
+  html += '<div class="verdict-hint">スコアは②〜⑥の各軸の重み付き平均です(未記録の軸は自動的に除外して再計算)。最終判定は必ず人が選択してください。</div>';
+  html += field('最終判定(人による確定)', selectHtml('f-verdict', VERDICTS, d.verdict, true));
+  html += field('総評(なぜその判定に至ったか)', '<textarea id="f-summary" placeholder="根拠を要約して記載">' + esc(d.summary) + '</textarea>');
+  html += field('確認者', '<input type="text" id="f-reviewer" value="' + esc(d.reviewer) + '" />');
+  html += '</div>';
+
+  html += '<div class="toolbar">';
+  html += '<button class="primary" id="btn-save">💾 保存</button>';
+  if (isEdit) html += '<button class="ghost" id="btn-cancel">キャンセル</button>';
+  html += '<button class="ghost" id="btn-reset">フォームをクリア</button>';
+  html += '<span class="save-status" id="save-status"></span>';
+  html += '</div>';
+
+  app.innerHTML = html;
+  bindNewCheckEvents(app);
+}
+
+function field(label, inner){
+  return '<div><label>' + esc(label) + '</label>' + inner + '</div>';
+}
+function selectHtml(domId, list, current, allowEmpty){
+  var opts = (allowEmpty ? [{id:'', label:'(未選択)'}] : []).concat(list);
+  return '<select id="' + domId + '">' + opts.map(function(o){
+    return '<option value="' + esc(o.id) + '"' + (o.id === current ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+  }).join('') + '</select>';
+}
+function kpi(value, label){
+  return '<div class="kpi"><div class="v">' + esc(value) + '</div><div class="l">' + esc(label) + '</div></div>';
+}
+
+function segRowHtml(row){
+  return '<div class="row-item seg" data-rid="' + row.rid + '" data-list="segments">' +
+    '<input type="text" data-field="text" value="' + esc(row.text) + '" placeholder="記述の抜粋" />' +
+    '<select data-field="tag">' + SEGMENT_TAGS.map(function(t){
+      return '<option value="' + t.id + '"' + (t.id === row.tag ? ' selected' : '') + '>' + esc(t.label) + '</option>';
+    }).join('') + '</select>' +
+    '<div></div>' +
+    '<button class="danger small" data-remove="segments">削除</button>' +
+  '</div>';
+}
+function crossRowHtml(row){
+  return '<div class="row-item" data-rid="' + row.rid + '" data-list="crossChecks">' +
+    '<input type="text" data-field="outlet" value="' + esc(row.outlet) + '" placeholder="メディア/媒体名" />' +
+    '<input type="url" data-field="url" value="' + esc(row.url) + '" placeholder="URL" />' +
+    '<select data-field="result">' + RESULT_OPTIONS.map(function(o){
+      return '<option value="' + o.id + '"' + (o.id === row.result ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+    }).join('') + '</select>' +
+    '<button class="danger small" data-remove="crossChecks">削除</button>' +
+    '<input type="text" data-field="note" value="' + esc(row.note) + '" placeholder="メモ" style="grid-column:1/4" />' +
+  '</div>';
+}
+function aiRowHtml(row){
+  return '<div class="row-item ai" data-rid="' + row.rid + '" data-list="aiChecks">' +
+    '<select data-field="tool">' + AI_TOOL_OPTIONS.map(function(o){
+      return '<option value="' + o.id + '"' + (o.id === row.tool ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+    }).join('') + '</select>' +
+    '<select data-field="stance">' + STANCE_OPTIONS.map(function(o){
+      return '<option value="' + o.id + '"' + (o.id === row.stance ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+    }).join('') + '</select>' +
+    '<input type="text" data-field="note" value="' + esc(row.note) + '" placeholder="AIの回答要約" />' +
+    '<button class="danger small" data-remove="aiChecks">削除</button>' +
+  '</div>';
+}
+function toolRowHtml(row){
+  return '<div class="row-item ai" data-rid="' + row.rid + '" data-list="toolChecks">' +
+    '<input type="text" data-field="service" value="' + esc(row.service) + '" placeholder="ツール名(例: TinEye)" />' +
+    '<select data-field="finding">' + TOOL_FINDING_OPTIONS.map(function(o){
+      return '<option value="' + o.id + '"' + (o.id === row.finding ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+    }).join('') + '</select>' +
+    '<input type="text" data-field="note" value="' + esc(row.note) + '" placeholder="確認結果のメモ" />' +
+    '<button class="danger small" data-remove="toolChecks">削除</button>' +
+  '</div>';
+}
+function segStatsHtml(item){
+  var st = segStats(item);
+  if (!st.total) return '';
+  var parts = SEGMENT_TAGS.map(function(t){
+    var n = st.counts[t.id];
+    var pct = Math.round(n / st.total * 100);
+    return '<span>' + esc(t.label) + ' ' + n + '件(' + pct + '%)</span>';
+  });
+  return '<div class="segstats">' + parts.join('') + '</div>';
+}
+
+function bindNewCheckEvents(app){
+  var d = state.draft;
+
+  // 単純フィールド(input/change時に draft を直接更新。全体再描画はしない)
+  app.querySelectorAll('[id^="f-"]').forEach(function(el){
+    if (el.closest('[data-rid]')) return; // 行内フィールドは別ハンドラで処理
+    var path = el.id.slice(2);
+    var evt = (el.tagName === 'SELECT') ? 'change' : 'input';
+    el.addEventListener(evt, function(){
+      setPath(d, path, el.value);
+      // 情報源確認/一次情報比較/最終判定が変わったら、判定スコア表示ブロックだけ更新する
+      if (path.indexOf('officialCheck') === 0 || path.indexOf('primaryCheck') === 0 || path === 'verdict') {
+        refreshVerdictBlock();
+      }
+    });
+  });
+
+  // 行の追加
+  app.querySelectorAll('[data-add]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var listName = btn.dataset.add;
+      var row = makeRow(listName);
+      d[listName].push(row);
+      var container = document.getElementById(rowContainerId(listName));
+      container.insertAdjacentHTML('beforeend', rowHtmlFor(listName, row));
+      if (listName === 'segments') refreshSegStats();
+      if (listName === 'crossChecks' || listName === 'aiChecks' || listName === 'toolChecks') refreshVerdictBlock();
+    });
+  });
+
+  // 行の削除・行内フィールド編集(委譲)
+  app.addEventListener('click', function(e){
+    var rm = e.target.closest('[data-remove]');
+    if (rm){
+      var listName = rm.dataset.remove;
+      var rowEl = rm.closest('[data-rid]');
+      var rid = rowEl.dataset.rid;
+      d[listName] = d[listName].filter(function(r){ return r.rid !== rid; });
+      rowEl.remove();
+      if (listName === 'segments') refreshSegStats();
+      else refreshVerdictBlock();
+    }
+  });
+  app.addEventListener('input', function(e){
+    var rowEl = e.target.closest('[data-rid]');
+    if (!rowEl || !e.target.dataset.field) return;
+    updateRowField(rowEl, e.target);
+  });
+  app.addEventListener('change', function(e){
+    var rowEl = e.target.closest('[data-rid]');
+    if (!rowEl || !e.target.dataset.field) return;
+    updateRowField(rowEl, e.target);
+    if (rowEl.dataset.list !== 'segments') refreshVerdictBlock();
+    else refreshSegStats();
+  });
+
+  function updateRowField(rowEl, target){
+    var listName = rowEl.dataset.list;
+    var rid = rowEl.dataset.rid;
+    var row = d[listName].filter(function(r){ return r.rid === rid; })[0];
+    if (row) row[target.dataset.field] = target.value;
+  }
+
+  document.getElementById('btn-copy-prompt').addEventListener('click', function(){
+    var prompt = buildFactCheckPrompt(d);
+    copyToClipboard(prompt);
+    flashStatus('確認用プロンプトをコピーしました。AIツールに貼り付けて回答を記録してください。');
+  });
+
+  document.getElementById('btn-save').addEventListener('click', function(){
+    if (!d.claimText.trim() && !d.claimTitle.trim()){
+      flashStatus('主張のタイトルまたは本文を入力してください。', true);
+      return;
+    }
+    d.updatedAt = new Date().toISOString();
+    var existingIdx = state.items.findIndex(function(it){ return it.id === d.id; });
+    var saved = cloneItem(d);
+    if (existingIdx >= 0) state.items[existingIdx] = saved;
+    else state.items.push(saved);
+    persist();
+    state.editingId = null;
+    state.draft = null;
+    state.activeTab = 'list';
+    renderAll();
+  });
+
+  var cancelBtn = document.getElementById('btn-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', function(){
+    state.editingId = null; state.draft = null; state.activeTab = 'list'; renderAll();
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', function(){
+    if (!confirm('入力内容をクリアします。よろしいですか？')) return;
+    state.draft = newItem();
+    state.editingId = null;
+    renderAll();
+  });
+
+  function refreshSegStats(){
+    var wrap = app.querySelector('#segments-list').parentElement;
+    var old = wrap.querySelector('.segstats');
+    if (old) old.remove();
+    wrap.insertAdjacentHTML('beforeend', segStatsHtml(d));
+  }
+  function refreshVerdictBlock(){
+    var axes = axisScores(d);
+    var overall = computeOverall(d, state.weights);
+    var suggested = suggestVerdict(overall);
+    var scoreEl = app.querySelector('.kpis .kpi:nth-child(1) .v');
+    var sugEl = app.querySelector('.kpis .kpi:nth-child(2) .v');
+    if (scoreEl) scoreEl.textContent = overall == null ? '—' : overall;
+    if (sugEl) sugEl.textContent = labelOf(VERDICTS, suggested);
+  }
+  function flashStatus(msg, isError){
+    var el = document.getElementById('save-status');
+    el.style.color = isError ? 'var(--red)' : 'var(--green)';
+    el.textContent = msg;
+    setTimeout(function(){ if (el) el.textContent=''; }, 4000);
+  }
+}
+
+function makeRow(listName){
+  if (listName === 'segments') return {rid: uid(), text:'', tag:'fact'};
+  if (listName === 'crossChecks') return {rid: uid(), outlet:'', url:'', result:'', note:''};
+  if (listName === 'aiChecks') return {rid: uid(), tool:'chatgpt', stance:'', note:''};
+  if (listName === 'toolChecks') return {rid: uid(), service:'', finding:'', note:''};
+}
+function rowContainerId(listName){
+  return {segments:'segments-list', crossChecks:'cross-list', aiChecks:'ai-list', toolChecks:'tool-list'}[listName];
+}
+function rowHtmlFor(listName, row){
+  if (listName === 'segments') return segRowHtml(row);
+  if (listName === 'crossChecks') return crossRowHtml(row);
+  if (listName === 'aiChecks') return aiRowHtml(row);
+  if (listName === 'toolChecks') return toolRowHtml(row);
+}
+function buildFactCheckPrompt(item){
+  return [
+    '次の主張についてファクトチェックしてください。',
+    '出典の一次情報・公的機関の発表・複数の独立した情報源を根拠として示し、',
+    '事実と意見・推測を区別した上で、支持/部分的に支持/判断できず/否定のいずれかで回答してください。',
+    '',
+    '【主張】' + (item.claimTitle || '(タイトル未設定)'),
+    '【本文】' + (item.claimText || '(本文未設定)'),
+    '【出典】' + (item.sourceUrl || '不明')
+  ].join('\n');
+}
+
+/* ============================= 一覧タブ ============================= */
+function renderListTab(app){
+  var html = '';
+  html += '<div class="card">';
+  html += '<h2>📋 チェック一覧(' + state.items.length + '件)</h2>';
+  html += '<div class="filterbar">';
+  html += '<div>' + field('種別', selectHtml('filter-mediaType', [{id:'',label:'すべて'}].concat(MEDIA_TYPES), state.filter.mediaType)) + '</div>';
+  html += '<div>' + field('出所区分', selectHtml('filter-sourceCategory', [{id:'',label:'すべて'}].concat(SOURCE_CATEGORIES), state.filter.sourceCategory)) + '</div>';
+  html += '<div>' + field('判定', selectHtml('filter-verdict', [{id:'',label:'すべて'}].concat(VERDICTS), state.filter.verdict)) + '</div>';
+  html += '<div style="flex:2"><label>キーワード検索</label><input type="text" id="filter-q" value="' + esc(state.filter.q) + '" placeholder="主張タイトル・本文を検索" /></div>';
+  html += '</div>';
+  html += '<div class="toolbar">';
+  html += '<button class="ghost small" id="btn-export-json">⬇ JSONエクスポート</button>';
+  html += '<button class="ghost small" id="btn-export-csv">⬇ CSVエクスポート</button>';
+  html += '<label class="ghost small" style="display:inline-block;padding:7px 12px;cursor:pointer">⬆ JSONインポート<input type="file" id="file-import" accept="application/json" style="display:none" /></label>';
+  html += '<button class="danger small" id="btn-clear-all">全件削除</button>';
+  html += '</div>';
+  html += '<div id="list-table-wrap"></div>';
+  html += '</div>';
+  app.innerHTML = html;
+
+  ['filter-mediaType','filter-sourceCategory','filter-verdict'].forEach(function(id){
+    document.getElementById(id).addEventListener('change', function(e){
+      var key = id.replace('filter-','');
+      state.filter[key] = e.target.value;
+      renderListRows();
+    });
+  });
+  document.getElementById('filter-q').addEventListener('input', function(e){
+    state.filter.q = e.target.value;
+    renderListRows();
+  });
+  document.getElementById('btn-export-json').addEventListener('click', function(){
+    download('fact-check-export-' + Date.now() + '.json', JSON.stringify({items: state.items, weights: state.weights}, null, 2));
+  });
+  document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
+  document.getElementById('file-import').addEventListener('change', function(e){
+    var f = e.target.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var data = JSON.parse(reader.result);
+        if (Array.isArray(data.items)){
+          state.items = data.items;
+          if (data.weights) state.weights = data.weights;
+          persist();
+          renderListRows();
+          alert('インポートしました(' + data.items.length + '件)。');
+        } else {
+          alert('形式が不正です。');
+        }
+      }catch(err){ alert('読み込みに失敗しました: ' + err.message); }
+    };
+    reader.readAsText(f);
+  });
+  document.getElementById('btn-clear-all').addEventListener('click', function(){
+    if (!confirm('すべてのチェック記録を削除します。元に戻せません。よろしいですか？')) return;
+    state.items = [];
+    persist();
+    renderListRows();
+  });
+
+  renderListRows();
+}
+
+function filteredItems(){
+  var f = state.filter;
+  var q = (f.q || '').toLowerCase();
+  return state.items.filter(function(it){
+    if (f.mediaType && it.mediaType !== f.mediaType) return false;
+    if (f.sourceCategory && it.sourceCategory !== f.sourceCategory) return false;
+    if (f.verdict && it.verdict !== f.verdict) return false;
+    if (q && (it.claimTitle + ' ' + it.claimText).toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  }).sort(function(a,b){ return new Date(b.updatedAt) - new Date(a.updatedAt); });
+}
+
+function renderListRows(){
+  var wrap = document.getElementById('list-table-wrap');
+  var items = filteredItems();
+  if (!items.length){
+    wrap.innerHTML = '<div class="empty">該当するチェック記録がありません。「新規/編集」タブから登録してください。</div>';
+    return;
+  }
+  var html = '<table><thead><tr>' +
+    '<th>更新日</th><th>種別</th><th>出所区分</th><th class="center" style="min-width:220px">主張</th>' +
+    '<th class="center">判定</th><th class="center">スコア</th><th class="center">操作</th>' +
+    '</tr></thead><tbody>';
+  items.forEach(function(it){
+    var overall = computeOverall(it, state.weights);
+    var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)'};
+    html += '<tr>';
+    html += '<td>' + esc(fmtDate(it.updatedAt)) + '</td>';
+    html += '<td>' + esc(findOf(MEDIA_TYPES, it.mediaType) ? findOf(MEDIA_TYPES, it.mediaType).icon + ' ' + findOf(MEDIA_TYPES, it.mediaType).label : it.mediaType) + '</td>';
+    html += '<td>' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</td>';
+    html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) + '</td>';
+    html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.label) + '</span></td>';
+    html += '<td class="center">' + (overall == null ? '—' : overall) + '</td>';
+    html += '<td class="center">' +
+      '<button class="ghost small" data-edit="' + it.id + '">編集</button> ' +
+      '<button class="ghost small" data-dup="' + it.id + '">複製</button> ' +
+      '<button class="ghost small" data-print="' + it.id + '">印刷</button> ' +
+      '<button class="danger small" data-del="' + it.id + '">削除</button>' +
+      '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('[data-edit]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var it = state.items.filter(function(x){ return x.id === b.dataset.edit; })[0];
+      state.draft = cloneItem(it);
+      state.editingId = it.id;
+      state.activeTab = 'new';
+      renderAll();
+    });
+  });
+  wrap.querySelectorAll('[data-dup]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var it = state.items.filter(function(x){ return x.id === b.dataset.dup; })[0];
+      var copy = cloneItem(it);
+      copy.id = uid();
+      copy.createdAt = new Date().toISOString();
+      copy.updatedAt = copy.createdAt;
+      copy.claimTitle = (copy.claimTitle || '') + '(複製)';
+      state.items.push(copy);
+      persist();
+      renderListRows();
+    });
+  });
+  wrap.querySelectorAll('[data-del]').forEach(function(b){
+    b.addEventListener('click', function(){
+      if (!confirm('このチェック記録を削除します。よろしいですか？')) return;
+      state.items = state.items.filter(function(x){ return x.id !== b.dataset.del; });
+      persist();
+      renderListRows();
+    });
+  });
+  wrap.querySelectorAll('[data-print]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var it = state.items.filter(function(x){ return x.id === b.dataset.print; })[0];
+      printCase(it);
+    });
+  });
+}
+
+function exportCsv(){
+  var rows = [['更新日','種別','出所区分','主張タイトル','判定','スコア','出典URL']];
+  filteredItems().forEach(function(it){
+    rows.push([
+      fmtDate(it.updatedAt), labelOf(MEDIA_TYPES, it.mediaType), labelOf(SOURCE_CATEGORIES, it.sourceCategory),
+      it.claimTitle, labelOf(VERDICTS, it.verdict), computeOverall(it, state.weights), it.sourceUrl
+    ]);
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){
+      var s = String(c == null ? '' : c).replace(/"/g,'""');
+      return '"' + s + '"';
+    }).join(',');
+  }).join('\r\n');
+  download('fact-check-list-' + Date.now() + '.csv', '﻿' + csv);
+}
+
+function printCase(it){
+  var overall = computeOverall(it, state.weights);
+  var v = findOf(VERDICTS, it.verdict) || {label:'未判定'};
+  var axes = axisScores(it);
+  var html = '<div class="card"><h1>ファクトチェック レポート</h1>';
+  html += '<p><b>主張:</b> ' + esc(it.claimTitle) + '</p>';
+  html += '<p><b>本文:</b> ' + esc(it.claimText) + '</p>';
+  html += '<p><b>種別:</b> ' + esc(labelOf(MEDIA_TYPES, it.mediaType)) + ' / <b>出所区分:</b> ' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</p>';
+  html += '<p><b>出典:</b> ' + esc(it.sourceUrl) + ' / <b>収集日:</b> ' + esc(fmtDate(it.collectedAt)) + '</p>';
+  html += '<h3>① 情報源の確認</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.officialCheck.result)) + ' / 照合先: ' + esc(it.officialCheck.agency) + '<br>' + esc(it.officialCheck.note) + '</p>';
+  html += '<h3>② 一次情報との比較</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.primaryCheck.result)) + ' / 種類: ' + esc(it.primaryCheck.sourceType) + '<br>' + esc(it.primaryCheck.note) + '</p>';
+  html += '<h3>③ クロスチェック</h3><ul>' + it.crossChecks.map(function(c){
+    return '<li>' + esc(c.outlet) + ' — ' + esc(labelOf(RESULT_OPTIONS, c.result)) + (c.note ? ' (' + esc(c.note) + ')' : '') + '</li>';
+  }).join('') + '</ul>';
+  html += '<h3>④ AIツール参照</h3><ul>' + it.aiChecks.map(function(c){
+    return '<li>' + esc(labelOf(AI_TOOL_OPTIONS, c.tool)) + ' — ' + esc(labelOf(STANCE_OPTIONS, c.stance)) + (c.note ? ' (' + esc(c.note) + ')' : '') + '</li>';
+  }).join('') + '</ul>';
+  html += '<h3>総合判定</h3><p>算出スコア: ' + (overall == null ? '—' : overall) + ' / 最終判定: <b>' + esc(v.label) + '</b></p>';
+  html += '<p><b>総評:</b> ' + esc(it.summary) + '</p>';
+  html += '<p><b>確認者:</b> ' + esc(it.reviewer) + '</p>';
+  html += '</div>';
+  var root = document.getElementById('print-root');
+  root.innerHTML = html;
+  document.body.classList.add('print-mode');
+  window.print();
+}
+window.addEventListener('afterprint', function(){
+  document.body.classList.remove('print-mode');
+  document.getElementById('print-root').innerHTML = '';
+});
+
+/* ============================= ダッシュボードタブ ============================= */
+function renderDashboardTab(app){
+  var html = '';
+  html += '<div class="card noprint">';
+  html += '<h2>⚖️ 判定スコアの重み設定</h2>';
+  html += '<div class="helper">各軸の重みを調整できます(合計は自動で正規化されます。未記録の軸は自動的に除外されます)。</div>';
+  html += '<div class="grid3" id="weight-inputs">';
+  html += weightInput('official', '情報源の確認');
+  html += weightInput('primary', '一次情報比較');
+  html += weightInput('cross', 'クロスチェック');
+  html += weightInput('ai', 'AI参照');
+  html += weightInput('tool', '専用ツール');
+  html += '</div>';
+  html += '</div>';
+  html += '<div id="dash-results"></div>';
+  app.innerHTML = html;
+
+  Object.keys(state.weights).forEach(function(k){
+    var el = document.getElementById('w-' + k);
+    el.addEventListener('input', function(){
+      state.weights[k] = Number(el.value) || 0;
+      persist();
+      renderDashResults();
+    });
+  });
+
+  renderDashResults();
+}
+function weightInput(key, label){
+  return '<div><label>' + esc(label) + '</label><input type="number" min="0" max="100" id="w-' + key + '" value="' + state.weights[key] + '" /></div>';
+}
+
+function renderDashResults(){
+  var el = document.getElementById('dash-results');
+  var items = state.items;
+  if (!items.length){
+    el.innerHTML = '<div class="card"><div class="empty">まだチェック記録がありません。「新規/編集」タブから最初のチェックを登録してください。</div></div>';
+    return;
+  }
+
+  var scored = items.map(function(it){ return {it: it, score: computeOverall(it, state.weights)}; });
+  var avgScore = avgOrNull(scored.map(function(s){ return s.score; }));
+
+  var verdictCounts = {};
+  VERDICTS.forEach(function(v){ verdictCounts[v.id] = 0; });
+  items.forEach(function(it){ if (it.verdict && verdictCounts.hasOwnProperty(it.verdict)) verdictCounts[it.verdict]++; else verdictCounts.unverifiable = (verdictCounts.unverifiable||0) + (it.verdict ? 0 : 1); });
+
+  var mediaCounts = {}; MEDIA_TYPES.forEach(function(m){ mediaCounts[m.id]=0; });
+  items.forEach(function(it){ if (mediaCounts.hasOwnProperty(it.mediaType)) mediaCounts[it.mediaType]++; });
+
+  var srcCounts = {}, srcFalse = {};
+  SOURCE_CATEGORIES.forEach(function(c){ srcCounts[c.id]=0; srcFalse[c.id]=0; });
+  items.forEach(function(it){
+    if (srcCounts.hasOwnProperty(it.sourceCategory)){
+      srcCounts[it.sourceCategory]++;
+      if (it.verdict === 'false' || it.verdict === 'mixed') srcFalse[it.sourceCategory]++;
+    }
+  });
+
+  // 月次系列
+  var monthly = {};
+  items.forEach(function(it){
+    var mk = monthKey(it.createdAt);
+    if (!monthly[mk]) monthly[mk] = {count:0, falseish:0, scoreSum:0, scoreN:0};
+    monthly[mk].count++;
+    if (it.verdict === 'false' || it.verdict === 'mixed') monthly[mk].falseish++;
+    var sc = computeOverall(it, state.weights);
+    if (sc != null){ monthly[mk].scoreSum += sc; monthly[mk].scoreN++; }
+  });
+  var months = Object.keys(monthly).filter(function(m){ return m !== '不明'; }).sort();
+  var series = months.map(function(m){
+    var d = monthly[m];
+    return {month:m, count:d.count, falseRate: d.count ? Math.round(d.falseish/d.count*100) : 0, avgScore: d.scoreN ? Math.round(d.scoreSum/d.scoreN) : null};
+  });
+
+  var forecast = linearForecastNext(series.map(function(s){ return s.falseRate; }));
+  var forecastCount = linearForecastNext(series.map(function(s){ return s.count; }));
+
+  var insights = generateInsights(items, {verdictCounts:verdictCounts, mediaCounts:mediaCounts, srcCounts:srcCounts, srcFalse:srcFalse, series:series, avgScore:avgScore});
+
+  var html = '';
+  html += '<div class="card">';
+  html += '<h2>全体サマリー</h2>';
+  html += '<div class="kpis">';
+  html += kpi(items.length, '総チェック件数');
+  html += kpi(avgScore == null ? '—' : avgScore, '平均スコア(0-100)');
+  html += kpi((verdictCounts.false + verdictCounts.mixed), '誤り/ミスリード件数');
+  html += kpi(months.length ? months[months.length-1] : '—', '直近チェック月');
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<h2>判定内訳(多面評価①: 判定別)</h2>';
+  html += VERDICTS.map(function(v){
+    var n = verdictCounts[v.id] || 0;
+    var pct = items.length ? Math.round(n/items.length*100) : 0;
+    return barrow(v.label, n, pct, v.color);
+  }).join('');
+  html += '</div>';
+
+  html += '<div class="grid2">';
+  html += '<div class="card"><h2>種別ごとの件数(多面評価②)</h2>' + MEDIA_TYPES.map(function(m){
+    var n = mediaCounts[m.id];
+    var pct = items.length ? Math.round(n/items.length*100) : 0;
+    return barrow(m.icon + ' ' + m.label, n, pct, 'var(--blue)');
+  }).join('') + '</div>';
+  html += '<div class="card"><h2>出所区分ごとの誤り比率(多面評価③)</h2>' + SOURCE_CATEGORIES.map(function(c){
+    var n = srcCounts[c.id];
+    if (!n) return barrow(c.label, 0, 0, 'var(--gray)') ;
+    var pct = Math.round(srcFalse[c.id]/n*100);
+    return barrow(c.label + '(n=' + n + ')', srcFalse[c.id], pct, pct >= 50 ? 'var(--red)' : (pct>=25?'var(--amber)':'var(--green)'));
+  }).join('') + '</div>';
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<h2>時系列トレンド(多面評価④: 月別)</h2>';
+  if (series.length < 2){
+    html += '<div class="empty">月別トレンドを表示するには2か月以上のデータが必要です。</div>';
+  } else {
+    html += '<h3>月別チェック件数</h3>' + svgLineChart(series.map(function(s){ return {label:s.month, value:s.count}; }), 'var(--blue)');
+    html += '<h3>月別 誤り/ミスリード比率(%)</h3>' + svgLineChart(series.map(function(s){ return {label:s.month, value:s.falseRate}; }), 'var(--red)');
+  }
+  html += '<h3>将来予測(参考値・単純線形外挿)</h3>';
+  if (forecast == null || series.length < 3){
+    html += '<div class="helper">データ不足のため次月予測は表示できません(3か月以上のデータが必要です)。</div>';
+  } else {
+    html += '<div class="kpis">' +
+      kpi(Math.max(0, Math.round(forecastCount)), '翌月の予測件数(参考)') +
+      kpi(Math.max(0, Math.min(100, Math.round(forecast))), '翌月の誤り比率予測%(参考)') +
+      '</div>';
+    html += '<div class="helper">直近の傾向を単純な線形回帰で延長した参考値です。断定的な予測ではありません。</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<h2>示唆(総評)</h2>';
+  html += '<ul class="insight-list">' + insights.map(function(i){ return '<li>' + esc(i) + '</li>'; }).join('') + '</ul>';
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
+function barrow(name, num, pct, color){
+  return '<div class="barrow">' +
+    '<div class="name">' + esc(name) + '</div>' +
+    '<div class="track"><div class="fill" style="width:' + Math.max(0,Math.min(100,pct)) + '%;background:' + color + '"></div></div>' +
+    '<div class="num">' + num + '件(' + pct + '%)</div>' +
+  '</div>';
+}
+
+function linearForecastNext(values){
+  var n = values.length;
+  if (n < 3) return null;
+  var xs = values.map(function(_,i){ return i; });
+  var xbar = xs.reduce(function(a,b){return a+b;},0)/n;
+  var ybar = values.reduce(function(a,b){return a+b;},0)/n;
+  var num = 0, den = 0;
+  for (var i=0;i<n;i++){ num += (xs[i]-xbar)*(values[i]-ybar); den += (xs[i]-xbar)*(xs[i]-xbar); }
+  var slope = den === 0 ? 0 : num/den;
+  var intercept = ybar - slope*xbar;
+  return intercept + slope*n;
+}
+
+function svgLineChart(points, color){
+  if (!points.length) return '<div class="empty">データなし</div>';
+  var w = 640, h = 160, pad = 32;
+  var max = Math.max.apply(null, points.map(function(p){ return p.value; }).concat([1]));
+  var min = 0;
+  var stepX = points.length > 1 ? (w - pad*2) / (points.length - 1) : 0;
+  var coords = points.map(function(p, i){
+    var x = pad + stepX * i;
+    var y = h - pad - ((p.value - min) / (max - min || 1)) * (h - pad*2);
+    return {x:x, y:y, v:p.value, label:p.label};
+  });
+  var pathD = coords.map(function(c,i){ return (i===0?'M':'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1); }).join(' ');
+  var circles = coords.map(function(c){
+    return '<circle cx="' + c.x.toFixed(1) + '" cy="' + c.y.toFixed(1) + '" r="3" fill="' + color + '"></circle>' +
+      '<text x="' + c.x.toFixed(1) + '" y="' + (c.y-8).toFixed(1) + '" text-anchor="middle">' + esc(c.v) + '</text>';
+  }).join('');
+  var labels = coords.map(function(c){
+    return '<text x="' + c.x.toFixed(1) + '" y="' + (h-8) + '" text-anchor="middle">' + esc(c.label) + '</text>';
+  }).join('');
+  return '<svg class="svg-chart" viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;max-width:' + w + 'px;height:auto">' +
+    '<line x1="' + pad + '" y1="' + (h-pad) + '" x2="' + (w-pad) + '" y2="' + (h-pad) + '" stroke="#e3e8ee" />' +
+    '<path d="' + pathD + '" fill="none" stroke="' + color + '" stroke-width="2" />' +
+    circles + labels +
+  '</svg>';
+}
+
+function generateInsights(items, ctx){
+  var out = [];
+  var total = items.length;
+  var falseish = ctx.verdictCounts.false + ctx.verdictCounts.mixed;
+  var falsePct = total ? Math.round(falseish/total*100) : 0;
+  if (falsePct >= 40) out.push('検証済み案件のうち約' + falsePct + '%が「誤り」または「一部誤り/ミスリード」と判定されています。情報流通経路の見直しや注意喚起の強化を検討してください。');
+  else if (falsePct >= 15) out.push('検証済み案件の約' + falsePct + '%が「誤り」または「一部誤り/ミスリード」でした。継続的な監視が有効です。');
+  else out.push('現時点で「誤り」系の判定は約' + falsePct + '%と低めです。ただし判定数が少ない場合は評価が安定しないため、件数を増やして確認してください。');
+
+  // 出所区分で最も誤り比率が高いカテゴリ
+  var worst = null;
+  SOURCE_CATEGORIES.forEach(function(c){
+    var n = ctx.srcCounts[c.id];
+    if (n >= 2){
+      var pct = ctx.srcFalse[c.id] / n * 100;
+      if (!worst || pct > worst.pct) worst = {label:c.label, pct: Math.round(pct), n:n};
+    }
+  });
+  if (worst) out.push('出所区分別では「' + worst.label + '」の誤り比率が最も高く、約' + worst.pct + '%(n=' + worst.n + ')でした。');
+
+  // 死角(件数が少ないメディア種別)
+  var mediaEntries = MEDIA_TYPES.map(function(m){ return {label:m.label, n: ctx.mediaCounts[m.id]}; });
+  var zero = mediaEntries.filter(function(m){ return m.n === 0; });
+  if (zero.length && total > 0) out.push(zero.map(function(m){return m.label;}).join('・') + 'のチェック実績がまだありません。死角になっていないか確認してください。');
+
+  // 直近3か月 vs それ以前
+  var series = ctx.series;
+  if (series.length >= 4){
+    var recent = series.slice(-3).filter(function(s){ return s.avgScore != null; });
+    var prior = series.slice(0, -3).filter(function(s){ return s.avgScore != null; });
+    if (recent.length && prior.length){
+      var recentAvg = Math.round(avgOrNull(recent.map(function(s){return s.avgScore;})));
+      var priorAvg = Math.round(avgOrNull(prior.map(function(s){return s.avgScore;})));
+      if (recentAvg > priorAvg + 3) out.push('直近3か月の平均スコアは' + recentAvg + 'で、それ以前(' + priorAvg + ')より改善傾向にあります。');
+      else if (recentAvg < priorAvg - 3) out.push('直近3か月の平均スコアは' + recentAvg + 'で、それ以前(' + priorAvg + ')より悪化傾向にあります。要因の確認を推奨します。');
+      else out.push('直近3か月の平均スコア(' + recentAvg + ')はそれ以前(' + priorAvg + ')と大きな差はありません。');
+    }
+  }
+
+  // AIツール間の判定割れ
+  var disagreeCount = items.filter(function(it){
+    var stances = it.aiChecks.map(function(a){ return a.stance; }).filter(function(s){ return s === 'support' || s === 'refute'; });
+    return stances.indexOf('support') > -1 && stances.indexOf('refute') > -1;
+  }).length;
+  if (disagreeCount > 0) out.push('AIツール間で判定(支持/否定)が割れているケースが' + disagreeCount + '件あります。追加の人的確認を推奨します。');
+
+  // SNS比率
+  var snsN = ctx.srcCounts.sns || 0;
+  if (total && snsN / total >= 0.5) out.push('検証対象の過半数(' + Math.round(snsN/total*100) + '%)がSNS発信の主張です。拡散速度が速い経路のため、初動確認のスピードを優先してください。');
+
+  return out;
+}
+
+/* ============================= ガイドタブ ============================= */
+function renderGuideTab(app){
+  var html = '';
+  html += '<div class="card"><h2>検証手順の考え方</h2>';
+  html += '<ol style="line-height:2">';
+  html += '<li><b>事実と意見・推測を切り分ける</b> — 個人の意見・感想・価値判断・未来予測は検証対象外。事実として提示されている言明のみを対象にする。</li>';
+  html += '<li><b>情報源の確認</b> — 公的機関・公式発表と照合する。</li>';
+  html += '<li><b>一次情報との比較</b> — 原文・生データ・実験データ・統計データ・議事録・取材記録・報告書を直接確認する。</li>';
+  html += '<li><b>二次情報・複数メディアでのクロスチェック</b> — 独立した複数ソースで裏取りする。</li>';
+  html += '<li><b>AIツールの活用</b> — ChatGPT/Grok/Gemini/Claude等を参考情報として利用する(検証の代替にはしない)。</li>';
+  html += '<li><b>専用ツール・サービスの活用</b> — ファクトチェック専用データベースや逆画像検索等を利用する。</li>';
+  html += '</ol></div>';
+
+  html += '<div class="card"><h2>対象となる主張の例</h2><ul style="line-height:2">' +
+    SOURCE_CATEGORIES.map(function(c){ return '<li>' + esc(c.label) + '</li>'; }).join('') + '</ul></div>';
+
+  html += '<div class="card"><h2>ファクトチェック専用ツール・サービス</h2><div class="toolgrid">' +
+    FACT_CHECK_TOOLS.map(function(t){
+      return '<div class="toolcard"><a href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.label) + '</a><div class="note">' + esc(t.note) + '</div></div>';
+    }).join('') + '</div></div>';
+
+  html += '<div class="card"><h2>AIツール(参考情報として利用)</h2><div class="toolgrid">' +
+    AI_TOOL_OPTIONS.filter(function(t){ return t.url; }).map(function(t){
+      return '<div class="toolcard"><a href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.label) + '</a><div class="note">回答は参考情報。必ず一次情報・公的発表で裏取りすること。</div></div>';
+    }).join('') + '</div></div>';
+
+  app.innerHTML = html;
+}
+
+/* ============================= 起動 ============================= */
+renderRefLinks();
+if (state.activeTab === 'new' && !state.draft) state.draft = newItem();
+renderAll();
+</script>
+</body>
+</html>
