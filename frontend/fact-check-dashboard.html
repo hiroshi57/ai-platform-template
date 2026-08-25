@@ -96,7 +96,11 @@
   .save-error-banner{background:#fdeeee;border:2px solid #e0a0a0;border-radius:10px;padding:10px 14px;font-size:13px;color:var(--red);margin:8px 0;font-weight:bold}
   .share-box{background:#eef4fb;border:1px solid #cfe0f5;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12.5px}
   .share-box code{background:#fff;border:1px solid #d8e0fb;border-radius:5px;padding:2px 6px;font-size:11.5px}
-  @media(max-width:640px){body{padding:12px} .kpi{min-width:110px}}
+  @media(max-width:640px){
+    body{padding:12px} .kpi{min-width:110px}
+    table{display:block;overflow-x:auto;white-space:nowrap;font-size:12px}
+    .barrow .name{width:120px}
+  }
   @media print{
     body{background:#fff!important;padding:0!important}
     nav.tabs,.noprint,.banner,.filterbar,button{display:none!important}
@@ -900,7 +904,6 @@ function segRowHtml(row){
     '<select data-field="tag">' + SEGMENT_TAGS.map(function(t){
       return '<option value="' + t.id + '"' + (t.id === row.tag ? ' selected' : '') + '>' + esc(t.label) + '</option>';
     }).join('') + '</select>' +
-    '<div></div>' +
     '<button class="danger small" data-remove="segments">削除</button>' +
   '</div>';
 }
