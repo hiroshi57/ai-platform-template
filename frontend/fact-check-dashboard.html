@@ -80,6 +80,22 @@
   footer.refs{font-size:11.5px;color:var(--sub);line-height:1.9;margin-top:20px}
   footer.refs a{color:var(--blue)}
   .svg-chart text{font-size:10px;fill:#667}
+  .printonly{display:none}
+  .trialmark{display:none}
+  .licensebar{border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;line-height:1.8}
+  .licensebar.valid{background:#e7f7ef;border:1px solid #b6e3cc;color:#0f5c3f}
+  .licensebar.trial{background:#fff8e6;border:2px solid #f0c86a;color:#7a5b00}
+  .licensebar input{width:auto;display:inline-block}
+  .licensebar .lic-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;width:100%}
+  .licensebar .lic-msg{color:var(--red);font-size:12px;width:100%}
+  .actionbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .evidence-badge{display:inline-block;background:#eef1f5;border-radius:999px;padding:3px 10px;font-size:11.5px;color:#556;margin-left:8px}
+  .axis-table td,.axis-table th{font-size:12px}
+  .history-list{font-size:12px;color:var(--sub);margin-top:6px;padding-left:16px}
+  .draft-recover{background:#fff8e1;border:1px solid #f0d98a;border-radius:10px;padding:10px 13px;font-size:12.5px;color:#7a5b00;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .save-error-banner{background:#fdeeee;border:2px solid #e0a0a0;border-radius:10px;padding:10px 14px;font-size:13px;color:var(--red);margin:8px 0;font-weight:bold}
+  .share-box{background:#eef4fb;border:1px solid #cfe0f5;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12.5px}
+  .share-box code{background:#fff;border:1px solid #d8e0fb;border-radius:5px;padding:2px 6px;font-size:11.5px}
   @media(max-width:640px){body{padding:12px} .kpi{min-width:110px}}
   @media print{
     body{background:#fff!important;padding:0!important}
@@ -88,6 +104,10 @@
     #print-root{display:none}
     body.print-mode #app{display:none!important}
     body.print-mode #print-root{display:block!important}
+    .printonly{display:block!important}
+    .trialmark{display:block!important;position:fixed;top:42%;left:0;right:0;text-align:center;
+      font-size:74px;color:rgba(192,57,43,.14);font-weight:bold;letter-spacing:12px;
+      transform:rotate(-24deg);pointer-events:none;z-index:9999}
   }
 </style>
 </head>
@@ -96,23 +116,28 @@
   <h1>🔎 ファクトチェック・ダッシュボード</h1>
   <div class="sub">テキスト / 画像 / 音声 / 映像 の主張を、標準的な検証手順に沿って記録・集計します</div>
 
+  <div id="license-bar" class="noprint"></div>
+
   <div class="banner noprint">
     <b>本ツールの位置づけ(正直な説明)</b>：これは AI やファクトチェックサービスに<b>自動照会する仕組みではありません</b>。
     「情報源の確認 → 一次情報との比較 → 複数メディアでのクロスチェック → 事実/意見/推測の切り分け → AIツールの参照」という
     標準的な検証手順を<b>記録・採点・集計するための道具</b>です。各リンクは手動で開いて確認し、結果をこの画面に記録してください。
-    <b>最終的な真偽判定は必ず人が行ってください。</b>データはすべて端末内(ブラウザの localStorage)に保存され、外部送信は一切ありません。
+    算出される「スコア」「推奨判定」は<b>あくまで記録内容に基づく参考値であり、公的な認証や真偽の証明ではありません。</b>
+    <b>最終的な真偽判定は必ず人が行ってください。</b>データは原則、端末内(ブラウザの localStorage)に保存され、外部送信は一切ありません
+    (正規版の「サーバー共有」機能を明示的に利用した場合のみ、入力内容を保存用サーバーに送信します)。
   </div>
+
+  <div id="save-error-banner"></div>
+  <div id="action-bar" class="actionbar noprint"></div>
 
   <nav class="tabs noprint" id="tabs"></nav>
   <div id="app"></div>
 
-  <footer class="refs noprint">
-    <div><b>参考資料</b></div>
-    <div id="ref-links"></div>
-  </footer>
+  <footer class="refs noprint" id="app-footer"></footer>
 </div>
 
 <div id="print-root"></div>
+<div id="print-stamp" class="printonly"></div>
 
 <script>
 'use strict';
@@ -214,6 +239,27 @@ var GUIDE_LINKS = [
 
 var DEFAULT_WEIGHTS = {official:25, primary:25, cross:25, ai:15, tool:10};
 
+/* ===== 外販(商用配布)関連の設定 =====
+ * STORE: このツール固有の識別子(ライセンス/サーバー共有のテナント分離キー)。
+ * LIC_SECRET: 発行者のみが知る値。ライセンスキーは "会社名+STORE+この値" のハッシュ。
+ *   ※ クライアント側JSに埋め込む以上、閲覧者がソースを読めば理論上は自己発行できる
+ *     (強固なDRMではない)。無登録利用の心理的抑止と誤配布防止が目的の簡易な仕組みであり、
+ *     契約上の抑止力はライセンス条項側で担保する前提。
+ * PROVIDER_NAME / LEGAL_*: 利用規約・プライバシーポリシー・価格ページ。
+ *   既存の姉妹ツール(frontend/standalone.html)と同じ提供者・法務ページを流用する前提。
+ *   別ブランドで販売する場合はここを差し替えること。
+ * API: サーバー共有(複数人共有)用の汎用ワークスペースAPI。STORE値でツールを区別する
+ *   マルチテナント設計(姉妹ツールと同じエンドポイント)。実運用前に必ず疎通確認すること。
+ */
+var STORE = 'factcheck-dashboard';
+var LIC_SECRET = 'fc-dash-2026-08-tR4nP8vK2xQ7';
+var PROVIDER_NAME = '株式会社デジタルアイデンティティ';
+var LEGAL_TERMS_URL = 'https://di-tools-legal.vercel.app/terms.html';
+var LEGAL_PRIVACY_URL = 'https://di-tools-legal.vercel.app/privacy.html';
+var LEGAL_PRICING_URL = 'https://di-tools-legal.vercel.app/pricing.html';
+var API = 'https://di-tools-api.vercel.app/api/workspace';
+var DRAFT_KEY = STORAGE_KEY + ':__draft';
+
 /* ============================= 状態 ============================= */
 var state = loadState();
 if (!state.weights) state.weights = Object.assign({}, DEFAULT_WEIGHTS);
@@ -222,6 +268,8 @@ state.activeTab = state.items.length ? 'dashboard' : 'new';
 state.draft = null;
 state.editingId = null;
 state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:''};
+state.saveError = '';
+state.pendingRecovery = null; // 起動時に見つかった未保存下書き(あれば)。init 末尾で設定する
 
 function loadState(){
   try{
@@ -233,7 +281,77 @@ function loadState(){
 function persist(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify({items: state.items, weights: state.weights}));
-  }catch(e){}
+    if (state.saveError){ state.saveError = ''; renderSaveErrorBanner(); }
+  }catch(e){
+    state.saveError = '保存に失敗しました(ブラウザのストレージ容量が上限に達している可能性があります)。今すぐ「チェック一覧」からJSONエクスポートしてバックアップしてください。';
+    renderSaveErrorBanner();
+  }
+}
+function renderSaveErrorBanner(){
+  var el = document.getElementById('save-error-banner');
+  if (!el) return;
+  el.innerHTML = state.saveError ? '<div class="save-error-banner">⚠ ' + esc(state.saveError) + '</div>' : '';
+}
+function persistDraft(){
+  if (!state.draft) return;
+  try{
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({at: new Date().toISOString(), editingId: state.editingId, draft: state.draft}));
+  }catch(e){ /* 下書きの自動保存失敗は致命的ではないため無視(本保存は別途ガードあり) */ }
+}
+function loadDraftBackup(){
+  try{
+    var raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function clearDraftBackup(){
+  try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
+}
+
+/* ============================= 試用版/正規版ライセンス =============================
+ * frontend/standalone.html と同じオフライン検証方式(ハッシュ照合)を踏襲。
+ * ネットワーク接続なしで検証できる代わりに、強固な複製防止ではない点に留意。
+ */
+function licHash(s){
+  var h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (var i = 0; i < s.length; i++){
+    var c = s.charCodeAt(i);
+    h1 = (h1 ^ c) >>> 0; h1 = (h1 * 16777619) >>> 0; h1 = (h1 ^ (h1 >>> 13)) >>> 0;
+    h2 = (h2 + c * 31) >>> 0; h2 = (h2 ^ (h2 << 7)) >>> 0; h2 = h2 >>> 0;
+  }
+  for (var r = 0; r < 64; r++){
+    h1 = (h1 ^ (h2 + r)) >>> 0; h1 = (h1 * 2654435761) >>> 0; h1 = (h1 ^ (h1 >>> 15)) >>> 0;
+    h2 = (h2 ^ (h1 >>> 11)) >>> 0; h2 = (h2 * 40503) >>> 0; h2 = (h2 ^ (h2 >>> 13)) >>> 0;
+  }
+  h1 = (h1 ^ (h1 >>> 16)) >>> 0; h2 = (h2 ^ (h2 >>> 16)) >>> 0;
+  return [h1, h2];
+}
+var LIC_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function licEncode(n, len){
+  var s = ''; n = n >>> 0;
+  for (var i = 0; i < len; i++){ s += LIC_CHARS[n & 31]; n = n >>> 5; }
+  return s;
+}
+function licNormalize(s){ return String(s || '').replace(/[\s　]/g, '').toUpperCase(); }
+function licNormCompany(s){ return String(s || '').replace(/[\s　]/g, '').toLowerCase(); }
+function licGenerate(company, tool){
+  var base = licNormCompany(company) + '|' + tool + '|' + LIC_SECRET;
+  var h = licHash(base);
+  return licEncode(h[0], 5) + '-' + licEncode(h[1], 5);
+}
+function licVerify(company, tool, key){
+  if (!company || !key) return false;
+  return licNormalize(key) === licNormalize(licGenerate(company, tool));
+}
+function licLoad(){
+  try{
+    var s = localStorage.getItem('fcd_license');
+    return s ? JSON.parse(s) : null;
+  }catch(e){ return null; }
+}
+function licValid(){
+  var l = licLoad();
+  return !!(l && licVerify(l.company, STORE, l.key));
 }
 
 /* ============================= ユーティリティ ============================= */
@@ -340,6 +458,24 @@ function suggestVerdict(score){
   if (score >= 35) return 'mixed';
   return 'false';
 }
+var AXIS_LABELS = {official:'①情報源の確認', primary:'②一次情報比較', cross:'③クロスチェック', ai:'④AI参照(参考情報)', tool:'⑤専用ツール'};
+var AXIS_ORDER = ['official','primary','cross','ai','tool'];
+function evidenceCount(item){
+  var axes = axisScores(item);
+  return AXIS_ORDER.filter(function(k){ return axes[k] != null; }).length;
+}
+function hasAnyEvidence(item){ return evidenceCount(item) > 0; }
+function axisBreakdown(item, weights){
+  var axes = axisScores(item);
+  var sumW = 0;
+  AXIS_ORDER.forEach(function(k){ if (axes[k] != null) sumW += (Number(weights[k]) || 0); });
+  return AXIS_ORDER.map(function(k){
+    var v = axes[k];
+    var w = Number(weights[k]) || 0;
+    var contribution = (v != null && sumW > 0) ? Math.round(w / sumW * 100) : 0;
+    return {key:k, label: AXIS_LABELS[k], score: v, weight: w, contributionPct: contribution};
+  });
+}
 function segStats(item){
   var counts = {fact:0, opinion:0, speculation:0, unverified:0};
   item.segments.forEach(function(s){ if (counts.hasOwnProperty(s.tag)) counts[s.tag]++; });
@@ -358,6 +494,7 @@ function newItem(){
     claimTitle: '',
     claimText: '',
     sourceUrl: '',
+    archiveUrl: '',
     collectedAt: '',
     segments: [],
     officialCheck: {result:'', agency:'', note:'', link:''},
@@ -367,7 +504,8 @@ function newItem(){
     toolChecks: [],
     verdict: '',
     summary: '',
-    reviewer: ''
+    reviewer: '',
+    history: []
   };
 }
 function cloneItem(it){ return JSON.parse(JSON.stringify(it)); }
@@ -394,15 +532,142 @@ function renderTabs(){
   });
 }
 
-function renderRefLinks(){
-  var el = document.getElementById('ref-links');
-  el.innerHTML = GUIDE_LINKS.map(function(g){
+function renderFooter(){
+  var el = document.getElementById('app-footer');
+  var refHtml = GUIDE_LINKS.map(function(g){
     return '<div><a href="' + esc(g.url) + '" target="_blank" rel="noopener">' + esc(g.label) + '</a></div>';
   }).join('');
+  el.innerHTML =
+    '<div><b>提供</b>：' + esc(PROVIDER_NAME) + '</div>' +
+    '<div><b>データの取り扱い</b>：入力された内容は<b>お使いの端末の中だけ</b>に保存されます。' +
+    '「サーバー共有」を使わない限り、当社のサーバーへ送信・保存されることはありません。共有リンクを発行した場合、その内容はサーバーに保存されます。</div>' +
+    '<div><b>ご利用にあたって</b>：本ツールが算出するスコア・推奨判定は<b>記録内容に基づく参考情報</b>であり、' +
+    '公的機関やIFCN加盟団体による認証・保証を意味しません。<b>最終的な真偽判定・公表の可否はご自身の責任で行ってください。</b>' +
+    '本ツールの利用により生じた損害について、当社は責任を負いかねます。</div>' +
+    '<div style="margin-top:8px"><a href="' + esc(LEGAL_TERMS_URL) + '" target="_blank" rel="noopener" style="margin-right:14px">利用規約</a>' +
+    '<a href="' + esc(LEGAL_PRIVACY_URL) + '" target="_blank" rel="noopener">プライバシーポリシー</a></div>' +
+    '<div style="margin-top:10px"><b>参考資料</b></div>' + refHtml;
+}
+
+function renderLicenseBar(){
+  var el = document.getElementById('license-bar');
+  var lic = licLoad();
+  var valid = !!(lic && licVerify(lic.company, STORE, lic.key));
+  if (valid){
+    el.innerHTML =
+      '<div class="licensebar valid">' +
+      '<span>✅ <b>正規版</b>　ご契約者：' + esc(lic.company) + ' 様</span>' +
+      '<span style="flex:1"></span>' +
+      '<button class="ghost small" id="lic-release">登録を解除</button>' +
+      '</div>';
+    document.getElementById('lic-release').addEventListener('click', function(){
+      if (!confirm('この端末での正規版登録を解除します。よろしいですか？')) return;
+      try{ localStorage.removeItem('fcd_license'); }catch(e){}
+      renderLicenseBar();
+    });
+    return;
+  }
+  el.innerHTML =
+    '<div class="licensebar trial">' +
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;width:100%">' +
+    '<span>🔓 <b>試用版でご利用中です。</b>すべての機能をお試しいただけますが、印刷・PDFに「試用版」の表示が入り、サーバー共有はご利用いただけません。</span>' +
+    '<span style="flex:1"></span>' +
+    '<button class="ghost small" id="lic-toggle">ライセンスキーを入力</button>' +
+    '<a href="' + esc(LEGAL_PRICING_URL) + '" target="_blank" rel="noopener" style="font-size:12.5px;color:#8a5a00">価格・お申し込み</a>' +
+    '</div>' +
+    '<div id="lic-form" style="display:none" class="lic-form">' +
+    '<input type="text" id="lic-company" placeholder="会社名" style="width:210px" />' +
+    '<input type="text" id="lic-key" placeholder="XXXXX-XXXXX" style="width:160px;font-family:ui-monospace,monospace" />' +
+    '<button class="primary small" id="lic-apply">登録する</button>' +
+    '<div class="lic-msg" id="lic-msg"></div>' +
+    '</div>' +
+    '</div>';
+  document.getElementById('lic-toggle').addEventListener('click', function(){
+    var f = document.getElementById('lic-form');
+    f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+  });
+  document.getElementById('lic-apply').addEventListener('click', function(){
+    var company = document.getElementById('lic-company').value;
+    var key = document.getElementById('lic-key').value;
+    if (licVerify(company, STORE, key)){
+      try{ localStorage.setItem('fcd_license', JSON.stringify({company:company, key:key})); }catch(e){}
+      renderLicenseBar();
+    } else {
+      document.getElementById('lic-msg').textContent = '会社名またはライセンスキーが一致しません。ご購入時にお送りした内容をそのまま入力してください。';
+    }
+  });
+}
+
+function renderActionBar(){
+  var el = document.getElementById('action-bar');
+  el.innerHTML =
+    '<button class="ghost small" id="ab-print">🖨 このページを印刷/PDFで保存</button>' +
+    '<button class="ghost small" id="ab-copy-summary">📋 集計サマリーをコピー</button>';
+  document.getElementById('ab-print').addEventListener('click', function(){ window.print(); });
+  document.getElementById('ab-copy-summary').addEventListener('click', function(){
+    copyToClipboard(buildSummaryText());
+    var b = document.getElementById('ab-copy-summary');
+    var orig = b.textContent; b.textContent = '✅ コピーしました'; setTimeout(function(){ b.textContent = orig; }, 2500);
+  });
+}
+function buildSummaryText(){
+  var lines = ['ファクトチェック・ダッシュボード サマリー(' + new Date().toLocaleString('ja-JP') + ')', '総件数: ' + state.items.length];
+  VERDICTS.forEach(function(v){
+    var n = state.items.filter(function(it){ return it.verdict === v.id; }).length;
+    lines.push(v.label + ': ' + n + '件');
+  });
+  return lines.join('\n');
+}
+
+function renderPrintStamp(){
+  var el = document.getElementById('print-stamp');
+  var lic = licLoad();
+  var ok = !!(lic && licVerify(lic.company, STORE, lic.key));
+  if (ok){
+    el.innerHTML = '<div style="font-size:10.5px;color:#666;margin-top:6px">ライセンス：' + esc(lic.company) + ' 様 / 印刷日: ' + new Date().toLocaleDateString('ja-JP') + '</div>';
+  } else {
+    el.innerHTML =
+      '<div style="font-size:12px;color:#c0392b;margin-top:6px;font-weight:bold;border:1px solid #c0392b;border-radius:6px;padding:6px 10px;text-align:center">試用版で出力したものです。業務・社外提出にはご利用いただけません。</div>' +
+      '<div class="trialmark">試用版</div>';
+  }
+}
+
+function renderDraftRecoverBanner(container){
+  // ページ起動時に見つかった「未保存の下書き」だけを対象とする(state.pendingRecovery は起動時に1回だけセットされる)。
+  // 編集中の自動保存はこれとは独立して継続する。
+  var backup = state.pendingRecovery;
+  if (!backup) return;
+  var box = document.createElement('div');
+  box.className = 'draft-recover';
+  box.innerHTML = '💾 ' + fmtDateTime(backup.at) + ' 時点の未保存の下書きが見つかりました(前回、保存せずに終了した可能性があります)。 ' +
+    '<button class="ghost small" id="draft-restore">復元する</button>' +
+    '<button class="ghost small" id="draft-discard">破棄する</button>';
+  container.insertBefore(box, container.firstChild);
+  document.getElementById('draft-restore').addEventListener('click', function(){
+    state.draft = backup.draft;
+    state.editingId = backup.editingId;
+    state.pendingRecovery = null;
+    renderAll();
+  });
+  document.getElementById('draft-discard').addEventListener('click', function(){
+    clearDraftBackup();
+    state.pendingRecovery = null;
+    renderAll();
+  });
+}
+function fmtDateTime(iso){
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString('ja-JP');
 }
 
 function renderAll(){
   renderTabs();
+  renderLicenseBar();
+  renderActionBar();
+  renderSaveErrorBanner();
+  renderPrintStamp();
+  renderFooter();
   var app = document.getElementById('app');
   if (state.activeTab === 'new') app.innerHTML = '', renderNewCheckTab(app);
   else if (state.activeTab === 'list') app.innerHTML = '', renderListTab(app);
@@ -429,6 +694,8 @@ function renderNewCheckTab(app){
   html += field('出典URL', '<input type="url" id="f-sourceUrl" value="' + esc(d.sourceUrl) + '" placeholder="https://..." />');
   html += field('収集日', '<input type="date" id="f-collectedAt" value="' + esc(d.collectedAt) + '" />');
   html += '</div>';
+  html += field('アーカイブ(魚拓)URL', '<input type="url" id="f-archiveUrl" value="' + esc(d.archiveUrl) + '" placeholder="https://web.archive.org/... または https://archive.today/..." />');
+  html += '<div class="helper">SNS投稿等は後から削除・編集されることがあります。Web魚拓(archive.today)やWayback Machineで保存したURLを記録してください。</div>';
   html += '</div>';
 
   // 事実/意見/推測 切り分け
@@ -487,19 +754,18 @@ function renderNewCheckTab(app){
   html += '</div>';
 
   // 判定
-  var axes = axisScores(d);
-  var overall = computeOverall(d, state.weights);
-  var suggested = suggestVerdict(overall);
-  html += '<div class="card">';
+  html += '<div class="card" id="verdict-card">';
   html += '<h2>総合判定</h2>';
-  html += '<div class="kpis">';
-  html += kpi(overall == null ? '—' : overall, '算出スコア(0-100)');
-  html += kpi(labelOf(VERDICTS, suggested), '推奨判定(参考)');
-  html += '</div>';
-  html += '<div class="verdict-hint">スコアは②〜⑥の各軸の重み付き平均です(未記録の軸は自動的に除外して再計算)。最終判定は必ず人が選択してください。</div>';
+  html += '<div id="verdict-block">' + verdictBlockHtml(d) + '</div>';
+  html += '<div class="verdict-hint">「①情報源の確認」「②一次情報比較」「③クロスチェック」「④AI参照」「⑤専用ツール」のうち、記録済みの軸だけで重み付き平均を計算します(未記録の軸は自動的に除外)。<b>本ツールの判定はIFCN認定機関による公式な認証ではなく、記録者による独自のワーキング分類です。</b>最終判定は必ず人が選択してください。</div>';
   html += field('最終判定(人による確定)', selectHtml('f-verdict', VERDICTS, d.verdict, true));
   html += field('総評(なぜその判定に至ったか)', '<textarea id="f-summary" placeholder="根拠を要約して記載">' + esc(d.summary) + '</textarea>');
   html += field('確認者', '<input type="text" id="f-reviewer" value="' + esc(d.reviewer) + '" />');
+  if (d.history && d.history.length){
+    html += '<h3>改訂履歴</h3><ul class="history-list">' + d.history.slice().reverse().map(function(h){
+      return '<li>' + esc(fmtDateTime(h.at)) + ' — ' + esc(labelOf(VERDICTS, h.from) || '(未判定)') + ' → ' + esc(labelOf(VERDICTS, h.to) || '(未判定)') + (h.reviewer ? '(' + esc(h.reviewer) + ')' : '') + '</li>';
+    }).join('') + '</ul>';
+  }
   html += '</div>';
 
   html += '<div class="toolbar">';
@@ -511,6 +777,32 @@ function renderNewCheckTab(app){
 
   app.innerHTML = html;
   bindNewCheckEvents(app);
+  renderDraftRecoverBanner(app);
+}
+
+function verdictBlockHtml(d){
+  var overall = computeOverall(d, state.weights);
+  var suggested = suggestVerdict(overall);
+  var n = evidenceCount(d);
+  var html = '';
+  html += '<div class="kpis">';
+  html += kpi(overall == null ? '—' : overall, '算出スコア(0-100)');
+  html += kpi(labelOf(VERDICTS, suggested), '推奨判定(参考)');
+  html += kpi(n + '/5', '根拠が記録された軸の数');
+  html += '</div>';
+  if (n === 0){
+    html += '<div class="note-box">⚠ どの軸にも根拠が記録されていません。この状態のまま判定を確定すると、裏付けのない断定になるおそれがあります。</div>';
+  } else if (n <= 2){
+    html += '<div class="note-box">根拠は ' + n + '/5軸のみです。スコアの信頼性は限定的です。可能な範囲で他の軸も確認してください。</div>';
+  }
+  html += '<table class="axis-table"><thead><tr><th>軸</th><th>状態</th><th>スコア</th><th>重み</th><th>スコアへの寄与</th></tr></thead><tbody>';
+  axisBreakdown(d, state.weights).forEach(function(a){
+    html += '<tr><td>' + esc(a.label) + '</td><td class="center">' + (a.score == null ? '未記録' : '記録済み') + '</td>' +
+      '<td class="center">' + (a.score == null ? '—' : a.score) + '</td><td class="center">' + a.weight + '</td>' +
+      '<td class="center">' + (a.score == null ? '—' : a.contributionPct + '%') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  return html;
 }
 
 function field(label, inner){
@@ -583,6 +875,12 @@ function segStatsHtml(item){
 function bindNewCheckEvents(app){
   var d = state.draft;
 
+  var draftSaveTimer = null;
+  function scheduleDraftAutosave(){
+    if (draftSaveTimer) clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(function(){ persistDraft(); }, 600);
+  }
+
   // 単純フィールド(input/change時に draft を直接更新。全体再描画はしない)
   app.querySelectorAll('[id^="f-"]').forEach(function(el){
     if (el.closest('[data-rid]')) return; // 行内フィールドは別ハンドラで処理
@@ -590,6 +888,7 @@ function bindNewCheckEvents(app){
     var evt = (el.tagName === 'SELECT') ? 'change' : 'input';
     el.addEventListener(evt, function(){
       setPath(d, path, el.value);
+      scheduleDraftAutosave();
       // 情報源確認/一次情報比較/最終判定が変わったら、判定スコア表示ブロックだけ更新する
       if (path.indexOf('officialCheck') === 0 || path.indexOf('primaryCheck') === 0 || path === 'verdict') {
         refreshVerdictBlock();
@@ -605,6 +904,7 @@ function bindNewCheckEvents(app){
       d[listName].push(row);
       var container = document.getElementById(rowContainerId(listName));
       container.insertAdjacentHTML('beforeend', rowHtmlFor(listName, row));
+      scheduleDraftAutosave();
       if (listName === 'segments') refreshSegStats();
       if (listName === 'crossChecks' || listName === 'aiChecks' || listName === 'toolChecks') refreshVerdictBlock();
     });
@@ -619,6 +919,7 @@ function bindNewCheckEvents(app){
       var rid = rowEl.dataset.rid;
       d[listName] = d[listName].filter(function(r){ return r.rid !== rid; });
       rowEl.remove();
+      scheduleDraftAutosave();
       if (listName === 'segments') refreshSegStats();
       else refreshVerdictBlock();
     }
@@ -627,11 +928,13 @@ function bindNewCheckEvents(app){
     var rowEl = e.target.closest('[data-rid]');
     if (!rowEl || !e.target.dataset.field) return;
     updateRowField(rowEl, e.target);
+    scheduleDraftAutosave();
   });
   app.addEventListener('change', function(e){
     var rowEl = e.target.closest('[data-rid]');
     if (!rowEl || !e.target.dataset.field) return;
     updateRowField(rowEl, e.target);
+    scheduleDraftAutosave();
     if (rowEl.dataset.list !== 'segments') refreshVerdictBlock();
     else refreshSegStats();
   });
@@ -654,27 +957,50 @@ function bindNewCheckEvents(app){
       flashStatus('主張のタイトルまたは本文を入力してください。', true);
       return;
     }
-    d.updatedAt = new Date().toISOString();
+    var FINAL_VERDICTS = ['true','mostly_true','mixed','false'];
+    if (FINAL_VERDICTS.indexOf(d.verdict) > -1 && !hasAnyEvidence(d)){
+      var proceed = confirm(
+        '①〜⑤のどの軸にも根拠(情報源確認・一次情報比較・クロスチェック・AI参照・専用ツール)が\n' +
+        '一つも記録されていません。この状態で「' + labelOf(VERDICTS, d.verdict) + '」として確定保存すると、\n' +
+        '裏付けのない断定になり、外部に提示した場合に名誉毀損等のリスクにもなり得ます。\n\n' +
+        'このまま保存しますか？(「キャンセル」を選ぶと保存を中止します)'
+      );
+      if (!proceed) return;
+    }
     var existingIdx = state.items.findIndex(function(it){ return it.id === d.id; });
+    if (existingIdx >= 0){
+      var prevVerdict = state.items[existingIdx].verdict;
+      if (prevVerdict !== d.verdict){
+        d.history = (d.history || []).concat([{at: new Date().toISOString(), from: prevVerdict, to: d.verdict, reviewer: d.reviewer}]);
+      }
+    } else if (d.verdict){
+      d.history = (d.history || []).concat([{at: new Date().toISOString(), from: '', to: d.verdict, reviewer: d.reviewer}]);
+    }
+    d.updatedAt = new Date().toISOString();
     var saved = cloneItem(d);
     if (existingIdx >= 0) state.items[existingIdx] = saved;
     else state.items.push(saved);
     persist();
+    clearDraftBackup();
     state.editingId = null;
     state.draft = null;
+    state.pendingRecovery = null;
     state.activeTab = 'list';
     renderAll();
   });
 
   var cancelBtn = document.getElementById('btn-cancel');
   if (cancelBtn) cancelBtn.addEventListener('click', function(){
-    state.editingId = null; state.draft = null; state.activeTab = 'list'; renderAll();
+    clearDraftBackup();
+    state.editingId = null; state.draft = null; state.pendingRecovery = null; state.activeTab = 'list'; renderAll();
   });
 
   document.getElementById('btn-reset').addEventListener('click', function(){
     if (!confirm('入力内容をクリアします。よろしいですか？')) return;
+    clearDraftBackup();
     state.draft = newItem();
     state.editingId = null;
+    state.pendingRecovery = null;
     renderAll();
   });
 
@@ -685,13 +1011,8 @@ function bindNewCheckEvents(app){
     wrap.insertAdjacentHTML('beforeend', segStatsHtml(d));
   }
   function refreshVerdictBlock(){
-    var axes = axisScores(d);
-    var overall = computeOverall(d, state.weights);
-    var suggested = suggestVerdict(overall);
-    var scoreEl = app.querySelector('.kpis .kpi:nth-child(1) .v');
-    var sugEl = app.querySelector('.kpis .kpi:nth-child(2) .v');
-    if (scoreEl) scoreEl.textContent = overall == null ? '—' : overall;
-    if (sugEl) sugEl.textContent = labelOf(VERDICTS, suggested);
+    var block = document.getElementById('verdict-block');
+    if (block) block.innerHTML = verdictBlockHtml(d);
   }
   function flashStatus(msg, isError){
     var el = document.getElementById('save-status');
@@ -747,6 +1068,7 @@ function renderListTab(app){
   html += '</div>';
   html += '<div id="list-table-wrap"></div>';
   html += '</div>';
+  html += '<div class="card"><h2>🔗 サーバー共有(複数人での閲覧・編集)</h2><div id="share-panel"></div></div>';
   app.innerHTML = html;
 
   ['filter-mediaType','filter-sourceCategory','filter-verdict'].forEach(function(id){
@@ -792,6 +1114,84 @@ function renderListTab(app){
   });
 
   renderListRows();
+  renderSharePanel();
+}
+
+/* ============================= サーバー共有(複数人共有・正規版限定) ============================= */
+function qs(k){
+  try{ return new URLSearchParams(location.search).get(k) || ''; }catch(e){ return ''; }
+}
+function getShareInfo(){
+  try{ var s = localStorage.getItem(STORE + ':__share'); return s ? JSON.parse(s) : null; }catch(e){ return null; }
+}
+function setShareInfo(info){ try{ localStorage.setItem(STORE + ':__share', JSON.stringify(info)); }catch(e){} }
+function shareBody(){
+  return {tool: STORE, title: document.title, who: '', data: {items: state.items, weights: state.weights}};
+}
+function shareRequest(method, url, cb){
+  fetch(url, {method: method, headers:{'Content-Type':'application/json'}, body: method === 'GET' ? undefined : JSON.stringify(shareBody())})
+    .then(function(r){ return r.json(); })
+    .then(function(j){ cb(j.error ? {error:j.error} : Object.assign({ok:true}, j)); })
+    .catch(function(){ cb({error:'サーバーに接続できませんでした(ネットワーク環境をご確認ください)'}); });
+}
+function loadFromShareLinkIfPresent(){
+  var id = qs('ws');
+  if (!id) return;
+  var key = qs('key');
+  shareRequest('GET', API + '?id=' + encodeURIComponent(id), function(res){
+    if (res.error){ state.saveError = '共有データの読み込みに失敗しました: ' + res.error; renderSaveErrorBanner(); return; }
+    if (res.data && Array.isArray(res.data.items)) state.items = res.data.items;
+    if (res.data && res.data.weights) state.weights = res.data.weights;
+    persist();
+    if (key) setShareInfo({id:id, editKey:key});
+    if (!sessionStorage.getItem('fcd_loaded_' + id)){
+      try{ sessionStorage.setItem('fcd_loaded_' + id, '1'); }catch(e){}
+      location.replace(location.pathname);
+      return;
+    }
+    renderAll();
+  });
+}
+function renderSharePanel(){
+  var el = document.getElementById('share-panel');
+  if (!el) return;
+  if (!licValid()){
+    el.innerHTML = '<div class="helper">サーバー共有は正規版のみご利用いただけます。上部の「ライセンスキーを入力」からご登録ください(価格・お申し込みリンクあり)。</div>';
+    return;
+  }
+  var info = getShareInfo();
+  var viewLink = info ? (location.origin + location.pathname + '?ws=' + info.id) : '';
+  var editLink = info ? (viewLink + '&key=' + info.editKey) : '';
+  el.innerHTML =
+    '<div class="helper">現在の全チェック記録(' + state.items.length + '件)をサーバーに保存し、リンクを知っている人と共有できます。</div>' +
+    '<div class="toolbar">' +
+    '<button class="primary small" id="share-create">' + (info ? '🔄 サーバーへ更新保存' : '📤 サーバーへ保存してリンク作成') + '</button>' +
+    '</div>' +
+    (info ?
+      '<div class="share-box">' +
+      '<div>閲覧用リンク: <code id="share-view-link">' + esc(viewLink) + '</code> <button class="ghost small" id="copy-view">コピー</button></div>' +
+      '<div style="margin-top:6px">編集用リンク(この内容を更新できる人にのみ共有): <code id="share-edit-link">' + esc(editLink) + '</code> <button class="ghost small" id="copy-edit">コピー</button></div>' +
+      '<div class="helper" style="margin-top:6px">⚠ 編集用リンクを知っている人は誰でも内容を書き換えられます。取り扱いにご注意ください。</div>' +
+      '</div>' : '') +
+    '<div id="share-msg" class="helper"></div>';
+  document.getElementById('share-create').addEventListener('click', function(){
+    var msgEl = document.getElementById('share-msg');
+    msgEl.textContent = '送信中...';
+    var current = getShareInfo();
+    var url = current ? (API + '?id=' + current.id + '&key=' + current.editKey) : API;
+    var method = current ? 'PUT' : 'POST';
+    shareRequest(method, url, function(res){
+      if (res.error){ msgEl.textContent = '⚠ ' + res.error; return; }
+      if (res.id) setShareInfo({id:res.id, editKey:res.editKey});
+      renderSharePanel();
+      var m = document.getElementById('share-msg');
+      if (m) m.textContent = '✅ 保存しました(' + new Date().toLocaleTimeString('ja-JP') + ')';
+    });
+  });
+  var copyView = document.getElementById('copy-view');
+  if (copyView) copyView.addEventListener('click', function(){ copyToClipboard(viewLink); });
+  var copyEdit = document.getElementById('copy-edit');
+  if (copyEdit) copyEdit.addEventListener('click', function(){ copyToClipboard(editLink); });
 }
 
 function filteredItems(){
@@ -815,10 +1215,11 @@ function renderListRows(){
   }
   var html = '<table><thead><tr>' +
     '<th>更新日</th><th>種別</th><th>出所区分</th><th class="center" style="min-width:220px">主張</th>' +
-    '<th class="center">判定</th><th class="center">スコア</th><th class="center">操作</th>' +
+    '<th class="center">判定</th><th class="center">スコア(根拠)</th><th class="center">操作</th>' +
     '</tr></thead><tbody>';
   items.forEach(function(it){
     var overall = computeOverall(it, state.weights);
+    var n = evidenceCount(it);
     var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)'};
     html += '<tr>';
     html += '<td>' + esc(fmtDate(it.updatedAt)) + '</td>';
@@ -826,7 +1227,7 @@ function renderListRows(){
     html += '<td>' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</td>';
     html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) + '</td>';
     html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.label) + '</span></td>';
-    html += '<td class="center">' + (overall == null ? '—' : overall) + '</td>';
+    html += '<td class="center">' + (overall == null ? '—' : overall) + '<span class="evidence-badge">' + n + '/5</span></td>';
     html += '<td class="center">' +
       '<button class="ghost small" data-edit="' + it.id + '">編集</button> ' +
       '<button class="ghost small" data-dup="' + it.id + '">複製</button> ' +
@@ -877,11 +1278,11 @@ function renderListRows(){
 }
 
 function exportCsv(){
-  var rows = [['更新日','種別','出所区分','主張タイトル','判定','スコア','出典URL']];
+  var rows = [['更新日','種別','出所区分','主張タイトル','判定','スコア','根拠軸数(/5)','出典URL','アーカイブURL']];
   filteredItems().forEach(function(it){
     rows.push([
       fmtDate(it.updatedAt), labelOf(MEDIA_TYPES, it.mediaType), labelOf(SOURCE_CATEGORIES, it.sourceCategory),
-      it.claimTitle, labelOf(VERDICTS, it.verdict), computeOverall(it, state.weights), it.sourceUrl
+      it.claimTitle, labelOf(VERDICTS, it.verdict), computeOverall(it, state.weights), evidenceCount(it), it.sourceUrl, it.archiveUrl
     ]);
   });
   var csv = rows.map(function(r){
@@ -896,23 +1297,45 @@ function exportCsv(){
 function printCase(it){
   var overall = computeOverall(it, state.weights);
   var v = findOf(VERDICTS, it.verdict) || {label:'未判定'};
-  var axes = axisScores(it);
-  var html = '<div class="card"><h1>ファクトチェック レポート</h1>';
+  var n = evidenceCount(it);
+  var lic = licLoad();
+  var licOk = !!(lic && licVerify(lic.company, STORE, lic.key));
+  var html = '<div class="card">';
+  html += '<div style="border:2px solid #c0392b;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#c0392b">' +
+    '<b>本レポートの位置づけ</b>：本レポートは記録者(' + esc(it.reviewer || '確認者未記入') + ')が独自の手順で作成した' +
+    '<b>ワーキングドキュメント</b>であり、IFCN加盟団体等による<b>公式な認証・証明ではありません</b>。' +
+    '算出スコア・判定は記録された根拠(' + n + '/5軸)に基づく参考情報であり、内容の真偽を保証するものではありません。' +
+    (n === 0 ? '<br><b>⚠ このケースにはどの軸にも根拠が記録されていません。参考情報としても著しく限定的です。</b>' : '') +
+    '</div>';
+  html += '<h1>ファクトチェック レポート(ワーキングドキュメント)</h1>';
   html += '<p><b>主張:</b> ' + esc(it.claimTitle) + '</p>';
   html += '<p><b>本文:</b> ' + esc(it.claimText) + '</p>';
   html += '<p><b>種別:</b> ' + esc(labelOf(MEDIA_TYPES, it.mediaType)) + ' / <b>出所区分:</b> ' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</p>';
-  html += '<p><b>出典:</b> ' + esc(it.sourceUrl) + ' / <b>収集日:</b> ' + esc(fmtDate(it.collectedAt)) + '</p>';
-  html += '<h3>① 情報源の確認</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.officialCheck.result)) + ' / 照合先: ' + esc(it.officialCheck.agency) + '<br>' + esc(it.officialCheck.note) + '</p>';
-  html += '<h3>② 一次情報との比較</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.primaryCheck.result)) + ' / 種類: ' + esc(it.primaryCheck.sourceType) + '<br>' + esc(it.primaryCheck.note) + '</p>';
-  html += '<h3>③ クロスチェック</h3><ul>' + it.crossChecks.map(function(c){
+  html += '<p><b>出典:</b> ' + esc(it.sourceUrl) + ' / <b>アーカイブ:</b> ' + esc(it.archiveUrl || '(未記録)') + ' / <b>収集日:</b> ' + esc(fmtDate(it.collectedAt)) + '</p>';
+  html += '<h3>① 情報源の確認</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.officialCheck.result) || '未確認') + ' / 照合先: ' + esc(it.officialCheck.agency) + '<br>' + esc(it.officialCheck.note) + '</p>';
+  html += '<h3>② 一次情報との比較</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.primaryCheck.result) || '未確認') + ' / 種類: ' + esc(it.primaryCheck.sourceType) + '<br>' + esc(it.primaryCheck.note) + '</p>';
+  html += '<h3>③ クロスチェック</h3><ul>' + (it.crossChecks.length ? it.crossChecks.map(function(c){
     return '<li>' + esc(c.outlet) + ' — ' + esc(labelOf(RESULT_OPTIONS, c.result)) + (c.note ? ' (' + esc(c.note) + ')' : '') + '</li>';
-  }).join('') + '</ul>';
-  html += '<h3>④ AIツール参照</h3><ul>' + it.aiChecks.map(function(c){
+  }).join('') : '<li>(記録なし)</li>') + '</ul>';
+  html += '<h3>④ AIツール参照(参考情報)</h3><ul>' + (it.aiChecks.length ? it.aiChecks.map(function(c){
     return '<li>' + esc(labelOf(AI_TOOL_OPTIONS, c.tool)) + ' — ' + esc(labelOf(STANCE_OPTIONS, c.stance)) + (c.note ? ' (' + esc(c.note) + ')' : '') + '</li>';
-  }).join('') + '</ul>';
-  html += '<h3>総合判定</h3><p>算出スコア: ' + (overall == null ? '—' : overall) + ' / 最終判定: <b>' + esc(v.label) + '</b></p>';
+  }).join('') : '<li>(記録なし)</li>') + '</ul>';
+  html += '<h3>⑤ 専用ツール利用</h3><ul>' + (it.toolChecks.length ? it.toolChecks.map(function(c){
+    return '<li>' + esc(c.service) + ' — ' + esc(labelOf(TOOL_FINDING_OPTIONS, c.finding)) + (c.note ? ' (' + esc(c.note) + ')' : '') + '</li>';
+  }).join('') : '<li>(記録なし)</li>') + '</ul>';
+  html += '<h3>総合判定</h3><p>算出スコア: ' + (overall == null ? '—' : overall) + '(根拠 ' + n + '/5軸) / 最終判定: <b>' + esc(v.label) + '</b></p>';
   html += '<p><b>総評:</b> ' + esc(it.summary) + '</p>';
   html += '<p><b>確認者:</b> ' + esc(it.reviewer) + '</p>';
+  if (it.history && it.history.length){
+    html += '<h3>改訂履歴</h3><ul>' + it.history.map(function(h){
+      return '<li>' + esc(fmtDateTime(h.at)) + ' ' + esc(labelOf(VERDICTS, h.from) || '(未判定)') + ' → ' + esc(labelOf(VERDICTS, h.to) || '(未判定)') + '</li>';
+    }).join('') + '</ul>';
+  }
+  html += '<div style="margin-top:16px;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:8px">' +
+    '提供: ' + esc(PROVIDER_NAME) + ' / 印刷日: ' + new Date().toLocaleString('ja-JP') +
+    (licOk ? (' / ライセンス: ' + esc(lic.company) + ' 様') : ' / 試用版で出力') +
+    '</div>';
+  if (!licOk) html += '<div class="trialmark">試用版</div>';
   html += '</div>';
   var root = document.getElementById('print-root');
   root.innerHTML = html;
@@ -1192,12 +1615,25 @@ function renderGuideTab(app){
       return '<div class="toolcard"><a href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.label) + '</a><div class="note">回答は参考情報。必ず一次情報・公的発表で裏取りすること。</div></div>';
     }).join('') + '</div></div>';
 
+  html += '<div class="card"><h2>試用版・正規版・複数人共有について</h2>' +
+    '<ul style="line-height:2">' +
+    '<li>試用版はすべての集計機能をお試しいただけますが、印刷・PDFに「試用版」の表示が入り、サーバー共有機能はご利用いただけません。</li>' +
+    '<li>正規版として登録すると、印刷物に試用版表示が入らなくなり、「サーバー共有」機能でチェック記録一式を複数人で閲覧・編集できます。</li>' +
+    '<li>データは原則お使いの端末内にのみ保存されます。サーバー共有を使った場合のみ、共有された内容がサーバーに保存されます。</li>' +
+    '<li>算出されるスコア・判定はあくまで記録内容に基づく参考情報であり、ライセンスの有無にかかわらず公的な認証を意味しません。</li>' +
+    '</ul></div>';
+
   app.innerHTML = html;
 }
 
 /* ============================= 起動 ============================= */
-renderRefLinks();
+(function initPendingRecovery(){
+  var backup = loadDraftBackup();
+  var hasContent = backup && backup.draft && ((backup.draft.claimTitle || '').trim() || (backup.draft.claimText || '').trim());
+  state.pendingRecovery = hasContent ? backup : null;
+})();
 if (state.activeTab === 'new' && !state.draft) state.draft = newItem();
+loadFromShareLinkIfPresent();
 renderAll();
 </script>
 </body>
