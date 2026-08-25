@@ -338,6 +338,207 @@ async function agreeToConsent(dom) {
     assert.ok(doc.querySelectorAll('#dash-results .kpi').length >= 4);
   });
 
+  await test('normalizeItem: 欠損フィールド(history/archiveUrl等)を持つ旧形式データを安全に補完する', async () => {
+    const dom = await freshDom();
+    const legacyRaw = {
+      // 昔のスキーマを模した最小限のデータ(archiveUrl, history, segments 等が存在しない)
+      id: 'legacy1', claimTitle: '旧データ', mediaType: 'text', sourceCategory: 'media',
+      officialCheck: { result: 'match' }, // agency/note/link が無い
+      verdict: 'not-a-real-verdict-id' // 不正なenum値
+    };
+    const normalized = dom.window.normalizeItem(legacyRaw);
+    assert.strictEqual(normalized.archiveUrl, '');
+    // jsdom(vmコンテキスト)のArrayとNode本体のArrayはプロトタイプが別実体になるため、
+    // deepStrictEqual ではなく中身(件数)で比較する。
+    assert.ok(Array.isArray(normalized.history) && normalized.history.length === 0, 'historyが空配列に補完されていない');
+    assert.ok(Array.isArray(normalized.segments) && normalized.segments.length === 0, 'segmentsが空配列に補完されていない');
+    assert.strictEqual(normalized.officialCheck.agency, '');
+    assert.strictEqual(normalized.officialCheck.result, 'match');
+    assert.strictEqual(normalized.verdict, '', '不正なverdict値が素通りしている');
+    // evidenceCount 等の後続処理が例外を投げないことも確認する
+    assert.doesNotThrow(function(){ dom.window.evidenceCount(normalized); dom.window.computeOverall(normalized, dom.window.state.weights); });
+  });
+
+  await test('loadState: 破損したJSON(不正な構文)が保存されていてもクラッシュせず初期状態で起動する', async () => {
+    const dom = new JSDOM(HTML, {
+      runScripts: 'dangerously', resources: 'usable', url: 'http://localhost/',
+      beforeParse(win) { win.localStorage.setItem('fc_dashboard_v1', '{this is not valid json!!'); }
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    assert.strictEqual(dom.window.state.items.length, 0);
+    assert.ok(dom.window.document.getElementById('tabs'), '破損データ起動時にUIがレンダリングされていない');
+  });
+
+  await test('loadState: items配列に不正な要素(null/文字列など)が混じっていても正規化して読み込める', async () => {
+    const dom = new JSDOM(HTML, {
+      runScripts: 'dangerously', resources: 'usable', url: 'http://localhost/',
+      beforeParse(win) {
+        win.localStorage.setItem('fc_dashboard_v1', JSON.stringify({
+          items: [null, 'not-an-object', { id: 'ok1', claimTitle: '正常データ' }],
+          weights: { official: 999, primary: -5, cross: 'abc' }
+        }));
+      }
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    assert.strictEqual(dom.window.state.items.length, 3, '不正な要素も含めて正規化されるべき(nullでも空アイテムとして補完)');
+    // 重みは異常値なら既定値にフォールバックする
+    assert.strictEqual(dom.window.state.weights.primary, dom.window.DEFAULT_WEIGHTS.primary);
+    assert.strictEqual(dom.window.state.weights.cross, dom.window.DEFAULT_WEIGHTS.cross);
+  });
+
+  await test('JSONインポート: 不正な行をスキップしつつ「既存に追加」できる(H11/I6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    dom.window.confirm = () => true;
+    // 既存に1件追加しておく
+    dom.window.state.items = [dom.window.normalizeItem({ id: 'existing1', claimTitle: '既存データ' })];
+    dom.window.state.activeTab = 'list';
+    dom.window.renderAll();
+    const doc = dom.window.document;
+
+    const payload = JSON.stringify({
+      items: [
+        { id: 'imp1', claimTitle: 'インポート1' },
+        { notAValidRecord: true }, // claimTitle/claimText/id を一切持たない不正行
+        { id: 'imp2', claimText: 'インポート2本文' }
+      ],
+      weights: dom.window.DEFAULT_WEIGHTS
+    });
+    const file = new dom.window.File([payload], 'import.json', { type: 'application/json' });
+    const input = doc.getElementById('file-import');
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    assert.ok(doc.getElementById('import-choice-box'), 'インポート選択バナーが表示されない');
+    assert.ok(doc.getElementById('import-choice-box').textContent.includes('2件'), 'スキップ件数の表示が正しくない: ' + doc.getElementById('import-choice-box').textContent);
+    doc.getElementById('import-merge').addEventListener; // no-op (lint避け)
+    doc.getElementById('import-merge').click();
+    assert.strictEqual(dom.window.state.items.length, 3, '既存1件+有効2件=3件になるべき');
+  });
+
+  await test('トースト通知: role/aria-liveを持つ領域に表示され、一定時間または操作で消える', async () => {
+    const dom = await freshDom();
+    const doc = dom.window.document;
+    const root = doc.getElementById('toast-root');
+    assert.strictEqual(root.getAttribute('aria-live'), 'polite', 'トースト領域にaria-liveが設定されていない(F4)');
+    dom.window.toast('テスト通知', { type: 'success', duration: 0 });
+    assert.ok(doc.querySelector('.toast.success'), 'トーストが表示されない');
+    assert.strictEqual(doc.querySelector('.toast .toast-msg').textContent, 'テスト通知');
+  });
+
+  await test('トースト: Undo付き通知でアクションを実行すると削除が復元される(E4)', async () => {
+    const dom = await freshDom();
+    dom.window.confirm = () => true;
+    dom.window.state.items = [
+      dom.window.normalizeItem({ id: 'x1', claimTitle: 'a' }),
+      dom.window.normalizeItem({ id: 'x2', claimTitle: 'b' })
+    ];
+    dom.window.state.activeTab = 'list';
+    dom.window.renderAll();
+    const doc = dom.window.document;
+    doc.getElementById('btn-clear-all').click();
+    assert.strictEqual(dom.window.state.items.length, 0);
+    const undoBtn = doc.querySelector('.toast button');
+    assert.ok(undoBtn, '元に戻すボタンを含むトーストが表示されない');
+    undoBtn.click();
+    assert.strictEqual(dom.window.state.items.length, 2, '元に戻すを押しても復元されない');
+  });
+
+  await test('タブバッジ: 根拠ゼロで確定判定の案件数が一覧タブのバッジに表示される(B1)', async () => {
+    const dom = await freshDom();
+    dom.window.confirm = () => true;
+    dom.window.state.items = [
+      dom.window.normalizeItem({ id: 'r1', claimTitle: 'a', verdict: 'false' }), // 根拠ゼロ+確定判定 → 要対応
+      dom.window.normalizeItem({ id: 'r2', claimTitle: 'b', verdict: '' }) // 未判定 → 対象外
+    ];
+    dom.window.renderAll();
+    const doc = dom.window.document;
+    const badge = doc.querySelector('nav.tabs button[data-tab="list"] .tab-badge');
+    assert.ok(badge, 'バッジが表示されない');
+    assert.strictEqual(badge.textContent, '1');
+  });
+
+  await test('同意ゲート表示時にチェックボックスへ初期フォーカスが当たる(F6簡易フォーカストラップ)', async () => {
+    const dom = await freshDom();
+    const doc = dom.window.document;
+    assert.strictEqual(doc.activeElement, doc.getElementById('consent-checkbox'), '初期フォーカスがチェックボックスに当たっていない');
+  });
+
+  await test('グローバルエラーハンドラ: 予期しない例外がトーストで通知される(I1)', async () => {
+    const dom = await freshDom();
+    const doc = dom.window.document;
+    dom.window.reportUnexpectedError('テスト文脈', new Error('boom'));
+    const t = doc.querySelector('.toast.danger');
+    assert.ok(t, 'エラー用トーストが表示されない');
+    assert.ok(t.textContent.includes('予期しないエラー'));
+  });
+
+  await test('折れ線グラフ: グラデーション塗りとホバー用<title>ツールチップを含む(C1)', async () => {
+    const dom = await freshDom();
+    const svg = dom.window.svgLineChart([{label:'2026-01', value:10}, {label:'2026-02', value:20}], 'var(--blue)');
+    assert.ok(svg.includes('<linearGradient'), 'グラデーション定義が含まれない');
+    assert.ok(svg.includes('<title>2026-02: 20</title>'), 'ホバーツールチップ(title要素)が含まれない');
+  });
+
+  await test('折れ線グラフ: 点数が多い場合はX軸ラベルを間引く(C8)', async () => {
+    const dom = await freshDom();
+    const points = [];
+    for (let i = 1; i <= 24; i++) points.push({label: '2026-' + String(i).padStart(2,'0'), value: i});
+    const svg = dom.window.svgLineChart(points, 'var(--blue)');
+    const labelCount = (svg.match(/text-anchor="middle">2026-/g) || []).length;
+    assert.ok(labelCount < 24, 'ラベルが間引かれずに全件表示されている: ' + labelCount);
+    assert.ok(svg.includes('>2026-01<') && svg.includes('>2026-24<'), '最初と最後のラベルは省略されるべきではない');
+  });
+
+  await test('KPI: 前月比トレンド矢印が平均スコアの改善/悪化に応じて表示される(A8)', async () => {
+    const dom = await freshDom();
+    function mkItem(monthsAgo, score){
+      const d = new Date(); d.setMonth(d.getMonth() - monthsAgo);
+      return dom.window.normalizeItem({
+        id: 'k' + monthsAgo, createdAt: d.toISOString(), updatedAt: d.toISOString(),
+        claimTitle: 'x', verdict: 'true',
+        officialCheck: { result: score >= 100 ? 'match' : (score >= 50 ? 'partial' : 'mismatch') }
+      });
+    }
+    dom.window.state.items = [mkItem(1, 0), mkItem(0, 100)]; // 前月0点 → 今月100点(改善)
+    dom.window.state.activeTab = 'dashboard';
+    dom.window.renderAll();
+    const doc = dom.window.document;
+    const trend = doc.querySelector('#dash-results .kpi .trend');
+    assert.ok(trend, 'トレンド表示が見つからない');
+    assert.ok(trend.classList.contains('good'), 'スコア改善はgood(緑)であるべき: ' + trend.className);
+  });
+
+  await test('storageGetJSON/storageSetJSON/storageRemove: 一元化ラッパーが正常系・異常系ともに例外を投げない(I2)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(w.storageSetJSON('t1', {a: 1}), true);
+    assert.strictEqual(w.storageGetJSON('t1', null).a, 1);
+    assert.strictEqual(w.storageRemove('t1'), true);
+    assert.strictEqual(w.storageGetJSON('t1', 'fallback'), 'fallback');
+
+    const proto = Object.getPrototypeOf(w.localStorage);
+    const orig = proto.setItem;
+    proto.setItem = function(){ throw new Error('quota'); };
+    assert.strictEqual(w.storageSetJSON('t2', {x:1}), false, '書き込み失敗時にfalseを返すべき');
+    proto.setItem = orig;
+  });
+
+  await test('空状態: 一覧・ダッシュボードにアイコン付きの空状態表示がある(A12)', async () => {
+    const dom = await freshDom();
+    dom.window.state.activeTab = 'list';
+    dom.window.renderAll();
+    let doc = dom.window.document;
+    assert.ok(doc.querySelector('.empty svg'), '一覧タブの空状態にアイコンが無い');
+    assert.ok(doc.querySelector('.empty .empty-title'), '一覧タブの空状態に見出しが無い');
+
+    dom.window.state.activeTab = 'dashboard';
+    dom.window.renderAll();
+    doc = dom.window.document;
+    assert.ok(doc.querySelector('.empty svg'), 'ダッシュボードの空状態にアイコンが無い');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {

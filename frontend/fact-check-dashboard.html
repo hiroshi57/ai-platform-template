@@ -11,99 +11,220 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232b6cb0'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E2%9C%93%3C/text%3E%3C/svg%3E" />
 <!-- OFFLINE-BUNDLED: 外部通信なしで動作します(外部リンクはユーザーが手動で開くリンクのみ) -->
 <style>
+  /* ===== デザイントークン ===== */
   :root{
-    --blue:#2b6cb0; --blue-dark:#1f4f85; --ink:#152238; --sub:#6b7686; --bg:#f5f7f9;
-    --card:#ffffff; --line:#e3e8ee; --green:#0f7a54; --amber:#b7791f; --red:#c0392b; --gray:#7a8699;
+    /* ニュートラル(スレート系) */
+    --n-0:#ffffff; --n-25:#f8fafc; --n-50:#f1f5f9; --n-100:#e2e8f0; --n-200:#cbd5e1;
+    --n-300:#94a3b8; --n-400:#64748b; --n-500:#475569; --n-600:#334155; --n-700:#1e293b; --n-900:#0f172a;
+    /* アクセント(インディゴ) */
+    --accent-50:#eef2ff; --accent-100:#e0e7ff; --accent-400:#818cf8; --accent-500:#4f46e5;
+    --accent-600:#4338ca; --accent-700:#3730a3;
+    /* セマンティック */
+    --success-50:#ecfdf5; --success-500:#0f9d6b; --success-600:#0a7d54;
+    --warning-50:#fffbeb; --warning-500:#b7791f; --warning-600:#92600f;
+    --danger-50:#fef2f2; --danger-500:#dc2626; --danger-600:#b91c1c;
+    --neutral-info-50:#f1f5f9; --neutral-info-500:#64748b;
+    /* 役割別エイリアス(可読性のため既存コードとの互換名も残す) */
+    --bg:var(--n-50); --card:var(--n-0); --ink:var(--n-900); --sub:var(--n-400); --line:var(--n-100);
+    --blue:var(--accent-500); --blue-dark:var(--accent-700);
+    --green:var(--success-600); --amber:var(--warning-500); --red:var(--danger-600); --gray:var(--n-400);
+    /* タイポグラフィスケール */
+    --fs-2xs:10.5px; --fs-xs:11.5px; --fs-sm:12.5px; --fs-base:13.5px; --fs-md:15px; --fs-lg:18px; --fs-xl:22px;
+    /* スペーシングスケール(4px基準) */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
+    /* 角丸・影 */
+    --radius-sm:6px; --radius-md:10px; --radius-lg:14px; --radius-full:999px;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.06);
+    --shadow-md:0 4px 14px rgba(15,23,42,.08);
+    --shadow-lg:0 12px 32px rgba(15,23,42,.12);
+    --focus-ring:0 0 0 3px rgba(79,70,229,.28);
   }
   *{box-sizing:border-box}
-  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);margin:0;padding:20px;color:var(--ink)}
-  .wrap{max-width:1080px;margin:0 auto}
-  h1{color:var(--blue);font-size:21px;margin:0 0 2px}
-  .sub{color:var(--sub);font-size:12.5px}
-  .banner{background:#eef2fd;border:1px solid #d8e0fb;border-radius:10px;padding:10px 14px;font-size:12.5px;color:#2b3ea8;margin:10px 0 14px;line-height:1.7}
-  .banner b{color:#1f4f85}
-  nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 16px}
-  nav.tabs button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer}
-  nav.tabs button.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:bold}
-  .card{background:var(--card);border-radius:14px;padding:16px 18px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,.06)}
-  .card h2{font-size:15px;margin:0 0 10px;color:#1f2d47}
-  .card h3{font-size:13px;margin:12px 0 6px;color:#334}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    background:var(--bg);margin:0;padding:var(--sp-5);color:var(--ink);line-height:1.5;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto}
+  a{color:var(--accent-600)}
+  h1{color:var(--n-900);font-size:var(--fs-xl);font-weight:700;letter-spacing:-.01em;margin:0;display:flex;align-items:center;gap:var(--sp-2)}
+  h1 .brandmark{flex-shrink:0}
+  .sub{color:var(--sub);font-size:var(--fs-sm);margin-top:2px}
+  .banner{background:var(--accent-50);border:1px solid var(--accent-100);border-radius:var(--radius-md);
+    padding:var(--sp-3) var(--sp-4);font-size:var(--fs-sm);color:var(--accent-700);margin:var(--sp-3) 0 var(--sp-4);line-height:1.75}
+  .banner b{color:var(--accent-700)}
+
+  /* ===== ナビゲーション ===== */
+  nav.tabs{display:flex;gap:var(--sp-1);flex-wrap:wrap;margin:var(--sp-3) 0 var(--sp-4);
+    background:var(--n-0);border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--sp-1);box-shadow:var(--shadow-sm)}
+  nav.tabs button{border:0;background:transparent;color:var(--n-500);border-radius:var(--radius-sm);
+    padding:8px 16px;font-size:var(--fs-base);font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;
+    transition:background-color .15s ease,color .15s ease}
+  nav.tabs button:hover{background:var(--n-50);color:var(--n-700)}
+  nav.tabs button.active{background:var(--accent-500);color:#fff;box-shadow:var(--shadow-sm)}
+  nav.tabs button .tab-badge{background:var(--danger-500);color:#fff;border-radius:var(--radius-full);
+    font-size:10px;font-weight:700;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+  nav.tabs button.active .tab-badge{background:rgba(255,255,255,.35)}
+
+  /* ===== カード ===== */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);
+    padding:var(--sp-5);margin:var(--sp-3) 0;box-shadow:var(--shadow-sm)}
+  .card.elevated{box-shadow:var(--shadow-md)}
+  .card h2{font-size:var(--fs-md);margin:0 0 var(--sp-3);color:var(--n-900);font-weight:700;letter-spacing:-.01em;
+    display:flex;align-items:center;gap:8px}
+  .card h3{font-size:var(--fs-base);margin:var(--sp-3) 0 6px;color:var(--n-600);font-weight:700}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-3)}
   @media(max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
-  label{display:block;font-size:12px;color:var(--sub);margin:8px 0 3px}
+
+  /* ===== フォーム ===== */
+  label{display:block;font-size:var(--fs-xs);color:var(--n-500);font-weight:600;margin:var(--sp-2) 0 3px}
   input[type=text],input[type=date],input[type=number],input[type=url],textarea,select{
-    width:100%;border:1px solid #cdd6df;border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit;background:#fff;color:var(--ink)}
+    width:100%;border:1px solid var(--n-200);border-radius:var(--radius-sm);padding:8px 10px;
+    font-size:var(--fs-base);font-family:inherit;background:var(--n-0);color:var(--ink);
+    transition:border-color .15s ease,box-shadow .15s ease}
+  input:hover,textarea:hover,select:hover{border-color:var(--n-300)}
+  input:focus,textarea:focus,select:focus,button:focus-visible,a:focus-visible{
+    outline:none;border-color:var(--accent-500);box-shadow:var(--focus-ring)}
   textarea{min-height:64px;resize:vertical;line-height:1.6}
-  .helper{font-size:11.5px;color:var(--sub);margin-top:3px}
-  .row-list{border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:6px;background:#fbfcfe}
-  .row-item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:start}
+  .field-error input,.field-error textarea,.field-error select{border-color:var(--danger-500);background:var(--danger-50)}
+  .field-error-msg{color:var(--danger-600);font-size:var(--fs-xs);margin-top:3px;font-weight:600;display:flex;align-items:center;gap:4px}
+  .char-counter{font-size:var(--fs-2xs);color:var(--n-400);text-align:right;margin-top:2px} /* WCAG AA: n-300はコントラスト不足のためn-400を使用 */
+  .char-counter.near-limit{color:var(--warning-500)}
+  .helper{font-size:var(--fs-xs);color:var(--sub);margin-top:3px}
+  .row-list{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--sp-2);margin-top:6px;background:var(--n-25)}
+  .row-item{border:1px solid var(--line);border-radius:var(--radius-sm);padding:var(--sp-2) 10px;margin-bottom:var(--sp-2);
+    background:var(--n-0);display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:var(--sp-2);align-items:start}
   .row-item.seg{grid-template-columns:2fr 1fr auto}
   .row-item.ai{grid-template-columns:1fr 1fr 2fr auto}
   @media(max-width:760px){.row-item,.row-item.seg,.row-item.ai{grid-template-columns:1fr}}
-  button{border:0;border-radius:8px;cursor:pointer;font-size:12.5px;padding:7px 12px;font-family:inherit}
-  button.primary{background:var(--blue);color:#fff}
-  button.ghost{background:#eef2fd;color:#2b3ea8}
-  button.danger{background:#fdeeee;color:var(--red)}
-  button.add{background:#eafaf3;color:var(--green);margin-top:6px}
-  button.small{padding:4px 9px;font-size:11.5px}
-  button:disabled{opacity:.45;cursor:not-allowed}
-  table{border-collapse:collapse;width:100%;font-size:12.5px}
-  th,td{border:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
-  th{background:#eaeefb;text-align:center}
+
+  /* ===== ボタン ===== */
+  button{border:0;border-radius:var(--radius-sm);cursor:pointer;font-size:var(--fs-sm);
+    padding:9px 16px;font-family:inherit;font-weight:600;transition:filter .12s ease,transform .06s ease,background-color .15s ease}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--accent-500);color:#fff;box-shadow:var(--shadow-sm)}
+  button.primary:hover{background:var(--accent-600)}
+  button.ghost{background:var(--n-0);color:var(--n-600);border:1px solid var(--n-200)}
+  button.ghost:hover{background:var(--n-50);border-color:var(--n-300)}
+  button.danger{background:var(--danger-50);color:var(--danger-600)}
+  button.danger:hover{background:#fde2e2}
+  button.add{background:var(--success-50);color:var(--success-600);margin-top:6px}
+  button.add:hover{background:#dcf7ec}
+  button.small{padding:5px 11px;font-size:var(--fs-xs)}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  button.is-loading{position:relative;color:transparent!important;pointer-events:none}
+  button.is-loading::after{content:"";position:absolute;top:50%;left:50%;width:14px;height:14px;margin:-7px 0 0 -7px;
+    border-radius:50%;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;animation:btn-spin .6s linear infinite}
+  button.ghost.is-loading::after{border-color:rgba(51,65,85,.25);border-top-color:var(--n-600)}
+  @keyframes btn-spin{to{transform:rotate(360deg)}}
+
+  /* ===== テーブル ===== */
+  table{border-collapse:collapse;width:100%;font-size:var(--fs-sm)}
+  th,td{border:1px solid var(--line);padding:9px 8px;text-align:left;vertical-align:top}
+  th{background:var(--n-50);text-align:center;color:var(--n-600);font-weight:700;font-size:var(--fs-xs);
+    text-transform:uppercase;letter-spacing:.03em}
+  tbody tr:hover{background:var(--n-25)}
   td.center,th.center{text-align:center}
-  .badge{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:bold;color:#fff}
-  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
-  .kpi{flex:1;min-width:140px;background:#f6f8ff;border-radius:10px;padding:12px;text-align:center}
-  .kpi .v{font-size:21px;font-weight:bold;color:var(--blue)}
-  .kpi .l{font-size:11px;color:#667;margin-top:2px}
-  .barrow{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12.5px}
-  .barrow .name{width:190px;flex-shrink:0}
-  .barrow .track{flex:1;background:#eef1f5;border-radius:6px;height:16px;overflow:hidden}
-  .barrow .fill{height:16px;border-radius:6px}
-  .barrow .num{width:90px;text-align:right;flex-shrink:0;color:#555}
-  .insight-list{margin:0;padding-left:18px;font-size:13px;line-height:1.9}
-  .insight-list li{margin-bottom:4px}
-  .toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:6px}
-  .toolcard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fbfcfe}
-  .toolcard a{color:var(--blue);font-weight:bold;font-size:13px;text-decoration:none}
-  .toolcard .note{font-size:11.5px;color:var(--sub);margin-top:3px}
-  .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px}
+  .badge{display:inline-block;border-radius:var(--radius-full);padding:3px 10px;font-size:var(--fs-2xs);font-weight:700;color:#fff;letter-spacing:.01em}
+
+  /* ===== KPI ===== */
+  .kpis{display:flex;gap:var(--sp-3);flex-wrap:wrap;margin-top:6px}
+  .kpi{flex:1;min-width:150px;background:var(--n-25);border:1px solid var(--line);border-radius:var(--radius-md);
+    padding:var(--sp-3) var(--sp-3);text-align:left;display:flex;flex-direction:column;gap:2px}
+  .kpi .kpi-top{display:flex;align-items:center;justify-content:space-between}
+  .kpi .v{font-size:24px;font-weight:800;color:var(--n-900);letter-spacing:-.02em;line-height:1.1}
+  .kpi .l{font-size:var(--fs-2xs);color:var(--n-400);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .kpi .trend{font-size:var(--fs-2xs);font-weight:700;border-radius:var(--radius-full);padding:1px 7px;display:inline-flex;align-items:center;gap:2px}
+  .kpi .trend.good{color:var(--success-600);background:var(--success-50)}
+  .kpi .trend.bad{color:var(--danger-600);background:var(--danger-50)}
+  .kpi .trend.neutral{color:var(--n-400);background:var(--n-100)}
+
+  .barrow{display:flex;align-items:center;gap:var(--sp-2);margin:7px 0;font-size:var(--fs-sm)}
+  .barrow .name{width:190px;flex-shrink:0;color:var(--n-600)}
+  .barrow .track{flex:1;background:var(--n-100);border-radius:var(--radius-sm);height:14px;overflow:hidden}
+  .barrow .fill{height:14px;border-radius:var(--radius-sm);transition:width .4s ease}
+  .barrow .num{width:96px;text-align:right;flex-shrink:0;color:var(--n-500);font-variant-numeric:tabular-nums}
+  .insight-list{margin:0;padding-left:0;font-size:var(--fs-base);line-height:1.9;list-style:none}
+  .insight-list li{margin-bottom:8px;padding-left:22px;position:relative}
+  .insight-list li::before{content:"";position:absolute;left:2px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--accent-500)}
+  .toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:var(--sp-2);margin-top:6px}
+  .toolcard{border:1px solid var(--line);border-radius:var(--radius-md);padding:10px 12px;background:var(--n-0);
+    transition:box-shadow .15s ease,border-color .15s ease}
+  .toolcard:hover{box-shadow:var(--shadow-sm);border-color:var(--n-200)}
+  .toolcard a{color:var(--accent-600);font-weight:700;font-size:var(--fs-base);text-decoration:none}
+  .toolcard .note{font-size:var(--fs-xs);color:var(--sub);margin-top:3px}
+  .filterbar{display:flex;gap:var(--sp-2);flex-wrap:wrap;align-items:end;margin-bottom:var(--sp-3)}
   .filterbar > div{min-width:140px}
-  .empty{color:var(--sub);font-size:13px;text-align:center;padding:24px 0}
-  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
-  .note-box{background:#fff8e1;border:1px solid #f0d98a;border-radius:10px;padding:9px 13px;font-size:12px;color:#7a5b00;margin:8px 0}
-  .verdict-hint{font-size:11.5px;color:var(--sub);margin-top:4px}
-  .segstats{display:flex;gap:6px;flex-wrap:wrap;font-size:11.5px;margin-top:6px}
-  .segstats span{background:#eef1f5;border-radius:999px;padding:2px 9px}
-  .save-status{font-size:12px;color:var(--green);margin-left:8px}
-  footer.refs{font-size:11.5px;color:var(--sub);line-height:1.9;margin-top:20px}
-  footer.refs a{color:var(--blue)}
-  .svg-chart text{font-size:10px;fill:#667}
+  .empty{color:var(--sub);font-size:var(--fs-base);text-align:center;padding:40px 20px;display:flex;flex-direction:column;align-items:center;gap:10px}
+  .empty svg{opacity:.55}
+  .empty .empty-title{color:var(--n-600);font-weight:700;font-size:var(--fs-md)}
+  .toolbar{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin:6px 0;align-items:center}
+  /* D10: position:sticky は「最後の要素」だと機能しない(スクロール余地が無いため)ので、
+     ビューポート基準で常に見える position:fixed のフローティングバーにする。 */
+  .sticky-toolbar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
+    width:calc(100% - 32px);max-width:1088px;background:var(--n-0);border:1px solid var(--line);border-radius:var(--radius-md);
+    padding:10px 14px;box-shadow:var(--shadow-lg);z-index:400}
+  .sticky-toolbar-spacer{height:64px}
+  @media(max-width:640px){.sticky-toolbar{bottom:70px;width:calc(100% - 16px)}}
+  @media print{.sticky-toolbar{display:none!important}}
+  .note-box{background:var(--warning-50);border:1px solid #f6dfa8;border-radius:var(--radius-md);padding:10px 14px;
+    font-size:var(--fs-sm);color:var(--warning-600);margin:var(--sp-2) 0;display:flex;gap:8px;align-items:flex-start}
+  .verdict-hint{font-size:var(--fs-xs);color:var(--sub);margin-top:6px;line-height:1.7}
+  .segstats{display:flex;gap:6px;flex-wrap:wrap;font-size:var(--fs-xs);margin-top:6px}
+  .segstats span{background:var(--n-100);border-radius:var(--radius-full);padding:2px 10px;color:var(--n-600);font-weight:600}
+  footer.refs{font-size:var(--fs-xs);color:var(--sub);line-height:1.9;margin-top:var(--sp-6)}
+  footer.refs a{color:var(--accent-600)}
+  .svg-chart text{font-size:10px;fill:var(--n-400)}
   .printonly{display:none}
   .trialmark{display:none}
-  .licensebar{border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;line-height:1.8}
-  .licensebar.valid{background:#e7f7ef;border:1px solid #b6e3cc;color:#0f5c3f}
-  .licensebar.trial{background:#fff8e6;border:2px solid #f0c86a;color:#7a5b00}
+
+  /* ===== ライセンスバー ===== */
+  .licensebar{border-radius:var(--radius-md);padding:10px 14px;margin:0 0 var(--sp-3);font-size:var(--fs-sm);
+    display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;line-height:1.8}
+  .licensebar.valid{background:var(--success-50);border:1px solid #b6e3cc;color:var(--success-600)}
+  .licensebar.trial{background:var(--warning-50);border:1.5px solid #f0c86a;color:var(--warning-600)}
   .licensebar input{width:auto;display:inline-block}
-  .licensebar .lic-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;width:100%}
-  .licensebar .lic-msg{color:var(--red);font-size:12px;width:100%}
-  .actionbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
-  .evidence-badge{display:inline-block;background:#eef1f5;border-radius:999px;padding:3px 10px;font-size:11.5px;color:#556;margin-left:8px}
-  .axis-table td,.axis-table th{font-size:12px}
-  .history-list{font-size:12px;color:var(--sub);margin-top:6px;padding-left:16px}
-  .draft-recover{background:#fff8e1;border:1px solid #f0d98a;border-radius:10px;padding:10px 13px;font-size:12.5px;color:#7a5b00;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .save-error-banner{background:#fdeeee;border:2px solid #e0a0a0;border-radius:10px;padding:10px 14px;font-size:13px;color:var(--red);margin:8px 0;font-weight:bold}
-  .share-box{background:#eef4fb;border:1px solid #cfe0f5;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12.5px}
-  .share-box code{background:#fff;border:1px solid #d8e0fb;border-radius:5px;padding:2px 6px;font-size:11.5px}
+  .licensebar .lic-form{display:flex;gap:var(--sp-2);flex-wrap:wrap;align-items:center;margin-top:8px;width:100%}
+  .licensebar .lic-msg{color:var(--danger-600);font-size:var(--fs-sm);width:100%}
+  .actionbar{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin:var(--sp-2) 0}
+  .evidence-badge{display:inline-block;background:var(--n-100);border-radius:var(--radius-full);padding:3px 10px;
+    font-size:var(--fs-xs);color:var(--n-600);margin-left:8px;font-weight:600}
+  .axis-table td,.axis-table th{font-size:var(--fs-sm)}
+  .history-list{font-size:var(--fs-sm);color:var(--sub);margin-top:6px;padding-left:16px}
+  .draft-recover{background:var(--warning-50);border:1px solid #f0d98a;border-radius:var(--radius-md);padding:10px 13px;
+    font-size:var(--fs-sm);color:var(--warning-600);margin-bottom:var(--sp-2);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .save-error-banner{background:var(--danger-50);border:2px solid #f0b4b4;border-radius:var(--radius-md);padding:10px 14px;
+    font-size:var(--fs-base);color:var(--danger-600);margin:var(--sp-2) 0;font-weight:700}
+  .share-box{background:var(--accent-50);border:1px solid var(--accent-100);border-radius:var(--radius-md);padding:10px 14px;
+    margin-top:var(--sp-2);font-size:var(--fs-sm)}
+  .share-box code{background:var(--n-0);border:1px solid var(--accent-100);border-radius:5px;padding:2px 6px;font-size:var(--fs-xs)}
+
+  /* ===== トースト通知 ===== */
+  #toast-root{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:10000;
+    display:flex;flex-direction:column;gap:8px;align-items:center;width:100%;max-width:420px;padding:0 16px;pointer-events:none}
+  .toast{pointer-events:auto;background:var(--n-900);color:#fff;border-radius:var(--radius-md);padding:11px 14px;
+    font-size:var(--fs-sm);box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:10px;width:100%;
+    animation:toast-in .18s ease-out}
+  .toast.success{background:var(--success-600)} .toast.danger{background:var(--danger-600)} .toast.warning{background:var(--warning-600)}
+  .toast .toast-msg{flex:1}
+  .toast button{background:rgba(255,255,255,.16);color:#fff;padding:4px 10px;font-size:var(--fs-2xs)}
+  .toast button:hover{background:rgba(255,255,255,.28)}
+  .toast.leaving{animation:toast-out .18s ease-in forwards}
+  @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes toast-out{to{opacity:0;transform:translateY(8px)}}
+
   @media(max-width:640px){
-    body{padding:12px} .kpi{min-width:110px}
-    table{display:block;overflow-x:auto;white-space:nowrap;font-size:12px}
+    body{padding:var(--sp-3) var(--sp-3) 76px} .kpi{min-width:110px}
+    table{display:block;overflow-x:auto;white-space:nowrap;font-size:var(--fs-sm)}
     .barrow .name{width:120px}
+    /* ボトムナビ化: 親指操作しやすい位置に固定 */
+    nav.tabs{position:fixed;left:8px;right:8px;bottom:8px;margin:0;z-index:500;box-shadow:var(--shadow-lg)}
+    nav.tabs button{flex:1;justify-content:center;padding:10px 6px;font-size:var(--fs-xs)}
+    nav.tabs button span.tab-label{display:none}
+    #toast-root{bottom:78px}
   }
   @media print{
     body{background:#fff!important;padding:0!important}
-    nav.tabs,.noprint,.banner,.filterbar,button{display:none!important}
+    nav.tabs,.noprint,.banner,.filterbar,button,#toast-root{display:none!important}
     .card{box-shadow:none!important;border:1px solid #ccc!important;break-inside:avoid;page-break-inside:avoid}
     #print-root{display:none}
     body.print-mode #app{display:none!important}
@@ -113,11 +234,19 @@
       font-size:74px;color:rgba(192,57,43,.14);font-weight:bold;letter-spacing:12px;
       transform:rotate(-24deg);pointer-events:none;z-index:9999}
   }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🔎 ファクトチェック・ダッシュボード</h1>
+  <h1>
+    <span class="brandmark" style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent-500),var(--accent-700));color:#fff;flex-shrink:0">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><polyline points="8.5 11 10.2 12.7 13.5 9" stroke-width="1.8"></polyline></svg>
+    </span>
+    ファクトチェック・ダッシュボード
+  </h1>
   <div class="sub">テキスト / 画像 / 音声 / 映像 の主張を、標準的な検証手順に沿って記録・集計します</div>
 
   <div id="license-bar" class="noprint"></div>
@@ -142,18 +271,59 @@
 
 <div id="print-root"></div>
 <div id="print-stamp" class="printonly"></div>
+<div id="toast-root" class="noprint" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <script>
 'use strict';
+
+/* ============================= アイコン(インラインSVG) =============================
+ * 絵文字は環境によって見た目が大きく揺れる(プラットフォームごとのフォント差)ため、
+ * プロフェッショナル向けの一貫した見た目にするためインラインSVGアイコンに統一する。
+ * 外部アイコンフォント/CDNには依存しない(オフライン動作を維持するため)。
+ */
+var ICON_PATHS = {
+  search: '<circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>',
+  edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>',
+  list: '<line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line>',
+  chart: '<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>',
+  book: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>',
+  fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>',
+  mic: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line>',
+  film: '<rect x="2" y="2" width="20" height="20" rx="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line>',
+  alert: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>',
+  check: '<polyline points="20 6 9 17 4 12"></polyline>',
+  checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>',
+  unlock: '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path>',
+  printer: '<polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect>',
+  save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>',
+  refresh: '<polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>',
+  send: '<line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>',
+  scale: '<path d="M12 3v18"></path><path d="M4 8h16"></path><path d="M12 3l-3.2 5h6.4z"></path><path d="M6 8l-4 8a4 4 0 0 0 8 0z"></path><path d="M18 8l-4 8a4 4 0 0 0 8 0z"></path>',
+  trash: '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
+  info: '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>',
+  inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>'
+};
+function icon(name, size, extraClass){
+  size = size || 16;
+  var body = ICON_PATHS[name] || ICON_PATHS.info;
+  return '<svg class="icon' + (extraClass ? ' ' + extraClass : '') + '" width="' + size + '" height="' + size +
+    '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    body + '</svg>';
+}
 
 /* ============================= 定数 ============================= */
 var STORAGE_KEY = 'fc_dashboard_v1';
 
 var MEDIA_TYPES = [
-  {id:'text', label:'テキスト', icon:'📝'},
-  {id:'image', label:'画像', icon:'🖼️'},
-  {id:'audio', label:'音声', icon:'🎙️'},
-  {id:'video', label:'映像', icon:'🎬'}
+  {id:'text', label:'テキスト', icon:'fileText'},
+  {id:'image', label:'画像', icon:'image'},
+  {id:'audio', label:'音声', icon:'mic'},
+  {id:'video', label:'映像', icon:'film'}
 ];
 
 var SOURCE_CATEGORIES = [
@@ -281,16 +451,127 @@ state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:''};
 state.saveError = '';
 state.pendingRecovery = null; // 起動時に見つかった未保存下書き(あれば)。init 末尾で設定する
 
+/* ============================= スキーマバージョニング / 正規化 =============================
+ * このツールは何度か機能追加でデータ構造が増えている(archiveUrl, history 等)。
+ * localStorageの中身は「ユーザーが昔保存したバージョンのまま」残り続けるため、
+ * 読み込み時(loadState/JSONインポート/サーバー共有からの読み込み)には必ず
+ * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
+ * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
+ */
+var SCHEMA_VERSION = 2;
+function pickEnum(list, value, fallback){
+  return list.some(function(o){ return o.id === value; }) ? value : fallback;
+}
+function normalizeSegment(s){
+  s = s || {};
+  return {rid: s.rid || uid(), text: typeof s.text === 'string' ? s.text : '', tag: pickEnum(SEGMENT_TAGS, s.tag, 'fact')};
+}
+function normalizeCrossCheck(c){
+  c = c || {};
+  return {rid: c.rid || uid(), outlet: typeof c.outlet === 'string' ? c.outlet : '', url: typeof c.url === 'string' ? c.url : '',
+    result: pickEnum(RESULT_OPTIONS, c.result, ''), note: typeof c.note === 'string' ? c.note : ''};
+}
+function normalizeAiCheck(a){
+  a = a || {};
+  return {rid: a.rid || uid(), tool: pickEnum(AI_TOOL_OPTIONS, a.tool, 'chatgpt'),
+    stance: pickEnum(STANCE_OPTIONS, a.stance, ''), note: typeof a.note === 'string' ? a.note : ''};
+}
+function normalizeToolCheck(t){
+  t = t || {};
+  return {rid: t.rid || uid(), service: typeof t.service === 'string' ? t.service : '',
+    finding: pickEnum(TOOL_FINDING_OPTIONS, t.finding, ''), note: typeof t.note === 'string' ? t.note : ''};
+}
+function normalizeCheckResult(obj, extraKey){
+  obj = obj || {};
+  var out = {result: pickEnum(RESULT_OPTIONS, obj.result, ''), note: typeof obj.note === 'string' ? obj.note : '',
+    link: typeof obj.link === 'string' ? obj.link : ''};
+  out[extraKey] = typeof obj[extraKey] === 'string' ? obj[extraKey] : '';
+  return out;
+}
+function normalizeItem(raw){
+  raw = raw || {};
+  var nowIso = new Date().toISOString();
+  return {
+    id: (typeof raw.id === 'string' && raw.id) || uid(),
+    createdAt: (typeof raw.createdAt === 'string' && raw.createdAt) || nowIso,
+    updatedAt: (typeof raw.updatedAt === 'string' && raw.updatedAt) || (typeof raw.createdAt === 'string' && raw.createdAt) || nowIso,
+    mediaType: pickEnum(MEDIA_TYPES, raw.mediaType, 'text'),
+    sourceCategory: pickEnum(SOURCE_CATEGORIES, raw.sourceCategory, 'other'),
+    claimTitle: typeof raw.claimTitle === 'string' ? raw.claimTitle : '',
+    claimText: typeof raw.claimText === 'string' ? raw.claimText : '',
+    sourceUrl: typeof raw.sourceUrl === 'string' ? raw.sourceUrl : '',
+    archiveUrl: typeof raw.archiveUrl === 'string' ? raw.archiveUrl : '',
+    collectedAt: typeof raw.collectedAt === 'string' ? raw.collectedAt : '',
+    segments: Array.isArray(raw.segments) ? raw.segments.map(normalizeSegment) : [],
+    officialCheck: normalizeCheckResult(raw.officialCheck, 'agency'),
+    primaryCheck: normalizeCheckResult(raw.primaryCheck, 'sourceType'),
+    crossChecks: Array.isArray(raw.crossChecks) ? raw.crossChecks.map(normalizeCrossCheck) : [],
+    aiChecks: Array.isArray(raw.aiChecks) ? raw.aiChecks.map(normalizeAiCheck) : [],
+    toolChecks: Array.isArray(raw.toolChecks) ? raw.toolChecks.map(normalizeToolCheck) : [],
+    verdict: pickEnum(VERDICTS, raw.verdict, ''),
+    summary: typeof raw.summary === 'string' ? raw.summary : '',
+    reviewer: typeof raw.reviewer === 'string' ? raw.reviewer : '',
+    history: Array.isArray(raw.history) ? raw.history : []
+  };
+}
+function normalizeWeights(raw){
+  // 呼び出しタイミング(起動直後のloadState()等)によっては他のvar初期化がまだ済んでいない
+  // ことがあるため、外部の配列変数に依存せずキー一覧をこの関数内に直接持つ。
+  var keys = ['official','primary','cross','ai','tool'];
+  var out = {};
+  keys.forEach(function(k){
+    var v = raw && Number(raw[k]);
+    out[k] = (v != null && !isNaN(v) && v >= 0) ? v : DEFAULT_WEIGHTS[k];
+  });
+  return out;
+}
+
+/* ============================= localStorage 一元化ラッパー (I2) =============================
+ * これまで各所で個別に try/catch を書いていた localStorage 呼び出しを一本化する。
+ * プライベートブラウジング(Safari等)や容量超過等、どの理由であれ失敗時は
+ * 例外を投げずに安全な既定値を返す。
+ */
+function storageGetJSON(key, fallback){
+  try{
+    var raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  }catch(e){
+    console.warn('[storage] 読み込みに失敗しました: ' + key, e);
+    return fallback;
+  }
+}
+function storageSetJSON(key, value){
+  try{
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  }catch(e){
+    console.warn('[storage] 書き込みに失敗しました: ' + key, e);
+    return false;
+  }
+}
+function storageRemove(key){
+  try{ localStorage.removeItem(key); return true; }
+  catch(e){ console.warn('[storage] 削除に失敗しました: ' + key, e); return false; }
+}
+
 function loadState(){
   try{
     var raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  }catch(e){}
+    if (raw){
+      var parsed = JSON.parse(raw);
+      return {
+        items: Array.isArray(parsed.items) ? parsed.items.map(normalizeItem) : [],
+        weights: normalizeWeights(parsed.weights)
+      };
+    }
+  }catch(e){
+    console.error('保存データの読み込みに失敗しました。破損している可能性があるため初期状態で起動します。', e);
+  }
   return {items:[], weights: Object.assign({}, DEFAULT_WEIGHTS)};
 }
 function persist(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({items: state.items, weights: state.weights}));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({schemaVersion: SCHEMA_VERSION, items: state.items, weights: state.weights}));
     if (state.saveError){ state.saveError = ''; renderSaveErrorBanner(); }
   }catch(e){
     state.saveError = '保存に失敗しました(ブラウザのストレージ容量が上限に達している可能性があります)。今すぐ「チェック一覧」からJSONエクスポートしてバックアップしてください。';
@@ -304,18 +585,15 @@ function renderSaveErrorBanner(){
 }
 function persistDraft(){
   if (!state.draft) return;
-  try{
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({at: new Date().toISOString(), editingId: state.editingId, draft: state.draft}));
-  }catch(e){ /* 下書きの自動保存失敗は致命的ではないため無視(本保存は別途ガードあり) */ }
+  // 下書きの自動保存失敗は致命的ではない(本保存時は別途ガード・トーストがある)ため、
+  // 戻り値(成功/失敗)は無視して良い。
+  storageSetJSON(DRAFT_KEY, {at: new Date().toISOString(), editingId: state.editingId, draft: state.draft});
 }
 function loadDraftBackup(){
-  try{
-    var raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? JSON.parse(raw) : null;
-  }catch(e){ return null; }
+  return storageGetJSON(DRAFT_KEY, null);
 }
 function clearDraftBackup(){
-  try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
+  storageRemove(DRAFT_KEY);
 }
 
 /* ============================= 試用版/正規版ライセンス =============================
@@ -354,10 +632,7 @@ function licVerify(company, tool, key){
   return licNormalize(key) === licNormalize(licGenerate(company, tool));
 }
 function licLoad(){
-  try{
-    var s = localStorage.getItem('fcd_license');
-    return s ? JSON.parse(s) : null;
-  }catch(e){ return null; }
+  return storageGetJSON('fcd_license', null);
 }
 function licValid(){
   var l = licLoad();
@@ -457,6 +732,44 @@ function fallbackCopy(text){
   ta.value = text; document.body.appendChild(ta); ta.select();
   try{ document.execCommand('copy'); }catch(e){}
   document.body.removeChild(ta);
+}
+
+/* ============================= トースト通知 =============================
+ * flashStatus()等の場当たり的なテキスト書き換えに代えて、統一的な通知UIを提供する。
+ * #toast-root は role="status" aria-live="polite" を持つため、スクリーンリーダーにも通知される。
+ * 危険操作(全件削除・登録解除等)は actionLabel/onAction で「元に戻す」を出せる。
+ */
+function toast(message, opts){
+  opts = opts || {};
+  var root = document.getElementById('toast-root');
+  if (!root) { return { dismiss: function(){} }; }
+  var el = document.createElement('div');
+  el.className = 'toast' + (opts.type ? ' ' + opts.type : '');
+  var msgSpan = document.createElement('span');
+  msgSpan.className = 'toast-msg';
+  msgSpan.textContent = message;
+  el.appendChild(msgSpan);
+  var timer = null;
+  function dismiss(){
+    if (timer) clearTimeout(timer);
+    if (!el.parentNode) return;
+    el.classList.add('leaving');
+    setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 200);
+  }
+  if (opts.actionLabel && typeof opts.onAction === 'function'){
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = opts.actionLabel;
+    btn.addEventListener('click', function(){
+      opts.onAction();
+      dismiss();
+    });
+    el.appendChild(btn);
+  }
+  root.appendChild(el);
+  var duration = opts.duration != null ? opts.duration : (opts.actionLabel ? 6000 : 3200);
+  if (duration > 0) timer = setTimeout(dismiss, duration);
+  return { dismiss: dismiss };
 }
 
 /* ============================= スコアリング ============================= */
@@ -564,16 +877,24 @@ function cloneItem(it){ return JSON.parse(JSON.stringify(it)); }
 
 /* ============================= レンダリング: 共通 ============================= */
 var TABS = [
-  {id:'new', label:'✏️ 新規/編集'},
-  {id:'list', label:'📋 チェック一覧'},
-  {id:'dashboard', label:'📊 ダッシュボード'},
-  {id:'guide', label:'📚 ガイド・参考ツール'}
+  {id:'new', label:'新規/編集', icon:'edit'},
+  {id:'list', label:'チェック一覧', icon:'list'},
+  {id:'dashboard', label:'ダッシュボード', icon:'chart'},
+  {id:'guide', label:'ガイド・参考ツール', icon:'book'}
 ];
+
+function needsAttentionCount(){
+  var FINAL = ['true','mostly_true','mixed','false'];
+  return state.items.filter(function(it){ return FINAL.indexOf(it.verdict) > -1 && !hasAnyEvidence(it); }).length;
+}
 
 function renderTabs(){
   var el = document.getElementById('tabs');
+  var attn = needsAttentionCount();
   el.innerHTML = TABS.map(function(t){
-    return '<button data-tab="' + t.id + '" class="' + (state.activeTab === t.id ? 'active' : '') + '">' + t.label + '</button>';
+    var badge = (t.id === 'list' && attn > 0) ? '<span class="tab-badge" title="根拠なしで確定判定になっている案件">' + attn + '</span>' : '';
+    return '<button data-tab="' + t.id + '" class="' + (state.activeTab === t.id ? 'active' : '') + '">' +
+      icon(t.icon, 15) + '<span class="tab-label">' + esc(t.label) + '</span>' + badge + '</button>';
   }).join('');
   el.querySelectorAll('button').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -587,7 +908,7 @@ function renderTabs(){
 function renderFooter(){
   var el = document.getElementById('app-footer');
   var refHtml = GUIDE_LINKS.map(function(g){
-    return '<div><a href="' + esc(g.url) + '" target="_blank" rel="noopener">' + esc(g.label) + '</a></div>';
+    return '<div><a href="' + esc(g.url) + '" target="_blank" rel="noopener noreferrer">' + esc(g.label) + '</a></div>';
   }).join('');
   var consent = loadConsent();
   el.innerHTML =
@@ -599,8 +920,8 @@ function renderFooter(){
     '本ツールの利用(算出結果の公表を含む)により生じた損害について、当社は責任を負いかねます。詳細は' +
     '<a href="#" id="footer-terms-link">本ツール固有の利用条件</a>をご確認ください' +
     (consent ? '(同意日: ' + esc(fmtDate(consent.at)) + ')' : '(未同意)') + '。</div>' +
-    '<div style="margin-top:6px"><a href="' + esc(LEGAL_TERMS_URL) + '" target="_blank" rel="noopener" style="margin-right:14px">利用規約(共通ひな形)</a>' +
-    '<a href="' + esc(LEGAL_PRIVACY_URL) + '" target="_blank" rel="noopener">プライバシーポリシー(共通ひな形)</a>' +
+    '<div style="margin-top:6px"><a href="' + esc(LEGAL_TERMS_URL) + '" target="_blank" rel="noopener noreferrer" style="margin-right:14px">利用規約(共通ひな形)</a>' +
+    '<a href="' + esc(LEGAL_PRIVACY_URL) + '" target="_blank" rel="noopener noreferrer">プライバシーポリシー(共通ひな形)</a>' +
     '<div class="helper" style="margin-top:2px">↑ 上記2リンクは姉妹ツールと共通のひな形であり、ファクトチェック業務特有のリスクを個別に想定した条項ではありません。</div></div>' +
     '<div style="margin-top:10px"><b>参考資料</b></div>' + refHtml;
   var link = document.getElementById('footer-terms-link');
@@ -618,28 +939,38 @@ function renderLicenseBar(){
   if (valid){
     el.innerHTML =
       '<div class="licensebar valid">' +
-      '<span>✅ <b>正規版</b>　ご契約者：' + esc(lic.company) + ' 様</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px">' + icon('checkCircle', 15) + '<b>正規版</b>　ご契約者：' + esc(lic.company) + ' 様</span>' +
       '<span style="flex:1"></span>' +
       '<button class="ghost small" id="lic-release">登録を解除</button>' +
       '</div>';
     document.getElementById('lic-release').addEventListener('click', function(){
       if (!confirm('この端末での正規版登録を解除します。よろしいですか？')) return;
-      try{ localStorage.removeItem('fcd_license'); }catch(e){}
+      var backupLic = lic;
+      storageRemove('fcd_license');
       renderLicenseBar();
+      toast('正規版登録を解除しました。', {
+        type: 'warning',
+        actionLabel: '元に戻す',
+        onAction: function(){
+          storageSetJSON('fcd_license', backupLic);
+          renderLicenseBar();
+          toast('登録を元に戻しました。', {type:'success'});
+        }
+      });
     });
     return;
   }
   el.innerHTML =
     '<div class="licensebar trial">' +
     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;width:100%">' +
-    '<span>🔓 <b>試用版でご利用中です。</b>すべての機能をお試しいただけますが、印刷・PDFに「試用版」の表示が入り、サーバー共有はご利用いただけません。</span>' +
+    '<span style="display:inline-flex;align-items:center;gap:6px">' + icon('unlock', 15) + '<b>試用版でご利用中です。</b>すべての機能をお試しいただけますが、印刷・PDFに「試用版」の表示が入り、サーバー共有はご利用いただけません。</span>' +
     '<span style="flex:1"></span>' +
     '<button class="ghost small" id="lic-toggle">ライセンスキーを入力</button>' +
-    '<a href="' + esc(LEGAL_PRICING_URL) + '" target="_blank" rel="noopener" style="font-size:12.5px;color:#8a5a00">価格・お申し込み</a>' +
+    '<a href="' + esc(LEGAL_PRICING_URL) + '" target="_blank" rel="noopener noreferrer" style="font-size:12.5px;color:var(--warning-600)">価格・お申し込み</a>' +
     '</div>' +
     '<div id="lic-form" style="display:none" class="lic-form">' +
-    '<input type="text" id="lic-company" placeholder="会社名" style="width:210px" />' +
-    '<input type="text" id="lic-key" placeholder="XXXXX-XXXXX" style="width:160px;font-family:ui-monospace,monospace" />' +
+    '<input type="text" id="lic-company" aria-label="会社名" placeholder="会社名" style="width:210px" />' +
+    '<input type="text" id="lic-key" aria-label="ライセンスキー" placeholder="XXXXX-XXXXX" style="width:160px;font-family:ui-monospace,monospace" />' +
     '<button class="primary small" id="lic-apply">登録する</button>' +
     '<div class="lic-msg" id="lic-msg"></div>' +
     '</div>' +
@@ -652,7 +983,7 @@ function renderLicenseBar(){
     var company = document.getElementById('lic-company').value;
     var key = document.getElementById('lic-key').value;
     if (licVerify(company, STORE, key)){
-      try{ localStorage.setItem('fcd_license', JSON.stringify({company:company, key:key})); }catch(e){}
+      storageSetJSON('fcd_license', {company:company, key:key});
       renderLicenseBar();
     } else {
       document.getElementById('lic-msg').textContent = '会社名またはライセンスキーが一致しません。ご購入時にお送りした内容をそのまま入力してください。';
@@ -663,13 +994,12 @@ function renderLicenseBar(){
 function renderActionBar(){
   var el = document.getElementById('action-bar');
   el.innerHTML =
-    '<button class="ghost small" id="ab-print">🖨 このページを印刷/PDFで保存</button>' +
-    '<button class="ghost small" id="ab-copy-summary">📋 集計サマリーをコピー</button>';
+    '<button class="ghost small" id="ab-print">' + icon('printer', 14) + ' このページを印刷/PDFで保存</button>' +
+    '<button class="ghost small" id="ab-copy-summary">' + icon('copy', 14) + ' 集計サマリーをコピー</button>';
   document.getElementById('ab-print').addEventListener('click', function(){ window.print(); });
   document.getElementById('ab-copy-summary').addEventListener('click', function(){
     copyToClipboard(buildSummaryText());
-    var b = document.getElementById('ab-copy-summary');
-    var orig = b.textContent; b.textContent = '✅ コピーしました'; setTimeout(function(){ b.textContent = orig; }, 2500);
+    toast('集計サマリーをクリップボードにコピーしました。', {type:'success'});
   });
 }
 function buildSummaryText(){
@@ -701,7 +1031,7 @@ function renderDraftRecoverBanner(container){
   if (!backup) return;
   var box = document.createElement('div');
   box.className = 'draft-recover';
-  box.innerHTML = '💾 ' + fmtDateTime(backup.at) + ' 時点の未保存の下書きが見つかりました(前回、保存せずに終了した可能性があります)。 ' +
+  box.innerHTML = icon('save', 15) + ' ' + fmtDateTime(backup.at) + ' 時点の未保存の下書きが見つかりました(前回、保存せずに終了した可能性があります)。 ' +
     '<button class="ghost small" id="draft-restore">復元する</button>' +
     '<button class="ghost small" id="draft-discard">破棄する</button>';
   container.insertBefore(box, container.firstChild);
@@ -739,8 +1069,8 @@ function renderAll(){
 
 /* ============================= 新規/編集タブ ============================= */
 function renderConsentGate(app){
-  var html = '<div class="card">';
-  html += '<h2>⚠ ご利用前に必ずお読みください(本ツール固有の注意事項)</h2>';
+  var html = '<div class="card" role="region" aria-label="利用条件への同意">';
+  html += '<h2>' + icon('alert', 17) + ' ご利用前に必ずお読みください(本ツール固有の注意事項)</h2>';
   html += termsHtml();
   html += '<div style="margin-top:10px"><label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#223"><input type="checkbox" id="consent-checkbox" style="width:auto;margin-top:3px" /> 上記の内容を理解し、同意します。</label></div>';
   html += '<div class="toolbar"><button class="primary" id="consent-agree" disabled>同意して利用を開始</button></div>';
@@ -753,6 +1083,21 @@ function renderConsentGate(app){
     recordConsent();
     renderAll();
   });
+  // F6: 同意前は他タブへの興味を逸らさないよう、チェックボックスへ初期フォーカスし、
+  // Tabキーでの循環を「チェックボックス⇄同意ボタン」の2要素内に留める(簡易フォーカストラップ)。
+  // ※ この画面はモーダルオーバーレイではなく1タブ分のコンテンツ置き換えのため、
+  //   マウスでのタブ切り替え自体は制限していない(完全なモーダル化はスコープ外)。
+  checkbox.focus();
+  var focusables = [checkbox, agreeBtn];
+  app.addEventListener('keydown', function(e){
+    if (e.key !== 'Tab') return;
+    var idx = focusables.indexOf(document.activeElement);
+    if (e.shiftKey){
+      if (idx <= 0){ e.preventDefault(); focusables[focusables.length - 1].focus(); }
+    } else {
+      if (idx === -1 || idx === focusables.length - 1){ e.preventDefault(); focusables[0].focus(); }
+    }
+  });
 }
 
 function renderNewCheckTab(app){
@@ -762,14 +1107,15 @@ function renderNewCheckTab(app){
 
   var html = '';
   html += '<div class="card">';
-  html += '<h2>' + (isEdit ? '✏️ チェックを編集' : '✏️ 新規チェックを記録') + '</h2>';
+  html += '<h2>' + icon('edit', 17) + (isEdit ? ' チェックを編集' : ' 新規チェックを記録') + '</h2>';
   html += '<div class="note-box">個人の意見・感想・価値判断・未来予測はファクトチェックの対象外です。検証対象は「事実として提示されている言明」に限定してください。</div>';
   html += '<div class="grid2">';
   html += field('対象の種別', selectHtml('f-mediaType', MEDIA_TYPES, d.mediaType));
   html += field('情報源の区分', selectHtml('f-sourceCategory', SOURCE_CATEGORIES, d.sourceCategory));
   html += '</div>';
-  html += field('主張の要約(タイトル)', '<input type="text" id="f-claimTitle" value="' + esc(d.claimTitle) + '" placeholder="例: 〇〇氏「△△の予算は前年比2倍になった」と発言" />');
-  html += field('主張の本文・書き起こし', '<textarea id="f-claimText" placeholder="検証対象の発言・投稿・記事本文などをできるだけそのまま記録">' + esc(d.claimText) + '</textarea>');
+  html += field('主張の要約(タイトル)', '<input type="text" id="f-claimTitle" value="' + esc(d.claimTitle) + '" placeholder="例: 〇〇氏「△△の予算は前年比2倍になった」と発言" />', 'wrap-claimTitle');
+  html += field('主張の本文・書き起こし', '<textarea id="f-claimText" maxlength="4000" placeholder="検証対象の発言・投稿・記事本文などをできるだけそのまま記録">' + esc(d.claimText) + '</textarea>', 'wrap-claimText',
+    '<div class="char-counter" id="claimText-counter">' + d.claimText.length + ' / 4000</div>');
   html += '<div class="grid2">';
   html += field('出典URL', '<input type="url" id="f-sourceUrl" value="' + esc(d.sourceUrl) + '" placeholder="https://..." />');
   html += field('収集日', '<input type="date" id="f-collectedAt" value="' + esc(d.collectedAt) + '" />');
@@ -821,7 +1167,7 @@ function renderNewCheckTab(app){
   html += '<div class="card">';
   html += '<h2>⑤ AIツールでの参照(ChatGPT/Grok/Gemini/Claude)</h2>';
   html += '<div class="helper">各ツールに主張を貼り付けて確認した結果を記録します。AIの回答は<b>参考情報</b>であり、検証の代替にはなりません。</div>';
-  html += '<div class="toolbar"><button class="ghost small" id="btn-copy-prompt">📋 確認用プロンプトをコピー</button></div>';
+  html += '<div class="toolbar"><button class="ghost small" id="btn-copy-prompt">' + icon('copy', 14) + ' 確認用プロンプトをコピー</button></div>';
   html += '<div class="row-list" id="ai-list">' + d.aiChecks.map(aiRowHtml).join('') + '</div>';
   html += '<button class="add" data-add="aiChecks">＋ AIツールの参照を追加</button>';
   html += '</div>';
@@ -848,11 +1194,11 @@ function renderNewCheckTab(app){
   }
   html += '</div>';
 
-  html += '<div class="toolbar">';
-  html += '<button class="primary" id="btn-save">💾 保存</button>';
+  html += '<div class="sticky-toolbar-spacer noprint"></div>';
+  html += '<div class="toolbar sticky-toolbar noprint" id="save-toolbar">';
+  html += '<button class="primary" id="btn-save">' + icon('save', 15) + ' 保存</button>';
   if (isEdit) html += '<button class="ghost" id="btn-cancel">キャンセル</button>';
   html += '<button class="ghost" id="btn-reset">フォームをクリア</button>';
-  html += '<span class="save-status" id="save-status"></span>';
   html += '</div>';
 
   app.innerHTML = html;
@@ -885,8 +1231,33 @@ function verdictBlockHtml(d){
   return html;
 }
 
-function field(label, inner){
-  return '<div><label>' + esc(label) + '</label>' + inner + '</div>';
+function field(label, inner, wrapperId, extra){
+  // a11y(F1): inner に含まれる id="..." を自動検出して <label for="..."> を関連付ける。
+  // 呼び出し側で毎回 for を手書きする必要をなくし、付け忘れを防ぐ。
+  var idMatch = /\sid="([^"]+)"/.exec(inner);
+  var forAttr = idMatch ? ' for="' + esc(idMatch[1]) + '"' : '';
+  return '<div' + (wrapperId ? ' id="' + wrapperId + '"' : '') + '><label' + forAttr + '>' + esc(label) + '</label>' + inner + (extra || '') + '</div>';
+}
+/* フィールド単位のインラインバリデーション表示。wrapperId は field() の第3引数に対応する。 */
+function setFieldError(wrapperId, message){
+  var wrap = document.getElementById(wrapperId);
+  if (!wrap) return;
+  wrap.classList.add('field-error');
+  var msg = wrap.querySelector('.field-error-msg');
+  if (!msg){
+    msg = document.createElement('div');
+    msg.className = 'field-error-msg';
+    wrap.appendChild(msg);
+  }
+  msg.innerHTML = icon('alert', 13) + ' <span></span>';
+  msg.querySelector('span').textContent = message;
+}
+function clearFieldError(wrapperId){
+  var wrap = document.getElementById(wrapperId);
+  if (!wrap) return;
+  wrap.classList.remove('field-error');
+  var msg = wrap.querySelector('.field-error-msg');
+  if (msg) msg.remove();
 }
 function selectHtml(domId, list, current, allowEmpty){
   var opts = (allowEmpty ? [{id:'', label:'(未選択)'}] : []).concat(list);
@@ -894,14 +1265,22 @@ function selectHtml(domId, list, current, allowEmpty){
     return '<option value="' + esc(o.id) + '"' + (o.id === current ? ' selected' : '') + '>' + esc(o.label) + '</option>';
   }).join('') + '</select>';
 }
-function kpi(value, label){
-  return '<div class="kpi"><div class="v">' + esc(value) + '</div><div class="l">' + esc(label) + '</div></div>';
+function kpi(value, label, trend){
+  // trend: {arrow:'up'|'down'|'flat', sentiment:'good'|'bad'|'neutral', text:'...'} で前月比等を表示する(A8)。
+  // arrow は実際の増減方向、sentiment はその増減が「良いことか悪いことか」を指標ごとに判断して渡す
+  // (例: スコアの上昇はgood、誤り件数の上昇はbad)。
+  var trendHtml = '';
+  if (trend){
+    var arrowChar = trend.arrow === 'up' ? '▲' : trend.arrow === 'down' ? '▼' : '―';
+    trendHtml = '<span class="trend ' + esc(trend.sentiment || 'neutral') + '">' + arrowChar + ' ' + esc(trend.text) + '</span>';
+  }
+  return '<div class="kpi"><div class="kpi-top"><div class="v">' + esc(value) + '</div>' + trendHtml + '</div><div class="l">' + esc(label) + '</div></div>';
 }
 
 function segRowHtml(row){
   return '<div class="row-item seg" data-rid="' + row.rid + '" data-list="segments">' +
-    '<input type="text" data-field="text" value="' + esc(row.text) + '" placeholder="記述の抜粋" />' +
-    '<select data-field="tag">' + SEGMENT_TAGS.map(function(t){
+    '<input type="text" data-field="text" aria-label="記述の抜粋" value="' + esc(row.text) + '" placeholder="記述の抜粋" />' +
+    '<select data-field="tag" aria-label="事実/意見/推測の分類">' + SEGMENT_TAGS.map(function(t){
       return '<option value="' + t.id + '"' + (t.id === row.tag ? ' selected' : '') + '>' + esc(t.label) + '</option>';
     }).join('') + '</select>' +
     '<button class="danger small" data-remove="segments">削除</button>' +
@@ -909,34 +1288,34 @@ function segRowHtml(row){
 }
 function crossRowHtml(row){
   return '<div class="row-item" data-rid="' + row.rid + '" data-list="crossChecks">' +
-    '<input type="text" data-field="outlet" value="' + esc(row.outlet) + '" placeholder="メディア/媒体名" />' +
-    '<input type="url" data-field="url" value="' + esc(row.url) + '" placeholder="URL" />' +
-    '<select data-field="result">' + RESULT_OPTIONS.map(function(o){
+    '<input type="text" data-field="outlet" aria-label="メディア/媒体名" value="' + esc(row.outlet) + '" placeholder="メディア/媒体名" />' +
+    '<input type="url" data-field="url" aria-label="参照URL" value="' + esc(row.url) + '" placeholder="URL" />' +
+    '<select data-field="result" aria-label="照合結果">' + RESULT_OPTIONS.map(function(o){
       return '<option value="' + o.id + '"' + (o.id === row.result ? ' selected' : '') + '>' + esc(o.label) + '</option>';
     }).join('') + '</select>' +
     '<button class="danger small" data-remove="crossChecks">削除</button>' +
-    '<input type="text" data-field="note" value="' + esc(row.note) + '" placeholder="メモ" style="grid-column:1/4" />' +
+    '<input type="text" data-field="note" aria-label="メモ" value="' + esc(row.note) + '" placeholder="メモ" style="grid-column:1/4" />' +
   '</div>';
 }
 function aiRowHtml(row){
   return '<div class="row-item ai" data-rid="' + row.rid + '" data-list="aiChecks">' +
-    '<select data-field="tool">' + AI_TOOL_OPTIONS.map(function(o){
+    '<select data-field="tool" aria-label="AIツール名">' + AI_TOOL_OPTIONS.map(function(o){
       return '<option value="' + o.id + '"' + (o.id === row.tool ? ' selected' : '') + '>' + esc(o.label) + '</option>';
     }).join('') + '</select>' +
-    '<select data-field="stance">' + STANCE_OPTIONS.map(function(o){
+    '<select data-field="stance" aria-label="AIの見解">' + STANCE_OPTIONS.map(function(o){
       return '<option value="' + o.id + '"' + (o.id === row.stance ? ' selected' : '') + '>' + esc(o.label) + '</option>';
     }).join('') + '</select>' +
-    '<input type="text" data-field="note" value="' + esc(row.note) + '" placeholder="AIの回答要約" />' +
+    '<input type="text" data-field="note" aria-label="AIの回答要約" value="' + esc(row.note) + '" placeholder="AIの回答要約" />' +
     '<button class="danger small" data-remove="aiChecks">削除</button>' +
   '</div>';
 }
 function toolRowHtml(row){
   return '<div class="row-item ai" data-rid="' + row.rid + '" data-list="toolChecks">' +
-    '<input type="text" data-field="service" value="' + esc(row.service) + '" placeholder="ツール名(例: TinEye)" />' +
-    '<select data-field="finding">' + TOOL_FINDING_OPTIONS.map(function(o){
+    '<input type="text" data-field="service" aria-label="ツール名" value="' + esc(row.service) + '" placeholder="ツール名(例: TinEye)" />' +
+    '<select data-field="finding" aria-label="確認結果">' + TOOL_FINDING_OPTIONS.map(function(o){
       return '<option value="' + o.id + '"' + (o.id === row.finding ? ' selected' : '') + '>' + esc(o.label) + '</option>';
     }).join('') + '</select>' +
-    '<input type="text" data-field="note" value="' + esc(row.note) + '" placeholder="確認結果のメモ" />' +
+    '<input type="text" data-field="note" aria-label="確認結果のメモ" value="' + esc(row.note) + '" placeholder="確認結果のメモ" />' +
     '<button class="danger small" data-remove="toolChecks">削除</button>' +
   '</div>';
 }
@@ -971,6 +1350,15 @@ function bindNewCheckEvents(app){
       // 情報源確認/一次情報比較/最終判定が変わったら、判定スコア表示ブロックだけ更新する
       if (path.indexOf('officialCheck') === 0 || path.indexOf('primaryCheck') === 0 || path === 'verdict') {
         refreshVerdictBlock();
+      }
+      if (path === 'claimTitle') clearFieldError('wrap-claimTitle');
+      if (path === 'claimText'){
+        clearFieldError('wrap-claimText');
+        var counter = document.getElementById('claimText-counter');
+        if (counter){
+          counter.textContent = el.value.length + ' / 4000';
+          counter.classList.toggle('near-limit', el.value.length >= 3600);
+        }
       }
     });
   });
@@ -1028,13 +1416,18 @@ function bindNewCheckEvents(app){
   document.getElementById('btn-copy-prompt').addEventListener('click', function(){
     var prompt = buildFactCheckPrompt(d);
     copyToClipboard(prompt);
-    flashStatus('確認用プロンプトをコピーしました。AIツールに貼り付けて回答を記録してください。');
+    toast('確認用プロンプトをコピーしました。AIツールに貼り付けて回答を記録してください。', {type:'success'});
   });
 
   document.getElementById('btn-save').addEventListener('click', function(){
     if (!hasConsent()){ renderAll(); return; } // 念のための二重防御(通常はタブ自体がゲートされる)
+    clearFieldError('wrap-claimTitle');
+    clearFieldError('wrap-claimText');
     if (!d.claimText.trim() && !d.claimTitle.trim()){
-      flashStatus('主張のタイトルまたは本文を入力してください。', true);
+      setFieldError('wrap-claimTitle', '主張のタイトルまたは本文のどちらかを入力してください。');
+      setFieldError('wrap-claimText', '主張のタイトルまたは本文のどちらかを入力してください。');
+      document.getElementById('f-claimTitle').focus();
+      toast('必須項目が未入力です。赤枠の項目を確認してください。', {type:'danger'});
       return;
     }
     var FINAL_VERDICTS = ['true','mostly_true','mixed','false'];
@@ -1058,6 +1451,7 @@ function bindNewCheckEvents(app){
     }
     d.updatedAt = new Date().toISOString();
     var saved = cloneItem(d);
+    var wasEdit = existingIdx >= 0;
     if (existingIdx >= 0) state.items[existingIdx] = saved;
     else state.items.push(saved);
     persist();
@@ -1067,6 +1461,7 @@ function bindNewCheckEvents(app){
     state.pendingRecovery = null;
     state.activeTab = 'list';
     renderAll();
+    toast(wasEdit ? '変更を保存しました。' : '新しいチェックを保存しました。', {type:'success'});
   });
 
   var cancelBtn = document.getElementById('btn-cancel');
@@ -1093,12 +1488,6 @@ function bindNewCheckEvents(app){
   function refreshVerdictBlock(){
     var block = document.getElementById('verdict-block');
     if (block) block.innerHTML = verdictBlockHtml(d);
-  }
-  function flashStatus(msg, isError){
-    var el = document.getElementById('save-status');
-    el.style.color = isError ? 'var(--red)' : 'var(--green)';
-    el.textContent = msg;
-    setTimeout(function(){ if (el) el.textContent=''; }, 4000);
   }
 }
 
@@ -1133,22 +1522,22 @@ function buildFactCheckPrompt(item){
 function renderListTab(app){
   var html = '';
   html += '<div class="card">';
-  html += '<h2>📋 チェック一覧(' + state.items.length + '件)</h2>';
+  html += '<h2>' + icon('list', 17) + ' チェック一覧(' + state.items.length + '件)</h2>';
   html += '<div class="filterbar">';
   html += '<div>' + field('種別', selectHtml('filter-mediaType', [{id:'',label:'すべて'}].concat(MEDIA_TYPES), state.filter.mediaType)) + '</div>';
   html += '<div>' + field('出所区分', selectHtml('filter-sourceCategory', [{id:'',label:'すべて'}].concat(SOURCE_CATEGORIES), state.filter.sourceCategory)) + '</div>';
   html += '<div>' + field('判定', selectHtml('filter-verdict', [{id:'',label:'すべて'}].concat(VERDICTS), state.filter.verdict)) + '</div>';
-  html += '<div style="flex:2"><label>キーワード検索</label><input type="text" id="filter-q" value="' + esc(state.filter.q) + '" placeholder="主張タイトル・本文を検索" /></div>';
+  html += '<div style="flex:2"><label for="filter-q">キーワード検索</label><input type="text" id="filter-q" value="' + esc(state.filter.q) + '" placeholder="主張タイトル・本文を検索" /></div>';
   html += '</div>';
   html += '<div class="toolbar">';
-  html += '<button class="ghost small" id="btn-export-json">⬇ JSONエクスポート</button>';
-  html += '<button class="ghost small" id="btn-export-csv">⬇ CSVエクスポート</button>';
-  html += '<label class="ghost small" style="display:inline-block;padding:7px 12px;cursor:pointer">⬆ JSONインポート<input type="file" id="file-import" accept="application/json" style="display:none" /></label>';
-  html += '<button class="danger small" id="btn-clear-all">全件削除</button>';
+  html += '<button class="ghost small" id="btn-export-json">' + icon('download', 14) + ' JSONエクスポート</button>';
+  html += '<button class="ghost small" id="btn-export-csv">' + icon('download', 14) + ' CSVエクスポート</button>';
+  html += '<label class="ghost small" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;cursor:pointer">' + icon('upload', 14) + ' JSONインポート<input type="file" id="file-import" accept="application/json" style="display:none" /></label>';
+  html += '<button class="danger small" id="btn-clear-all">' + icon('trash', 14) + ' 全件削除</button>';
   html += '</div>';
   html += '<div id="list-table-wrap"></div>';
   html += '</div>';
-  html += '<div class="card"><h2>🔗 サーバー共有(複数人での閲覧・編集)</h2><div id="share-panel"></div></div>';
+  html += '<div class="card"><h2>' + icon('link', 17) + ' サーバー共有(複数人での閲覧・編集)</h2><div id="share-panel"></div></div>';
   app.innerHTML = html;
 
   ['filter-mediaType','filter-sourceCategory','filter-verdict'].forEach(function(id){
@@ -1163,7 +1552,8 @@ function renderListTab(app){
     renderListRows();
   });
   document.getElementById('btn-export-json').addEventListener('click', function(){
-    download('fact-check-export-' + Date.now() + '.json', JSON.stringify({items: state.items, weights: state.weights}, null, 2));
+    download('fact-check-export-' + Date.now() + '.json', JSON.stringify({schemaVersion: SCHEMA_VERSION, items: state.items, weights: state.weights}, null, 2));
+    toast('JSONファイルをダウンロードしました。', {type:'success'});
   });
   document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
   document.getElementById('file-import').addEventListener('change', function(e){
@@ -1171,26 +1561,46 @@ function renderListTab(app){
     if (!f) return;
     var reader = new FileReader();
     reader.onload = function(){
-      try{
-        var data = JSON.parse(reader.result);
-        if (Array.isArray(data.items)){
-          state.items = data.items;
-          if (data.weights) state.weights = data.weights;
-          persist();
-          renderListRows();
-          alert('インポートしました(' + data.items.length + '件)。');
+      var parsed;
+      try{ parsed = JSON.parse(reader.result); }
+      catch(err){ toast('JSONの読み込みに失敗しました: ' + err.message, {type:'danger', duration:6000}); return; }
+      if (!parsed || !Array.isArray(parsed.items)){
+        toast('ファイル形式が不正です(items配列が見つかりません)。', {type:'danger', duration:6000});
+        return;
+      }
+      // H11: 不正な行はスキップしてレポートする(1件の壊れたデータで全体を失敗させない)
+      var validItems = [];
+      var skipped = 0;
+      parsed.items.forEach(function(raw){
+        if (raw && typeof raw === 'object' && (typeof raw.claimTitle === 'string' || typeof raw.claimText === 'string' || raw.id)){
+          validItems.push(normalizeItem(raw));
         } else {
-          alert('形式が不正です。');
+          skipped++;
         }
-      }catch(err){ alert('読み込みに失敗しました: ' + err.message); }
+      });
+      var importedWeights = parsed.weights ? normalizeWeights(parsed.weights) : null;
+      showImportChoice(validItems, importedWeights, skipped);
     };
     reader.readAsText(f);
+    e.target.value = '';
   });
   document.getElementById('btn-clear-all').addEventListener('click', function(){
-    if (!confirm('すべてのチェック記録を削除します。元に戻せません。よろしいですか？')) return;
+    if (!state.items.length) return;
+    if (!confirm(state.items.length + '件のチェック記録をすべて削除します。よろしいですか？(削除直後であれば「元に戻す」が可能です)')) return;
+    var backup = state.items.slice();
     state.items = [];
     persist();
     renderListRows();
+    toast(backup.length + '件を削除しました。', {
+      type: 'warning',
+      actionLabel: '元に戻す',
+      onAction: function(){
+        state.items = backup;
+        persist();
+        renderListRows();
+        toast('削除を取り消しました。', {type:'success'});
+      }
+    });
   });
 
   renderListRows();
@@ -1202,9 +1612,9 @@ function qs(k){
   try{ return new URLSearchParams(location.search).get(k) || ''; }catch(e){ return ''; }
 }
 function getShareInfo(){
-  try{ var s = localStorage.getItem(STORE + ':__share'); return s ? JSON.parse(s) : null; }catch(e){ return null; }
+  return storageGetJSON(STORE + ':__share', null);
 }
-function setShareInfo(info){ try{ localStorage.setItem(STORE + ':__share', JSON.stringify(info)); }catch(e){} }
+function setShareInfo(info){ storageSetJSON(STORE + ':__share', info); }
 function shareBody(){
   var lic = licLoad();
   var who = (lic && lic.company) ? lic.company : '';
@@ -1222,8 +1632,8 @@ function loadFromShareLinkIfPresent(){
   var key = qs('key');
   shareRequest('GET', API + '?id=' + encodeURIComponent(id), function(res){
     if (res.error){ state.saveError = '共有データの読み込みに失敗しました: ' + res.error; renderSaveErrorBanner(); return; }
-    if (res.data && Array.isArray(res.data.items)) state.items = res.data.items;
-    if (res.data && res.data.weights) state.weights = res.data.weights;
+    if (res.data && Array.isArray(res.data.items)) state.items = res.data.items.map(normalizeItem);
+    if (res.data && res.data.weights) state.weights = normalizeWeights(res.data.weights);
     persist();
     if (key) setShareInfo({id:id, editKey:key});
     if (!sessionStorage.getItem('fcd_loaded_' + id)){
@@ -1247,33 +1657,86 @@ function renderSharePanel(){
   el.innerHTML =
     '<div class="helper">現在の全チェック記録(' + state.items.length + '件)をサーバーに保存し、リンクを知っている人と共有できます。</div>' +
     '<div class="toolbar">' +
-    '<button class="primary small" id="share-create">' + (info ? '🔄 サーバーへ更新保存' : '📤 サーバーへ保存してリンク作成') + '</button>' +
+    '<button class="primary small" id="share-create">' + icon(info ? 'refresh' : 'send', 14) + (info ? ' サーバーへ更新保存' : ' サーバーへ保存してリンク作成') + '</button>' +
     '</div>' +
     (info ?
       '<div class="share-box">' +
       '<div>閲覧用リンク: <code id="share-view-link">' + esc(viewLink) + '</code> <button class="ghost small" id="copy-view">コピー</button></div>' +
       '<div style="margin-top:6px">編集用リンク(この内容を更新できる人にのみ共有): <code id="share-edit-link">' + esc(editLink) + '</code> <button class="ghost small" id="copy-edit">コピー</button></div>' +
-      '<div class="helper" style="margin-top:6px">⚠ 編集用リンクを知っている人は誰でも内容を書き換えられます。取り扱いにご注意ください。</div>' +
-      '</div>' : '') +
-    '<div id="share-msg" class="helper"></div>';
+      '<div class="helper" style="margin-top:6px">' + icon('alert', 13) + ' 編集用リンクを知っている人は誰でも内容を書き換えられます。取り扱いにご注意ください。</div>' +
+      '</div>' : '');
   document.getElementById('share-create').addEventListener('click', function(){
-    var msgEl = document.getElementById('share-msg');
-    msgEl.textContent = '送信中...';
+    var btn = document.getElementById('share-create');
+    btn.classList.add('is-loading');
+    btn.disabled = true;
     var current = getShareInfo();
     var url = current ? (API + '?id=' + current.id + '&key=' + current.editKey) : API;
     var method = current ? 'PUT' : 'POST';
     shareRequest(method, url, function(res){
-      if (res.error){ msgEl.textContent = '⚠ ' + res.error; return; }
+      if (res.error){
+        toast('サーバー共有に失敗しました: ' + res.error, {type:'danger', duration:6000});
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+        return;
+      }
       if (res.id) setShareInfo({id:res.id, editKey:res.editKey});
       renderSharePanel();
-      var m = document.getElementById('share-msg');
-      if (m) m.textContent = '✅ 保存しました(' + new Date().toLocaleTimeString('ja-JP') + ')';
+      toast('サーバーに保存しました(' + new Date().toLocaleTimeString('ja-JP') + ')', {type:'success'});
     });
   });
   var copyView = document.getElementById('copy-view');
-  if (copyView) copyView.addEventListener('click', function(){ copyToClipboard(viewLink); });
+  if (copyView) copyView.addEventListener('click', function(){ copyToClipboard(viewLink); toast('閲覧用リンクをコピーしました。', {type:'success'}); });
   var copyEdit = document.getElementById('copy-edit');
-  if (copyEdit) copyEdit.addEventListener('click', function(){ copyToClipboard(editLink); });
+  if (copyEdit) copyEdit.addEventListener('click', function(){ copyToClipboard(editLink); toast('編集用リンクをコピーしました。', {type:'success'}); });
+}
+
+/* JSONインポート時に「既存に追加」か「すべて置き換え」かを選ばせる(I6)。
+ * 置き換えは元データをtoastの「元に戻す」で復元できる(E4と同じ考え方)。 */
+function showImportChoice(validItems, importedWeights, skipped){
+  var anchor = document.getElementById('list-table-wrap');
+  if (!anchor) return;
+  var existing = document.getElementById('import-choice-box');
+  if (existing) existing.remove();
+  var box = document.createElement('div');
+  box.id = 'import-choice-box';
+  box.className = 'draft-recover';
+  box.innerHTML =
+    icon('upload', 15) + ' ' + validItems.length + '件を読み込みました' +
+    (skipped ? '(' + skipped + '件は形式不正のためスキップしました)' : '') +
+    '。既存データ(' + state.items.length + '件)とどう合わせますか？' +
+    '<button class="ghost small" id="import-merge">既存に追加する</button>' +
+    '<button class="danger small" id="import-replace">すべて置き換える</button>' +
+    '<button class="ghost small" id="import-cancel">キャンセル</button>';
+  anchor.parentElement.insertBefore(box, anchor);
+
+  document.getElementById('import-cancel').addEventListener('click', function(){ box.remove(); });
+  document.getElementById('import-merge').addEventListener('click', function(){
+    state.items = state.items.concat(validItems);
+    if (importedWeights) state.weights = importedWeights;
+    persist();
+    box.remove();
+    renderListRows();
+    toast(validItems.length + '件を既存データに追加しました。', {type:'success'});
+  });
+  document.getElementById('import-replace').addEventListener('click', function(){
+    if (!confirm('既存の' + state.items.length + '件を破棄し、インポート内容(' + validItems.length + '件)に置き換えます。よろしいですか？')) return;
+    var backup = state.items.slice();
+    state.items = validItems;
+    if (importedWeights) state.weights = importedWeights;
+    persist();
+    box.remove();
+    renderListRows();
+    toast(validItems.length + '件に置き換えました。', {
+      type: 'warning',
+      actionLabel: '元に戻す',
+      onAction: function(){
+        state.items = backup;
+        persist();
+        renderListRows();
+        toast('置き換えを取り消しました。', {type:'success'});
+      }
+    });
+  });
 }
 
 function filteredItems(){
@@ -1292,7 +1755,7 @@ function renderListRows(){
   var wrap = document.getElementById('list-table-wrap');
   var items = filteredItems();
   if (!items.length){
-    wrap.innerHTML = '<div class="empty">該当するチェック記録がありません。「新規/編集」タブから登録してください。</div>';
+    wrap.innerHTML = '<div class="empty">' + icon('inbox', 34) + '<div class="empty-title">該当するチェック記録がありません</div><div>「新規/編集」タブから登録してください。</div></div>';
     return;
   }
   var html = '<table><thead><tr>' +
@@ -1305,7 +1768,10 @@ function renderListRows(){
     var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)'};
     html += '<tr>';
     html += '<td>' + esc(fmtDate(it.updatedAt)) + '</td>';
-    html += '<td>' + esc(findOf(MEDIA_TYPES, it.mediaType) ? findOf(MEDIA_TYPES, it.mediaType).icon + ' ' + findOf(MEDIA_TYPES, it.mediaType).label : it.mediaType) + '</td>';
+    html += '<td>' + (function(){
+      var mt = findOf(MEDIA_TYPES, it.mediaType);
+      return mt ? '<span style="display:inline-flex;align-items:center;gap:5px;color:var(--n-500)">' + icon(mt.icon, 14) + '<span>' + esc(mt.label) + '</span></span>' : esc(it.mediaType);
+    })() + '</td>';
     html += '<td>' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</td>';
     html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) + '</td>';
     html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.label) + '</span></td>';
@@ -1374,6 +1840,7 @@ function exportCsv(){
     }).join(',');
   }).join('\r\n');
   download('fact-check-list-' + Date.now() + '.csv', '﻿' + csv);
+  toast('CSVファイルをダウンロードしました。', {type:'success'});
 }
 
 function printCase(it){
@@ -1433,7 +1900,7 @@ window.addEventListener('afterprint', function(){
 function renderDashboardTab(app){
   var html = '';
   html += '<div class="card noprint">';
-  html += '<h2>⚖️ 判定スコアの重み設定</h2>';
+  html += '<h2>' + icon('scale', 17) + ' 判定スコアの重み設定</h2>';
   html += '<div class="helper">各軸の重みを調整できます(合計は自動で正規化されます。未記録の軸は自動的に除外されます)。</div>';
   html += '<div class="grid3" id="weight-inputs">';
   html += weightInput('official', '情報源の確認');
@@ -1458,14 +1925,14 @@ function renderDashboardTab(app){
   renderDashResults();
 }
 function weightInput(key, label){
-  return '<div><label>' + esc(label) + '</label><input type="number" min="0" max="100" id="w-' + key + '" value="' + state.weights[key] + '" /></div>';
+  return '<div><label for="w-' + key + '">' + esc(label) + '</label><input type="number" min="0" max="100" id="w-' + key + '" value="' + state.weights[key] + '" /></div>';
 }
 
 function renderDashResults(){
   var el = document.getElementById('dash-results');
   var items = state.items;
   if (!items.length){
-    el.innerHTML = '<div class="card"><div class="empty">まだチェック記録がありません。「新規/編集」タブから最初のチェックを登録してください。</div></div>';
+    el.innerHTML = '<div class="card"><div class="empty">' + icon('chart', 34) + '<div class="empty-title">まだチェック記録がありません</div><div>「新規/編集」タブから最初のチェックを登録すると、ここに集計結果が表示されます。</div></div></div>';
     return;
   }
 
@@ -1509,13 +1976,33 @@ function renderDashResults(){
 
   var insights = generateInsights(items, {verdictCounts:verdictCounts, mediaCounts:mediaCounts, srcCounts:srcCounts, srcFalse:srcFalse, series:series, avgScore:avgScore});
 
+  // A8: 前月比トレンド(直近2か月分のデータがある場合のみ表示)
+  var scoreTrend = null, falseTrend = null;
+  if (series.length >= 2){
+    var lastM = series[series.length - 1], prevM = series[series.length - 2];
+    if (lastM.avgScore != null && prevM.avgScore != null){
+      var scoreDiff = lastM.avgScore - prevM.avgScore;
+      scoreTrend = {
+        arrow: scoreDiff > 0 ? 'up' : scoreDiff < 0 ? 'down' : 'flat',
+        sentiment: scoreDiff > 1 ? 'good' : scoreDiff < -1 ? 'bad' : 'neutral',
+        text: (scoreDiff > 0 ? '+' : '') + scoreDiff + ' 前月比'
+      };
+    }
+    var falseDiff = lastM.falseRate - prevM.falseRate;
+    falseTrend = {
+      arrow: falseDiff > 0 ? 'up' : falseDiff < 0 ? 'down' : 'flat',
+      sentiment: falseDiff > 1 ? 'bad' : falseDiff < -1 ? 'good' : 'neutral',
+      text: '誤り比率 ' + (falseDiff > 0 ? '+' : '') + falseDiff + 'pt'
+    };
+  }
+
   var html = '';
   html += '<div class="card">';
   html += '<h2>全体サマリー</h2>';
   html += '<div class="kpis">';
   html += kpi(items.length, '総チェック件数');
-  html += kpi(avgScore == null ? '—' : avgScore, '平均スコア(0-100)');
-  html += kpi((verdictCounts.false + verdictCounts.mixed), '誤り/ミスリード件数');
+  html += kpi(avgScore == null ? '—' : avgScore, '平均スコア(0-100)', scoreTrend);
+  html += kpi((verdictCounts.false + verdictCounts.mixed), '誤り/ミスリード件数', falseTrend);
   html += kpi(months.length ? months[months.length-1] : '—', '直近チェック月');
   html += '</div>';
   html += '</div>';
@@ -1525,7 +2012,7 @@ function renderDashResults(){
   html += VERDICTS.map(function(v){
     var n = verdictCounts[v.id] || 0;
     var pct = items.length ? Math.round(n/items.length*100) : 0;
-    return barrow(v.label, n, pct, v.color);
+    return barrow(esc(v.label), n, pct, v.color);
   }).join('');
   html += '</div>';
 
@@ -1533,13 +2020,13 @@ function renderDashResults(){
   html += '<div class="card"><h2>種別ごとの件数(多面評価②)</h2>' + MEDIA_TYPES.map(function(m){
     var n = mediaCounts[m.id];
     var pct = items.length ? Math.round(n/items.length*100) : 0;
-    return barrow(m.icon + ' ' + m.label, n, pct, 'var(--blue)');
+    return barrow(icon(m.icon, 14) + ' ' + esc(m.label), n, pct, 'var(--blue)');
   }).join('') + '</div>';
   html += '<div class="card"><h2>出所区分ごとの誤り比率(多面評価③)</h2>' + SOURCE_CATEGORIES.map(function(c){
     var n = srcCounts[c.id];
-    if (!n) return barrow(c.label, 0, 0, 'var(--gray)') ;
+    if (!n) return barrow(esc(c.label), 0, 0, 'var(--gray)') ;
     var pct = Math.round(srcFalse[c.id]/n*100);
-    return barrow(c.label + '(n=' + n + ')', srcFalse[c.id], pct, pct >= 50 ? 'var(--red)' : (pct>=25?'var(--amber)':'var(--green)'));
+    return barrow(esc(c.label) + '(n=' + n + ')', srcFalse[c.id], pct, pct >= 50 ? 'var(--red)' : (pct>=25?'var(--amber)':'var(--green)'));
   }).join('') + '</div>';
   html += '</div>';
 
@@ -1572,8 +2059,10 @@ function renderDashResults(){
 }
 
 function barrow(name, num, pct, color){
+  // name には icon() が返すSVGマークアップを含めることがあるため、ここではエスケープしない
+  // (呼び出し元はすべて自前の定数ラベルであり、ユーザー入力を直接渡さないこと)
   return '<div class="barrow">' +
-    '<div class="name">' + esc(name) + '</div>' +
+    '<div class="name">' + name + '</div>' +
     '<div class="track"><div class="fill" style="width:' + Math.max(0,Math.min(100,pct)) + '%;background:' + color + '"></div></div>' +
     '<div class="num">' + num + '件(' + pct + '%)</div>' +
   '</div>';
@@ -1592,9 +2081,10 @@ function linearForecastNext(values){
   return intercept + slope*n;
 }
 
+var _chartInstanceCounter = 0;
 function svgLineChart(points, color){
   if (!points.length) return '<div class="empty">データなし</div>';
-  var w = 640, h = 160, pad = 32;
+  var w = 640, h = 180, pad = 34;
   var max = Math.max.apply(null, points.map(function(p){ return p.value; }).concat([1]));
   var min = 0;
   var stepX = points.length > 1 ? (w - pad*2) / (points.length - 1) : 0;
@@ -1603,17 +2093,42 @@ function svgLineChart(points, color){
     var y = h - pad - ((p.value - min) / (max - min || 1)) * (h - pad*2);
     return {x:x, y:y, v:p.value, label:p.label};
   });
+  var gradId = 'chart-grad-' + (_chartInstanceCounter++);
   var pathD = coords.map(function(c,i){ return (i===0?'M':'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1); }).join(' ');
-  var circles = coords.map(function(c){
-    return '<circle cx="' + c.x.toFixed(1) + '" cy="' + c.y.toFixed(1) + '" r="3" fill="' + color + '"></circle>' +
-      '<text x="' + c.x.toFixed(1) + '" y="' + (c.y-8).toFixed(1) + '" text-anchor="middle">' + esc(c.v) + '</text>';
+  var areaD = pathD + ' L' + coords[coords.length-1].x.toFixed(1) + ',' + (h-pad) + ' L' + coords[0].x.toFixed(1) + ',' + (h-pad) + ' Z';
+
+  // C8: 点数が多いとX軸ラベルが重なるため、目安7〜8個に収まるよう間引く(最初と最後は必ず表示)
+  var labelStep = Math.max(1, Math.ceil(coords.length / 8));
+
+  // 横方向のグリッド線(0%/50%/100%相当の目安線) — 可読性向上
+  var gridLines = [0, 0.5, 1].map(function(t){
+    var y = h - pad - t * (h - pad*2);
+    return '<line x1="' + pad + '" y1="' + y.toFixed(1) + '" x2="' + (w-pad) + '" y2="' + y.toFixed(1) + '" stroke="#eef1f5" stroke-dasharray="3,3" />';
   }).join('');
-  var labels = coords.map(function(c){
-    return '<text x="' + c.x.toFixed(1) + '" y="' + (h-8) + '" text-anchor="middle">' + esc(c.label) + '</text>';
+
+  var circles = coords.map(function(c, i){
+    // C1: ネイティブ<title>によるホバーツールチップ(追加のJS不要・スクリーンリーダーにも読み上げ可能)
+    return '<g>' +
+      '<title>' + esc(c.label) + ': ' + esc(c.v) + '</title>' +
+      '<circle cx="' + c.x.toFixed(1) + '" cy="' + c.y.toFixed(1) + '" r="9" fill="transparent"></circle>' +
+      '<circle cx="' + c.x.toFixed(1) + '" cy="' + c.y.toFixed(1) + '" r="3.5" fill="#fff" stroke="' + color + '" stroke-width="2"></circle>' +
+      '<text x="' + c.x.toFixed(1) + '" y="' + (c.y-10).toFixed(1) + '" text-anchor="middle">' + esc(c.v) + '</text>' +
+    '</g>';
   }).join('');
-  return '<svg class="svg-chart" viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;max-width:' + w + 'px;height:auto">' +
-    '<line x1="' + pad + '" y1="' + (h-pad) + '" x2="' + (w-pad) + '" y2="' + (h-pad) + '" stroke="#e3e8ee" />' +
-    '<path d="' + pathD + '" fill="none" stroke="' + color + '" stroke-width="2" />' +
+  var labels = coords.map(function(c, i){
+    if (i !== 0 && i !== coords.length - 1 && i % labelStep !== 0) return '';
+    return '<text x="' + c.x.toFixed(1) + '" y="' + (h-10) + '" text-anchor="middle">' + esc(c.label) + '</text>';
+  }).join('');
+  return '<svg class="svg-chart" viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;max-width:' + w + 'px;height:auto" role="img" aria-label="' +
+    esc(points.map(function(p){ return p.label + ':' + p.value; }).join(', ')) + '">' +
+    '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="' + color + '" stop-opacity="0.28"></stop>' +
+      '<stop offset="100%" stop-color="' + color + '" stop-opacity="0"></stop>' +
+    '</linearGradient></defs>' +
+    gridLines +
+    '<line x1="' + pad + '" y1="' + (h-pad) + '" x2="' + (w-pad) + '" y2="' + (h-pad) + '" stroke="#cbd5e1" />' +
+    '<path d="' + areaD + '" fill="url(#' + gradId + ')" stroke="none"></path>' +
+    '<path d="' + pathD + '" fill="none" stroke="' + color + '" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round" />' +
     circles + labels +
   '</svg>';
 }
@@ -1694,12 +2209,12 @@ function renderGuideTab(app){
 
   html += '<div class="card"><h2>ファクトチェック専用ツール・サービス</h2><div class="toolgrid">' +
     FACT_CHECK_TOOLS.map(function(t){
-      return '<div class="toolcard"><a href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.label) + '</a><div class="note">' + esc(t.note) + '</div></div>';
+      return '<div class="toolcard"><a href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">' + esc(t.label) + '</a><div class="note">' + esc(t.note) + '</div></div>';
     }).join('') + '</div></div>';
 
   html += '<div class="card"><h2>AIツール(参考情報として利用)</h2><div class="toolgrid">' +
     AI_TOOL_OPTIONS.filter(function(t){ return t.url; }).map(function(t){
-      return '<div class="toolcard"><a href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.label) + '</a><div class="note">回答は参考情報。必ず一次情報・公的発表で裏取りすること。</div></div>';
+      return '<div class="toolcard"><a href="' + esc(t.url) + '" target="_blank" rel="noopener noreferrer">' + esc(t.label) + '</a><div class="note">回答は参考情報。必ず一次情報・公的発表で裏取りすること。</div></div>';
     }).join('') + '</div></div>';
 
   html += '<div class="card"><h2>試用版・正規版・複数人共有について</h2>' +
@@ -1712,6 +2227,29 @@ function renderGuideTab(app){
 
   app.innerHTML = html;
 }
+
+/* ============================= グローバルエラーハンドラ =============================
+ * 想定外の例外(データ破損・ブラウザ差異等)が起きても、白画面のまま固まって
+ * 何が起きたか分からない状態にしないため、最低限のフィードバックをトーストで出す。
+ * 同一メッセージの連続大量発生(無限ループ的なエラー)でトーストが埋め尽くされないよう
+ * 簡易的なレート制限をかける。
+ */
+var _lastGlobalErrorAt = 0;
+function reportUnexpectedError(context, err){
+  var now = Date.now();
+  console.error('[fact-check-dashboard] ' + context, err);
+  if (now - _lastGlobalErrorAt < 3000) return; // 3秒以内の連続発火は握りつぶす(トースト洪水防止)
+  _lastGlobalErrorAt = now;
+  try{
+    toast('予期しないエラーが発生しました(' + context + ')。操作をやり直すか、ページを再読み込みしてください。入力内容は自動保存されている場合があります。', {type:'danger', duration:8000});
+  }catch(e){ /* toast自体が使えない初期化前のエラー等は無視 */ }
+}
+window.addEventListener('error', function(e){
+  reportUnexpectedError('スクリプトエラー', e.error || e.message);
+});
+window.addEventListener('unhandledrejection', function(e){
+  reportUnexpectedError('非同期処理エラー', e.reason);
+});
 
 /* ============================= 起動 ============================= */
 (function initPendingRecovery(){
