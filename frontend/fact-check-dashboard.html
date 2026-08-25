@@ -249,7 +249,13 @@ var DEFAULT_WEIGHTS = {official:25, primary:25, cross:25, ai:15, tool:10};
  *   既存の姉妹ツール(frontend/standalone.html)と同じ提供者・法務ページを流用する前提。
  *   別ブランドで販売する場合はここを差し替えること。
  * API: サーバー共有(複数人共有)用の汎用ワークスペースAPI。STORE値でツールを区別する
- *   マルチテナント設計(姉妹ツールと同じエンドポイント)。実運用前に必ず疎通確認すること。
+ *   マルチテナント設計(姉妹ツールと同じエンドポイント)。
+ *   2026-08-25 に tool:"factcheck-dashboard" で POST/GET/PUT の疎通を確認済み
+ *   (事前登録不要でこのツール専用の名前空間として書き込み・読み出しできることを確認)。
+ *   PUTは誤ったeditKeyを403で正しく拒否することも確認済み。
+ *   ⚠ DELETEは {"ok":true} を返すが実際にはレコードが削除されない挙動を確認したため、
+ *     「共有を削除する」UIはあえて実装していない(削除できると誤認させないため)。
+ *     不要になった共有データの削除は、当面はAPI提供側(サーバー運用者)に依頼すること。
  */
 var STORE = 'factcheck-dashboard';
 var LIC_SECRET = 'fc-dash-2026-08-tR4nP8vK2xQ7';
@@ -352,6 +358,48 @@ function licLoad(){
 function licValid(){
   var l = licLoad();
   return !!(l && licVerify(l.company, STORE, l.key));
+}
+
+/* ============================= 本ツール固有の利用条件 =============================
+ * 下記 LEGAL_TERMS_URL / LEGAL_PRIVACY_URL は姉妹ツール(frontend/standalone.html)と
+ * 共通のひな形ページであり、コスト計算ツール向けに書かれたものである。
+ * ファクトチェック業務特有のリスク(名誉毀損・信用毀損・根拠不十分な断定の公表等)を
+ * 個別に想定した条項ではないため、ここで本ツール固有の注意事項を明示し、
+ * 利用開始前に同意を取得する。
+ * ⚠ これは弁護士によるレビューを経た正式な利用規約の代替ではない。
+ *   報道機関・法人向けに本格的に外販する場合は、必ず契約書レビューを受けること。
+ */
+var TERMS_VERSION = 'v1-2026-08';
+var TOOL_SPECIFIC_TERMS = [
+  {title:'本ツールは認証機関ではありません',
+   body:'算出される「スコア」「推奨判定」は、記録者が入力した内容に基づく参考情報であり、日本ファクトチェックセンター(JFC)・IFCN加盟団体等による公式な検証・認証ではありません。'},
+  {title:'公表の最終判断と責任は利用者にあります',
+   body:'本ツールの出力結果を用いて第三者(政治家・公人・団体等)に関する真偽の言明を公表・配布する場合、名誉毀損・信用毀損等の法的責任は利用者ご自身が負うものとします。公表前に、根拠が十分か、事実と意見・推測が区別されているかを必ず人が確認してください。'},
+  {title:'根拠不十分な断定表現を避けてください',
+   body:'情報源の確認・一次情報比較・クロスチェックのいずれにも根拠が記録されていない状態で「誤り」「真実」等の確定的な判定を公表することは、裏付けのない断定とみなされ、名誉毀損等のリスクを高めるおそれがあります。'},
+  {title:'データの取り扱い',
+   body:'入力内容は原則としてお使いの端末内(ブラウザのlocalStorage)にのみ保存されます。「サーバー共有」機能を能動的に利用した場合に限り、共有された内容が提供者のサーバーに保存され、リンクを知る第三者が閲覧・編集できる状態になります。'},
+  {title:'第三者の著作物の取り扱い',
+   body:'報道記事の全文転記など第三者の著作物を「本文・書き起こし」欄に貼り付ける場合、著作権法上の引用の要件(必要最小限の範囲・出所明示等)を満たすようご注意ください。'},
+  {title:'免責',
+   body:'本ツールの利用(算出されたスコア・判定の公表や第三者への提供を含む)により利用者または第三者に生じたいかなる損害についても、提供者(' + PROVIDER_NAME + ')は責任を負いかねます。'},
+  {title:'一般的な利用規約・プライバシーポリシーとの関係',
+   body:'下記リンクの利用規約・プライバシーポリシーは姉妹ツール共通のひな形であり、ファクトチェック業務特有のリスクを個別に想定した条項ではありません。報道機関・法人向けに本格的に外販する場合は、必ず貴社の弁護士による契約書レビューを受けてください。'}
+];
+function loadConsent(){
+  try{ var s = localStorage.getItem('fcd_consent'); return s ? JSON.parse(s) : null; }catch(e){ return null; }
+}
+function hasConsent(){
+  var c = loadConsent();
+  return !!(c && c.version === TERMS_VERSION);
+}
+function recordConsent(){
+  try{ localStorage.setItem('fcd_consent', JSON.stringify({version: TERMS_VERSION, at: new Date().toISOString()})); }catch(e){}
+}
+function termsHtml(){
+  return TOOL_SPECIFIC_TERMS.map(function(t){
+    return '<div style="margin-bottom:10px"><b>' + esc(t.title) + '</b><div style="font-size:12.5px;line-height:1.8;color:#445">' + esc(t.body) + '</div></div>';
+  }).join('');
 }
 
 /* ============================= ユーティリティ ============================= */
@@ -537,16 +585,26 @@ function renderFooter(){
   var refHtml = GUIDE_LINKS.map(function(g){
     return '<div><a href="' + esc(g.url) + '" target="_blank" rel="noopener">' + esc(g.label) + '</a></div>';
   }).join('');
+  var consent = loadConsent();
   el.innerHTML =
     '<div><b>提供</b>：' + esc(PROVIDER_NAME) + '</div>' +
     '<div><b>データの取り扱い</b>：入力された内容は<b>お使いの端末の中だけ</b>に保存されます。' +
     '「サーバー共有」を使わない限り、当社のサーバーへ送信・保存されることはありません。共有リンクを発行した場合、その内容はサーバーに保存されます。</div>' +
     '<div><b>ご利用にあたって</b>：本ツールが算出するスコア・推奨判定は<b>記録内容に基づく参考情報</b>であり、' +
-    '公的機関やIFCN加盟団体による認証・保証を意味しません。<b>最終的な真偽判定・公表の可否はご自身の責任で行ってください。</b>' +
-    '本ツールの利用により生じた損害について、当社は責任を負いかねます。</div>' +
-    '<div style="margin-top:8px"><a href="' + esc(LEGAL_TERMS_URL) + '" target="_blank" rel="noopener" style="margin-right:14px">利用規約</a>' +
-    '<a href="' + esc(LEGAL_PRIVACY_URL) + '" target="_blank" rel="noopener">プライバシーポリシー</a></div>' +
+    '公的機関やIFCN加盟団体による認証・保証を意味しません。<b>最終的な真偽判定・公表の可否・第三者への提供はご自身の責任で行ってください。</b>' +
+    '本ツールの利用(算出結果の公表を含む)により生じた損害について、当社は責任を負いかねます。詳細は' +
+    '<a href="#" id="footer-terms-link">本ツール固有の利用条件</a>をご確認ください' +
+    (consent ? '(同意日: ' + esc(fmtDate(consent.at)) + ')' : '(未同意)') + '。</div>' +
+    '<div style="margin-top:6px"><a href="' + esc(LEGAL_TERMS_URL) + '" target="_blank" rel="noopener" style="margin-right:14px">利用規約(共通ひな形)</a>' +
+    '<a href="' + esc(LEGAL_PRIVACY_URL) + '" target="_blank" rel="noopener">プライバシーポリシー(共通ひな形)</a>' +
+    '<div class="helper" style="margin-top:2px">↑ 上記2リンクは姉妹ツールと共通のひな形であり、ファクトチェック業務特有のリスクを個別に想定した条項ではありません。</div></div>' +
     '<div style="margin-top:10px"><b>参考資料</b></div>' + refHtml;
+  var link = document.getElementById('footer-terms-link');
+  if (link) link.addEventListener('click', function(e){
+    e.preventDefault();
+    state.activeTab = 'guide';
+    renderAll();
+  });
 }
 
 function renderLicenseBar(){
@@ -676,7 +734,25 @@ function renderAll(){
 }
 
 /* ============================= 新規/編集タブ ============================= */
+function renderConsentGate(app){
+  var html = '<div class="card">';
+  html += '<h2>⚠ ご利用前に必ずお読みください(本ツール固有の注意事項)</h2>';
+  html += termsHtml();
+  html += '<div style="margin-top:10px"><label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#223"><input type="checkbox" id="consent-checkbox" style="width:auto;margin-top:3px" /> 上記の内容を理解し、同意します。</label></div>';
+  html += '<div class="toolbar"><button class="primary" id="consent-agree" disabled>同意して利用を開始</button></div>';
+  html += '</div>';
+  app.innerHTML = html;
+  var checkbox = document.getElementById('consent-checkbox');
+  var agreeBtn = document.getElementById('consent-agree');
+  checkbox.addEventListener('change', function(){ agreeBtn.disabled = !checkbox.checked; });
+  agreeBtn.addEventListener('click', function(){
+    recordConsent();
+    renderAll();
+  });
+}
+
 function renderNewCheckTab(app){
+  if (!hasConsent()){ renderConsentGate(app); return; }
   var d = state.draft;
   var isEdit = !!state.editingId;
 
@@ -953,6 +1029,7 @@ function bindNewCheckEvents(app){
   });
 
   document.getElementById('btn-save').addEventListener('click', function(){
+    if (!hasConsent()){ renderAll(); return; } // 念のための二重防御(通常はタブ自体がゲートされる)
     if (!d.claimText.trim() && !d.claimTitle.trim()){
       flashStatus('主張のタイトルまたは本文を入力してください。', true);
       return;
@@ -1126,7 +1203,9 @@ function getShareInfo(){
 }
 function setShareInfo(info){ try{ localStorage.setItem(STORE + ':__share', JSON.stringify(info)); }catch(e){} }
 function shareBody(){
-  return {tool: STORE, title: document.title, who: '', data: {items: state.items, weights: state.weights}};
+  var lic = licLoad();
+  var who = (lic && lic.company) ? lic.company : '';
+  return {tool: STORE, title: document.title, who: who, data: {items: state.items, weights: state.weights}};
 }
 function shareRequest(method, url, cb){
   fetch(url, {method: method, headers:{'Content-Type':'application/json'}, body: method === 'GET' ? undefined : JSON.stringify(shareBody())})
@@ -1592,6 +1671,11 @@ function generateInsights(items, ctx){
 /* ============================= ガイドタブ ============================= */
 function renderGuideTab(app){
   var html = '';
+  var consent = loadConsent();
+  html += '<div class="card" id="guide-terms"><h2>⚠ 本ツール固有の利用条件</h2>';
+  html += termsHtml();
+  html += '<div class="helper">' + (consent ? ('同意日時: ' + esc(fmtDateTime(consent.at)) + '(バージョン: ' + esc(consent.version) + ')') : 'まだ同意していません(「新規/編集」タブを開くと同意画面が表示されます)。') + '</div>';
+  html += '</div>';
   html += '<div class="card"><h2>検証手順の考え方</h2>';
   html += '<ol style="line-height:2">';
   html += '<li><b>事実と意見・推測を切り分ける</b> — 個人の意見・感想・価値判断・未来予測は検証対象外。事実として提示されている言明のみを対象にする。</li>';
