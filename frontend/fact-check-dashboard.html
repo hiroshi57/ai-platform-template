@@ -413,6 +413,110 @@ var GUIDE_LINKS = [
 
 var DEFAULT_WEIGHTS = {official:25, primary:25, cross:25, ai:15, tool:10};
 
+/* ============================= 一次スクリーニング(技術で「ふるいにかける」) =============================
+ * 「技術は絞り込みの道具、最終判断は人」という原則(Human-in-the-Loop)に基づき、
+ * ここで算出する3つのスコア/照合結果は、あくまで①〜⑤の詳細検証に入る前の
+ * 「怪しさの当たりをつける」ためのトリアージ材料であり、真偽の自動判定ではない。
+ * どれだけスコアが高くても/低くても、最終判定は必ず人が①〜⑤を確認して行う。
+ *
+ * A) パターン検知: 過去に確認された誤情報の「型」を正規表現ベースで検知する。
+ *    ⚠ これは機械学習で継続的に「学習」する仕組みではなく、あらかじめ用意した
+ *    固定のパターン集(MISINFO_PATTERNS)と照合する静的なルールベース検知である。
+ *    新しい手口が出てきたら、このカタログに手動で追加していく運用を想定している。
+ */
+var MISINFO_PATTERNS = [
+  {id:'authority-borrow', category:'情報源の仮託', label:'権威・専門家の借用', weight:18,
+   // 「〇〇教授によると」のように、権威者名+助詞(が/は/によると等)だけで十分特徴的なため、
+   // 直後に必ず特定の動詞が続くことまでは要求しない(要求すると、動詞との間に他の語句が
+   // 挟まる自然文で検知漏れが起きるため)。
+   regex:/(大学|大学院)?(教授|准教授|博士|医師|弁護士|専門家|研究者|元.{0,6}(職員|関係者|社員|捜査官))\s*(が|は|も|によると|によれば)/,
+   tip:'「〇〇大学教授によると」等、実在確認できない権威者の発言として紹介するパターン。発言の一次情報(論文・会見・本人の公式アカウント等)を直接確認してください。'},
+  {id:'urgency-appeal', category:'感情操作', label:'緊急性・拡散煽り', weight:14,
+   regex:/(今すぐ|拡散希望|至急|緊急事態|シェア(して|お願い)|RT希望|消される前に|拡散にご協力)/,
+   tip:'緊急性を強調し、検証の時間を与えずに拡散させようとする典型的な誘導表現です。'},
+  {id:'anonymous-source', category:'情報源の希薄化', label:'匿名・伝聞情報源', weight:16,
+   regex:/(友人の友人|知り合いの.{0,6}(が|から)|ある筋によると|関係者によると|裏を取った|投稿者の知人)/,
+   tip:'情報源が特定できない伝聞情報です。一次情報での裏付けが取れるまでは事実として扱わないでください。'},
+  {id:'absolute-claim', category:'感情操作', label:'過度な断定表現', weight:10,
+   regex:/(絶対に|100%|完全に|間違いなく|確実に)([^。]{0,12})(真実|事実|本当|正しい)/,
+   tip:'断定の強さと根拠の強さは比例しません。断定的な言い回しほど慎重に検証してください。'},
+  {id:'suppression-claim', category:'陰謀論的枠組み', label:'隠蔽・報道規制の主張', weight:15,
+   regex:/(隠蔽され|報道されない|メディアは黙って|規制されている|削除される前に|闇に葬られ)/,
+   tip:'「隠されている」という主張自体が、検証や反証を妨げるレトリックとして使われることがあります。'},
+  {id:'vague-provenance', category:'メディア使い回し', label:'時期・場所が曖昧な描写', weight:12,
+   regex:/(某所|とある(場所|地域|街)|数年前|以前撮影|別の(場所|地域)で)/,
+   tip:'撮影時期・場所が曖昧な表現は、過去の別事案の映像/画像が転用されている可能性があります。「③過去メディアとの照合」も確認してください。'},
+  {id:'donation-request', category:'金銭誘導', label:'寄付・送金の要求', weight:20,
+   regex:/(寄付|募金|支援金)(を|お願い|は).{0,10}(振込|送金|口座)/,
+   tip:'災害等に便乗した金銭要求は特に注意が必要です。正規の募金窓口かどうかを必ず確認してください。'},
+  {id:'emoji-flood', category:'感情操作', label:'感嘆符・絵文字の多用', weight:8, detect:'punctFlood',
+   tip:'「!」「？」や絵文字を過剰に使い、感情的な反応を誘う投稿は要注意です。'}
+];
+function countEmphasisMarks(text){
+  var m = String(text || '').match(/[!！?？]|[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu);
+  return m ? m.length : 0;
+}
+function scanPatterns(text){
+  text = String(text || '');
+  var matched = [];
+  MISINFO_PATTERNS.forEach(function(p){
+    var hit = false;
+    if (p.detect === 'punctFlood') hit = countEmphasisMarks(text) >= 6;
+    else if (p.regex) hit = p.regex.test(text);
+    if (hit) matched.push(p.id);
+  });
+  var score = matched.reduce(function(sum, id){
+    var p = MISINFO_PATTERNS.filter(function(x){ return x.id === id; })[0];
+    return sum + (p ? p.weight : 0);
+  }, 0);
+  return {matchedIds: matched, score: Math.min(100, score)};
+}
+
+/* B) アカウント信頼性チェック: 投稿アカウントの外部SNS API等には接続しない
+ *    (オフライン方針を維持するため)。記録者が目視で確認した項目にチェックを
+ *    入れる方式で、手作業の観察結果を定量化する。
+ */
+var ACCOUNT_SIGNALS = [
+  {id:'newAccount', label:'アカウント作成から間もない(目安: 1か月未満)', weight:22},
+  {id:'noProfilePhoto', label:'プロフィール画像が未設定/デフォルト画像のまま', weight:10},
+  {id:'skewedFollowRatio', label:'フォロワー数に比べフォロー数が極端に多い', weight:14},
+  {id:'noPostHistory', label:'過去の投稿がほとんど無い/アカウントが実質空である', weight:16},
+  {id:'noOrgVerification', label:'名乗っている所属・肩書きを裏付ける情報が見当たらない', weight:18},
+  {id:'notVerifiedBadge', label:'公式認証バッジが無い(本人/公式を名乗っているのに)', weight:10},
+  {id:'lookalikeAccounts', label:'酷似した名前・アイコンの別アカウントが複数存在する(なりすまし疑い)', weight:10}
+];
+function computeAccountScore(accountCheck){
+  var signals = (accountCheck && accountCheck.signals) || [];
+  var score = signals.reduce(function(sum, id){
+    var s = ACCOUNT_SIGNALS.filter(function(x){ return x.id === id; })[0];
+    return sum + (s ? s.weight : 0);
+  }, 0);
+  return Math.min(100, score);
+}
+
+/* C) 過去メディアとの照合: 自主構築の参照データベース(ローカル保存)と、
+ *    アップロードした画像の知覚ハッシュ(dHash)を比較する。
+ *    ⚠ 実際の災害通報システム等が持つような世界規模の照合データベースは無い。
+ *    ここで照合できるのは「このツールの利用チーム自身が過去に登録した画像」だけである。
+ *    登録が増えるほど照合の役に立つ、という前提の「育てるデータベース」である。
+ */
+var HASH_MATCH_THRESHOLD = 10; // 64bit中の距離。小さいほど類似。経験則の初期値(要調整)
+function hammingDistance(a, b){
+  if (!a || !b || a.length !== b.length) return Infinity;
+  var d = 0;
+  for (var i = 0; i < a.length; i++){ if (a[i] !== b[i]) d++; }
+  return d;
+}
+
+/* AIによる生成・合成の疑いは自動検出できないため、人が確認するためのチェックリストとして提示する */
+var AI_GEN_CHECKLIST = [
+  {id:'unnaturalHands', label:'手・指、文字、模様が不自然に歪んでいる(生成AI特有のノイズ)'},
+  {id:'inconsistentShadow', label:'影・反射・光源の向きが被写体ごとに矛盾している'},
+  {id:'unnaturalBlink', label:'(映像)瞬き・口の動きが不自然、または一切ない'},
+  {id:'metadataMismatch', label:'撮影日時・位置情報等のメタデータが主張と矛盾する、または不自然に欠落している'},
+  {id:'repeatedTexture', label:'背景の模様・群衆等が不自然に反復/破綻している'}
+];
+
 /* ===== 外販(商用配布)関連の設定 =====
  * STORE: このツール固有の識別子(ライセンス/サーバー共有のテナント分離キー)。
  * LIC_SECRET: 発行者のみが知る値。ライセンスキーは "会社名+STORE+この値" のハッシュ。
@@ -458,7 +562,7 @@ state.pendingRecovery = null; // 起動時に見つかった未保存下書き(�
  * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
  * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
  */
-var SCHEMA_VERSION = 2;
+var SCHEMA_VERSION = 3; // v3: 一次スクリーニング(patternScreen/accountCheck/mediaCheck)を追加
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
@@ -488,6 +592,42 @@ function normalizeCheckResult(obj, extraKey){
   out[extraKey] = typeof obj[extraKey] === 'string' ? obj[extraKey] : '';
   return out;
 }
+function normalizePatternScreen(p){
+  p = p || {};
+  var ids = Array.isArray(p.matchedIds) ? p.matchedIds.filter(function(id){
+    return MISINFO_PATTERNS.some(function(mp){ return mp.id === id; });
+  }) : [];
+  return {matchedIds: ids, score: typeof p.score === 'number' ? p.score : 0,
+    scannedAt: typeof p.scannedAt === 'string' ? p.scannedAt : ''};
+}
+function normalizeAccountCheck(a){
+  a = a || {};
+  var ids = Array.isArray(a.signals) ? a.signals.filter(function(id){
+    return ACCOUNT_SIGNALS.some(function(s){ return s.id === id; });
+  }) : [];
+  return {
+    handle: typeof a.handle === 'string' ? a.handle : '',
+    createdAt: typeof a.createdAt === 'string' ? a.createdAt : '',
+    followerCount: typeof a.followerCount === 'string' ? a.followerCount : '',
+    followingCount: typeof a.followingCount === 'string' ? a.followingCount : '',
+    signals: ids,
+    note: typeof a.note === 'string' ? a.note : ''
+  };
+}
+function normalizeMediaCheck(m){
+  m = m || {};
+  var flags = Array.isArray(m.aiGenFlags) ? m.aiGenFlags.filter(function(id){
+    return AI_GEN_CHECKLIST.some(function(f){ return f.id === id; });
+  }) : [];
+  return {
+    thumbDataUrl: typeof m.thumbDataUrl === 'string' ? m.thumbDataUrl : '',
+    hash: typeof m.hash === 'string' ? m.hash : '',
+    matches: Array.isArray(m.matches) ? m.matches : [],
+    aiGenFlags: flags,
+    checkedAt: typeof m.checkedAt === 'string' ? m.checkedAt : '',
+    note: typeof m.note === 'string' ? m.note : ''
+  };
+}
 function normalizeItem(raw){
   raw = raw || {};
   var nowIso = new Date().toISOString();
@@ -511,7 +651,10 @@ function normalizeItem(raw){
     verdict: pickEnum(VERDICTS, raw.verdict, ''),
     summary: typeof raw.summary === 'string' ? raw.summary : '',
     reviewer: typeof raw.reviewer === 'string' ? raw.reviewer : '',
-    history: Array.isArray(raw.history) ? raw.history : []
+    history: Array.isArray(raw.history) ? raw.history : [],
+    patternScreen: normalizePatternScreen(raw.patternScreen),
+    accountCheck: normalizeAccountCheck(raw.accountCheck),
+    mediaCheck: normalizeMediaCheck(raw.mediaCheck)
   };
 }
 function normalizeWeights(raw){
@@ -552,6 +695,77 @@ function storageSetJSON(key, value){
 function storageRemove(key){
   try{ localStorage.removeItem(key); return true; }
   catch(e){ console.warn('[storage] 削除に失敗しました: ' + key, e); return false; }
+}
+
+/* ============================= 画像の知覚ハッシュ(dHash)・参照メディアDB =============================
+ * すべてCanvas APIのみで完結させ、外部ライブラリ・外部通信には依存しない。
+ * jsdom等キャンバス未対応の環境では getContext('2d') が null を返すため、
+ * その場合は例外を投げず null をコールバックして安全に諦める。
+ */
+function downscaleImageToDataUrl(srcDataUrl, maxWidth, quality, callback){
+  var img = new Image();
+  img.onload = function(){
+    var scale = Math.min(1, maxWidth / (img.naturalWidth || img.width || maxWidth));
+    var w = Math.max(1, Math.round((img.naturalWidth || img.width || maxWidth) * scale));
+    var h = Math.max(1, Math.round((img.naturalHeight || img.height || maxWidth) * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx){ callback(null); return; }
+    try{
+      ctx.drawImage(img, 0, 0, w, h);
+      callback(canvas.toDataURL('image/jpeg', quality || 0.6));
+    }catch(e){ callback(null); }
+  };
+  img.onerror = function(){ callback(null); };
+  img.src = srcDataUrl;
+}
+function computeDHash(srcDataUrl, callback){
+  var img = new Image();
+  img.onload = function(){
+    var w = 9, h = 8;
+    var canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx){ callback(null); return; }
+    try{
+      ctx.drawImage(img, 0, 0, w, h);
+      var data = ctx.getImageData(0, 0, w, h).data;
+      var gray = [];
+      for (var i = 0; i < w * h; i++){
+        gray.push(0.299 * data[i*4] + 0.587 * data[i*4+1] + 0.114 * data[i*4+2]);
+      }
+      var bits = '';
+      for (var y = 0; y < h; y++){
+        for (var x = 0; x < w - 1; x++){
+          bits += (gray[y*w+x] > gray[y*w+x+1]) ? '1' : '0';
+        }
+      }
+      callback(bits);
+    }catch(e){ callback(null); }
+  };
+  img.onerror = function(){ callback(null); };
+  img.src = srcDataUrl;
+}
+var REFDB_KEY = 'fcd_refdb_v1';
+function loadReferenceDb(){
+  var data = storageGetJSON(REFDB_KEY, null);
+  return (data && Array.isArray(data.entries)) ? data.entries : [];
+}
+function persistReferenceDb(){
+  var ok = storageSetJSON(REFDB_KEY, {entries: state.referenceDb});
+  if (!ok){
+    toast('参照メディアDBの保存に失敗しました(容量超過の可能性があります)。', {type:'danger'});
+  }
+  return ok;
+}
+function findReferenceMatches(hash){
+  if (!hash) return [];
+  return state.referenceDb
+    .map(function(ref){ return Object.assign({}, ref, {distance: hammingDistance(hash, ref.hash)}); })
+    .filter(function(r){ return r.distance <= HASH_MATCH_THRESHOLD; })
+    .sort(function(a, b){ return a.distance - b.distance; })
+    .slice(0, 5);
 }
 
 function loadState(){
@@ -870,7 +1084,10 @@ function newItem(){
     verdict: '',
     summary: '',
     reviewer: '',
-    history: []
+    history: [],
+    patternScreen: {matchedIds: [], score: 0, scannedAt: ''},
+    accountCheck: {handle: '', createdAt: '', followerCount: '', followingCount: '', signals: [], note: ''},
+    mediaCheck: {thumbDataUrl: '', hash: '', matches: [], aiGenFlags: [], checkedAt: '', note: ''}
   };
 }
 function cloneItem(it){ return JSON.parse(JSON.stringify(it)); }
@@ -880,6 +1097,7 @@ var TABS = [
   {id:'new', label:'新規/編集', icon:'edit'},
   {id:'list', label:'チェック一覧', icon:'list'},
   {id:'dashboard', label:'ダッシュボード', icon:'chart'},
+  {id:'refdb', label:'参照メディアDB', icon:'image'},
   {id:'guide', label:'ガイド・参考ツール', icon:'book'}
 ];
 
@@ -1036,7 +1254,8 @@ function renderDraftRecoverBanner(container){
     '<button class="ghost small" id="draft-discard">破棄する</button>';
   container.insertBefore(box, container.firstChild);
   document.getElementById('draft-restore').addEventListener('click', function(){
-    state.draft = backup.draft;
+    // normalizeItem を通し、旧スキーマの下書き(欠けているフィールドがあるもの)でも安全に復元する
+    state.draft = normalizeItem(backup.draft);
     state.editingId = backup.editingId;
     state.pendingRecovery = null;
     renderAll();
@@ -1064,6 +1283,7 @@ function renderAll(){
   if (state.activeTab === 'new') app.innerHTML = '', renderNewCheckTab(app);
   else if (state.activeTab === 'list') app.innerHTML = '', renderListTab(app);
   else if (state.activeTab === 'dashboard') app.innerHTML = '', renderDashboardTab(app);
+  else if (state.activeTab === 'refdb') app.innerHTML = '', renderRefDbTab(app);
   else if (state.activeTab === 'guide') app.innerHTML = '', renderGuideTab(app);
 }
 
@@ -1123,6 +1343,27 @@ function renderNewCheckTab(app){
   html += field('アーカイブ(魚拓)URL', '<input type="url" id="f-archiveUrl" value="' + esc(d.archiveUrl) + '" placeholder="https://web.archive.org/... または https://archive.today/..." />');
   html += '<div class="helper">SNS投稿等は後から削除・編集されることがあります。Web魚拓(archive.today)やWayback Machineで保存したURLを記録してください。</div>';
   html += '</div>';
+
+  // ===== 一次スクリーニング(技術で「ふるいにかける」) =====
+  html += '<div class="card elevated">';
+  html += '<h2>' + icon('search', 17) + ' 一次スクリーニング(技術による絞り込み)</h2>';
+  html += '<div class="banner" style="margin:0 0 12px">技術は「怪しさの当たりをつける」道具であり、真偽を自動で判定するものではありません。' +
+    'どれだけスコアが高くても低くても、最終的な確認と判断は必ず人が下の①〜⑥で行ってください。</div>';
+
+  html += '<h3>A) パターン検知スコア<span class="helper" style="font-weight:normal">(過去に確認された誤情報の「型」との一致)</span></h3>';
+  html += '<div id="pattern-screen-block">' + patternScreenHtml(d) + '</div>';
+  html += '<div class="helper" style="margin-top:6px">主張の本文(上記)を元に自動的に検知します。これは機械学習ではなく、あらかじめ用意した固定のパターン集との照合です。</div>';
+
+  html += '<h3>B) 投稿者アカウントの信頼性チェック</h3>';
+  html += accountCheckHtml(d);
+
+  html += '<h3>C) 過去メディアとの照合・生成AIの疑い</h3>';
+  html += mediaCheckHtml(d);
+
+  html += '</div>';
+
+  html += '<div style="display:flex;align-items:center;gap:8px;margin:18px 4px 4px;color:var(--n-500);font-weight:700;font-size:13px">' +
+    icon('checkCircle', 16) + ' 詳細検証(ここからは人が確認します)</div>';
 
   // 事実/意見/推測 切り分け
   html += '<div class="card">';
@@ -1330,6 +1571,103 @@ function segStatsHtml(item){
   return '<div class="segstats">' + parts.join('') + '</div>';
 }
 
+function screeningLevel(score){
+  if (score >= 50) return {label:'高', color:'var(--red)', bg:'var(--danger-50)'};
+  if (score >= 20) return {label:'中', color:'var(--amber)', bg:'var(--warning-50)'};
+  return {label:'低', color:'var(--green)', bg:'var(--success-50)'};
+}
+function patternScreenHtml(d){
+  var scan = d.patternScreen || {matchedIds: [], score: 0};
+  var matched = MISINFO_PATTERNS.filter(function(p){ return scan.matchedIds.indexOf(p.id) > -1; });
+  var lv = screeningLevel(scan.score);
+  var html = '<div class="kpis"><div class="kpi">' +
+    '<div class="kpi-top"><span class="l">怪しさスコア(パターン検知)</span><span class="trend" style="background:' + lv.bg + ';color:' + lv.color + '">リスク' + esc(lv.label) + '</span></div>' +
+    '<div class="v" style="color:' + lv.color + '">' + scan.score + '</div></div></div>';
+  if (matched.length){
+    html += '<div class="segstats" style="margin-top:8px">' + matched.map(function(p){
+      return '<span title="' + esc(p.tip) + '">' + esc(p.category) + ': ' + esc(p.label) + '</span>';
+    }).join('') + '</div>';
+  } else {
+    html += '<div class="helper">既知のパターンには一致しませんでした(一致が無いことは「安全」を意味しません。詳細検証は必ず行ってください)。</div>';
+  }
+  return html;
+}
+function accountSignalsListHtml(ac){
+  return ACCOUNT_SIGNALS.map(function(s){
+    var checked = ac.signals.indexOf(s.id) > -1;
+    return '<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13px;cursor:pointer">' +
+      '<input type="checkbox" data-signal="' + s.id + '"' + (checked ? ' checked' : '') + ' style="width:auto;margin-top:3px" />' +
+      '<span>' + esc(s.label) + '</span></label>';
+  }).join('');
+}
+function accountScoreKpiHtml(ac){
+  var score = computeAccountScore(ac);
+  var lv = screeningLevel(score);
+  return '<div class="kpis"><div class="kpi">' +
+    '<div class="kpi-top"><span class="l">アカウント信頼性リスクスコア</span><span class="trend" style="background:' + lv.bg + ';color:' + lv.color + '">リスク' + esc(lv.label) + '</span></div>' +
+    '<div class="v" style="color:' + lv.color + '">' + score + '</div></div></div>';
+}
+function accountCheckHtml(d){
+  var ac = d.accountCheck;
+  var html = '<div class="grid2">';
+  html += field('アカウント名/ハンドル(任意)', '<input type="text" id="f-accountCheck.handle" value="' + esc(ac.handle) + '" placeholder="@example" />');
+  html += field('アカウント作成日(分かる範囲で)', '<input type="date" id="f-accountCheck.createdAt" value="' + esc(ac.createdAt) + '" />');
+  html += '</div><div class="grid2">';
+  html += field('フォロワー数(目安)', '<input type="text" inputmode="numeric" id="f-accountCheck.followerCount" value="' + esc(ac.followerCount) + '" placeholder="例: 120" />');
+  html += field('フォロー数(目安)', '<input type="text" inputmode="numeric" id="f-accountCheck.followingCount" value="' + esc(ac.followingCount) + '" placeholder="例: 3400" />');
+  html += '</div>';
+  html += '<div class="helper">以下は外部SNSへ自動接続して取得した情報ではありません。記録者が投稿者のプロフィールを目視で確認し、該当する項目にチェックしてください。</div>';
+  html += '<div id="account-signals-list">' + accountSignalsListHtml(ac) + '</div>';
+  html += field('メモ', '<textarea id="f-accountCheck.note">' + esc(ac.note) + '</textarea>');
+  html += '<div id="account-score-kpi">' + accountScoreKpiHtml(ac) + '</div>';
+  return html;
+}
+function aiGenChecklistHtml(mc){
+  return AI_GEN_CHECKLIST.map(function(f){
+    var checked = mc.aiGenFlags.indexOf(f.id) > -1;
+    return '<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13px;cursor:pointer">' +
+      '<input type="checkbox" data-aigen="' + f.id + '"' + (checked ? ' checked' : '') + ' style="width:auto;margin-top:3px" />' +
+      '<span>' + esc(f.label) + '</span></label>';
+  }).join('');
+}
+function mediaCheckResultHtml(mc){
+  if (!mc.thumbDataUrl){
+    return '<div class="helper" style="margin-top:8px">まだ画像が登録されていません。上のボタンから画像を選択してください。</div>';
+  }
+  var html = '<div style="display:flex;gap:14px;align-items:flex-start;margin-top:10px;flex-wrap:wrap">';
+  html += '<img src="' + mc.thumbDataUrl + '" style="width:130px;height:auto;border-radius:8px;border:1px solid var(--line)" alt="アップロードされた画像のサムネイル" />';
+  html += '<div style="flex:1;min-width:220px">';
+  if (!mc.hash){
+    html += '<div class="note-box">' + icon('alert', 15) + '<div>特徴量を計算できませんでした。お使いのブラウザがCanvas APIに対応していない可能性があります。</div></div>';
+  } else if (mc.matches && mc.matches.length){
+    html += '<div class="note-box">' + icon('alert', 15) + '<div>類似する登録済みメディアが見つかりました。過去の別事案の使い回しの可能性があります。<ul style="margin:6px 0 0 18px">' +
+      mc.matches.map(function(m){ return '<li>' + esc(m.label || '(無題)') + (m.eventDate ? '(' + esc(m.eventDate) + ')' : '') + ' — 類似度: 距離 ' + m.distance + '/64</li>'; }).join('') +
+      '</ul></div></div>';
+  } else {
+    html += '<div class="helper">登録済みの参照メディアDB(' + state.referenceDb.length + '件)との一致は見つかりませんでした。DB件数が少ないうちは「一致なし」でも安心材料にはなりません。</div>';
+  }
+  html += '<div class="toolbar">' +
+    '<button class="ghost small" id="media-register-btn">' + icon('save', 14) + ' 参照メディアDBに登録する</button>' +
+    '<button class="ghost small" id="media-clear-btn">' + icon('trash', 14) + ' クリア</button>' +
+    '</div>';
+  html += '<div id="media-register-form"></div>';
+  html += '</div></div>';
+  return html;
+}
+function mediaCheckHtml(d){
+  var mc = d.mediaCheck;
+  var html = '';
+  html += '<div class="helper">画像をアップロードすると、端末内だけで特徴量(知覚ハッシュ)を計算し、このチームが過去に登録した参照メディアDBと照合します。外部への送信は一切ありません。動画・音声ファイルの自動照合は現時点では未対応です。</div>';
+  html += '<div class="toolbar"><label class="ghost small" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer">' +
+    icon('upload', 14) + ' 画像を選択<input type="file" id="media-file-input" accept="image/*" style="display:none" /></label></div>';
+  html += '<div id="media-check-result">' + mediaCheckResultHtml(mc) + '</div>';
+  html += '<h3>生成AI・合成の疑い(目視チェックリスト)</h3>';
+  html += '<div class="helper">生成AIによる捏造の自動検出は行いません。以下は目視確認のためのチェックリストです。</div>';
+  html += '<div id="aigen-checklist">' + aiGenChecklistHtml(mc) + '</div>';
+  html += field('メモ', '<textarea id="f-mediaCheck.note">' + esc(mc.note) + '</textarea>');
+  return html;
+}
+
 function bindNewCheckEvents(app){
   var d = state.draft;
 
@@ -1359,8 +1697,114 @@ function bindNewCheckEvents(app){
           counter.textContent = el.value.length + ' / 4000';
           counter.classList.toggle('near-limit', el.value.length >= 3600);
         }
+        refreshPatternScreen();
       }
     });
+  });
+
+  function refreshPatternScreen(){
+    var scan = scanPatterns(d.claimText);
+    d.patternScreen = {matchedIds: scan.matchedIds, score: scan.score, scannedAt: new Date().toISOString()};
+    var block = document.getElementById('pattern-screen-block');
+    if (block) block.innerHTML = patternScreenHtml(d);
+  }
+  function refreshAccountScore(){
+    var block = document.getElementById('account-score-kpi');
+    if (block) block.innerHTML = accountScoreKpiHtml(d.accountCheck);
+  }
+  // 初回描画時点でも(claimTextが既に入っている編集ケース向けに)スキャン結果を最新化しておく
+  refreshPatternScreen();
+
+  // アカウント信頼性シグナルのチェックボックス
+  app.querySelectorAll('[data-signal]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var id = cb.dataset.signal;
+      var idx = d.accountCheck.signals.indexOf(id);
+      if (cb.checked && idx === -1) d.accountCheck.signals.push(id);
+      if (!cb.checked && idx > -1) d.accountCheck.signals.splice(idx, 1);
+      scheduleDraftAutosave();
+      refreshAccountScore();
+    });
+  });
+
+  // 生成AI/合成チェックリスト
+  app.querySelectorAll('[data-aigen]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var id = cb.dataset.aigen;
+      var idx = d.mediaCheck.aiGenFlags.indexOf(id);
+      if (cb.checked && idx === -1) d.mediaCheck.aiGenFlags.push(id);
+      if (!cb.checked && idx > -1) d.mediaCheck.aiGenFlags.splice(idx, 1);
+      scheduleDraftAutosave();
+    });
+  });
+
+  // 過去メディアとの照合(画像アップロード→ハッシュ計算→参照DB照合)
+  function refreshMediaResult(){
+    var block = document.getElementById('media-check-result');
+    if (block) block.innerHTML = mediaCheckResultHtml(d.mediaCheck);
+  }
+  var mediaFileInput = document.getElementById('media-file-input');
+  if (mediaFileInput){
+    mediaFileInput.addEventListener('change', function(e){
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(){
+        downscaleImageToDataUrl(reader.result, 480, 0.6, function(thumb){
+          if (!thumb){
+            d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
+            refreshMediaResult();
+            toast('画像の読み込みに失敗しました。', {type:'danger'});
+            return;
+          }
+          computeDHash(thumb, function(hash){
+            d.mediaCheck.thumbDataUrl = thumb;
+            d.mediaCheck.hash = hash || '';
+            d.mediaCheck.matches = hash ? findReferenceMatches(hash) : [];
+            d.mediaCheck.checkedAt = new Date().toISOString();
+            scheduleDraftAutosave();
+            refreshMediaResult();
+          });
+        });
+      };
+      reader.onerror = function(){ toast('ファイルの読み込みに失敗しました。', {type:'danger'}); };
+      reader.readAsDataURL(file);
+    });
+  }
+  app.addEventListener('click', function(e){
+    var clearBtn = e.target.closest('#media-clear-btn');
+    if (clearBtn){
+      d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
+      if (mediaFileInput) mediaFileInput.value = '';
+      scheduleDraftAutosave();
+      refreshMediaResult();
+      return;
+    }
+    var registerBtn = e.target.closest('#media-register-btn');
+    if (registerBtn){
+      var formEl = document.getElementById('media-register-form');
+      if (!formEl) return;
+      if (formEl.innerHTML){ formEl.innerHTML = ''; return; }
+      formEl.innerHTML =
+        '<div class="share-box" style="margin-top:8px">' +
+        field('この事案のラベル(例: 2018年 〇〇地震の様子)', '<input type="text" id="refdb-new-label" placeholder="行事・災害名など" />') +
+        field('日付(分かれば)', '<input type="date" id="refdb-new-date" />') +
+        '<div class="toolbar"><button class="primary small" id="refdb-new-confirm">' + icon('save', 13) + ' 登録する</button></div>' +
+        '</div>';
+      var confirmBtn = document.getElementById('refdb-new-confirm');
+      confirmBtn.addEventListener('click', function(){
+        var label = (document.getElementById('refdb-new-label').value || '').trim();
+        var eventDate = document.getElementById('refdb-new-date').value || '';
+        if (!label){ toast('ラベルを入力してください。', {type:'warning'}); return; }
+        state.referenceDb.push({
+          id: uid(), label: label, eventDate: eventDate, thumbDataUrl: d.mediaCheck.thumbDataUrl,
+          hash: d.mediaCheck.hash, registeredAt: new Date().toISOString()
+        });
+        persistReferenceDb();
+        formEl.innerHTML = '';
+        toast('参照メディアDBに登録しました。', {type:'success'});
+      });
+    }
   });
 
   // 行の追加
@@ -1826,11 +2270,14 @@ function renderListRows(){
 }
 
 function exportCsv(){
-  var rows = [['更新日','種別','出所区分','主張タイトル','判定','スコア','根拠軸数(/5)','出典URL','アーカイブURL']];
+  var rows = [['更新日','種別','出所区分','主張タイトル','判定','スコア','根拠軸数(/5)',
+    '怪しさスコア(パターン)','アカウント信頼性リスク','過去メディア一致件数','出典URL','アーカイブURL']];
   filteredItems().forEach(function(it){
     rows.push([
       fmtDate(it.updatedAt), labelOf(MEDIA_TYPES, it.mediaType), labelOf(SOURCE_CATEGORIES, it.sourceCategory),
-      it.claimTitle, labelOf(VERDICTS, it.verdict), computeOverall(it, state.weights), evidenceCount(it), it.sourceUrl, it.archiveUrl
+      it.claimTitle, labelOf(VERDICTS, it.verdict), computeOverall(it, state.weights), evidenceCount(it),
+      it.patternScreen.score, computeAccountScore(it.accountCheck), (it.mediaCheck.matches || []).length,
+      it.sourceUrl, it.archiveUrl
     ]);
   });
   var csv = rows.map(function(r){
@@ -1861,6 +2308,16 @@ function printCase(it){
   html += '<p><b>本文:</b> ' + esc(it.claimText) + '</p>';
   html += '<p><b>種別:</b> ' + esc(labelOf(MEDIA_TYPES, it.mediaType)) + ' / <b>出所区分:</b> ' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</p>';
   html += '<p><b>出典:</b> ' + esc(it.sourceUrl) + ' / <b>アーカイブ:</b> ' + esc(it.archiveUrl || '(未記録)') + ' / <b>収集日:</b> ' + esc(fmtDate(it.collectedAt)) + '</p>';
+  html += '<h3>一次スクリーニング(技術による絞り込み・参考情報)</h3>';
+  var accScore = computeAccountScore(it.accountCheck);
+  var matchedPatterns = MISINFO_PATTERNS.filter(function(p){ return it.patternScreen.matchedIds.indexOf(p.id) > -1; });
+  html += '<p>A) 怪しさスコア(パターン検知): ' + it.patternScreen.score + '/100' +
+    (matchedPatterns.length ? '(検知: ' + matchedPatterns.map(function(p){ return esc(p.label); }).join('、') + ')' : '(該当パターンなし)') + '</p>';
+  html += '<p>B) アカウント信頼性リスクスコア: ' + accScore + '/100' +
+    (it.accountCheck.handle ? '(対象: ' + esc(it.accountCheck.handle) + ')' : '') + '</p>';
+  html += '<p>C) 過去メディアとの照合: ' + (it.mediaCheck.matches && it.mediaCheck.matches.length
+    ? '類似メディア ' + it.mediaCheck.matches.length + '件を検出(使い回しの疑い)' : '一致なし、または未実施') +
+    (it.mediaCheck.aiGenFlags.length ? ' / 生成AI疑いチェック: ' + it.mediaCheck.aiGenFlags.length + '項目に該当' : '') + '</p>';
   html += '<h3>① 情報源の確認</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.officialCheck.result) || '未確認') + ' / 照合先: ' + esc(it.officialCheck.agency) + '<br>' + esc(it.officialCheck.note) + '</p>';
   html += '<h3>② 一次情報との比較</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.primaryCheck.result) || '未確認') + ' / 種類: ' + esc(it.primaryCheck.sourceType) + '<br>' + esc(it.primaryCheck.note) + '</p>';
   html += '<h3>③ クロスチェック</h3><ul>' + (it.crossChecks.length ? it.crossChecks.map(function(c){
@@ -2183,7 +2640,89 @@ function generateInsights(items, ctx){
   var snsN = ctx.srcCounts.sns || 0;
   if (total && snsN / total >= 0.5) out.push('検証対象の過半数(' + Math.round(snsN/total*100) + '%)がSNS発信の主張です。拡散速度が速い経路のため、初動確認のスピードを優先してください。');
 
+  // 一次スクリーニング: 高リスクの件数
+  var highPattern = items.filter(function(it){ return it.patternScreen.score >= 50; }).length;
+  if (highPattern > 0) out.push('パターン検知の怪しさスコアが50以上(高リスク)の案件が' + highPattern + '件あります。優先的に詳細検証してください。');
+  var mediaMatchCount = items.filter(function(it){ return it.mediaCheck.matches && it.mediaCheck.matches.length > 0; }).length;
+  if (mediaMatchCount > 0) out.push('過去メディアとの照合で類似メディアが見つかった案件が' + mediaMatchCount + '件あります。過去事案の使い回しの可能性が高いため優先的に確認してください。');
+
   return out;
+}
+
+/* ============================= 参照メディアDBタブ ============================= */
+function renderRefDbTab(app){
+  var html = '';
+  html += '<div class="card">';
+  html += '<h2>' + icon('image', 17) + ' 参照メディアDB</h2>';
+  html += '<div class="helper">「③ 過去メディアとの照合」で登録した画像の一覧です。このチームが過去に確認した災害・事件等のメディアを蓄積し、' +
+    '新しい投稿と照合することで「過去の映像/画像の使い回し」を見つけやすくします。' +
+    '<b>世界規模の照合データベースではなく、あくまでこのブラウザ内(このチーム)で育てるローカルDBです。</b></div>';
+  html += '<div class="toolbar"><button class="ghost small" id="refdb-export">' + icon('download', 14) + ' エクスポート</button>' +
+    '<label class="ghost small" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer">' + icon('upload', 14) + ' インポート' +
+    '<input type="file" id="refdb-import" accept="application/json" style="display:none" /></label></div>';
+  html += '</div>';
+
+  if (!state.referenceDb.length){
+    html += '<div class="card"><div class="empty">' + icon('inbox', 34) + '<div class="empty-title">登録済みの参照メディアはありません</div>' +
+      '<div>「新規/編集」タブの「③ 過去メディアとの照合」から画像を登録できます。</div></div></div>';
+  } else {
+    html += '<div class="card"><div class="toolgrid">' + state.referenceDb.slice().reverse().map(function(ref){
+      return '<div class="toolcard">' +
+        (ref.thumbDataUrl ? '<img src="' + ref.thumbDataUrl + '" alt="' + esc(ref.label) + '" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px" />' : '') +
+        '<div style="font-weight:700;font-size:13px">' + esc(ref.label) + '</div>' +
+        '<div class="note">' + esc(ref.eventDate || '日付不明') + ' / 登録日: ' + esc(fmtDate(ref.registeredAt)) + '</div>' +
+        '<div class="toolbar" style="margin-top:6px"><button class="danger small" data-refdb-del="' + esc(ref.id) + '">' + icon('trash', 13) + ' 削除</button></div>' +
+        '</div>';
+    }).join('') + '</div></div>';
+  }
+
+  app.innerHTML = html;
+
+  document.getElementById('refdb-export').addEventListener('click', function(){
+    download('reference-media-db-' + Date.now() + '.json', JSON.stringify({entries: state.referenceDb}, null, 2));
+  });
+  document.getElementById('refdb-import').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var data = JSON.parse(reader.result);
+        if (!Array.isArray(data.entries)) throw new Error('形式が不正です');
+        state.referenceDb = state.referenceDb.concat(data.entries.map(function(r){
+          return {
+            id: (typeof r.id === 'string' && r.id) || uid(),
+            label: typeof r.label === 'string' ? r.label : '(無題)',
+            eventDate: typeof r.eventDate === 'string' ? r.eventDate : '',
+            thumbDataUrl: typeof r.thumbDataUrl === 'string' ? r.thumbDataUrl : '',
+            hash: typeof r.hash === 'string' ? r.hash : '',
+            registeredAt: typeof r.registeredAt === 'string' ? r.registeredAt : new Date().toISOString()
+          };
+        }));
+        persistReferenceDb();
+        toast('参照メディアDBを' + data.entries.length + '件インポートしました。', {type:'success'});
+        renderAll();
+      }catch(err){
+        toast('インポートに失敗しました: ' + err.message, {type:'danger'});
+      }
+    };
+    reader.readAsText(file);
+  });
+  app.querySelectorAll('[data-refdb-del]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id = btn.dataset.refdbDel;
+      var removed = state.referenceDb.filter(function(r){ return r.id === id; })[0];
+      state.referenceDb = state.referenceDb.filter(function(r){ return r.id !== id; });
+      persistReferenceDb();
+      toast('参照メディアを削除しました。', {
+        type: 'warning', actionLabel: '元に戻す',
+        onAction: function(){
+          if (removed){ state.referenceDb.push(removed); persistReferenceDb(); renderAll(); }
+        }
+      });
+      renderAll();
+    });
+  });
 }
 
 /* ============================= ガイドタブ ============================= */
@@ -2194,6 +2733,20 @@ function renderGuideTab(app){
   html += termsHtml();
   html += '<div class="helper">' + (consent ? ('同意日時: ' + esc(fmtDateTime(consent.at)) + '(バージョン: ' + esc(consent.version) + ')') : 'まだ同意していません(「新規/編集」タブを開くと同意画面が表示されます)。') + '</div>';
   html += '</div>';
+
+  html += '<div class="card"><h2>技術と人を組み合わせる(一次スクリーニングの考え方)</h2>';
+  html += '<div class="helper">技術は大量の情報を素早く「ふるいにかける」ことが得意ですが、判断の責任を引き受けることはできません。' +
+    '本ツールの一次スクリーニング(A/B/C)は、詳細検証(①〜⑥)に進む前の「怪しさの当たりをつける」段階であり、' +
+    '<b>最終的な真偽の判断は必ず人が①〜⑥を確認して行います。</b>「白黒つかない」ものを「検証不能」のまま残すことも、' +
+    'この原則に基づく正当な判断です。</div>';
+  html += '<table class="axis-table"><thead><tr><th>手法</th><th>やっていること</th><th>やっていないこと</th></tr></thead><tbody>';
+  html += '<tr><td>A) パターン検知</td><td>権威借用・緊急煽り・匿名情報源等、既知の誤情報の「型」を正規表現で検知しスコア化</td><td>機械学習による継続学習(固定パターン集の静的照合)</td></tr>';
+  html += '<tr><td>B) アカウント信頼性チェック</td><td>記録者が目視で確認した観察項目(作成間もない等)からリスクを数値化</td><td>SNS事業者APIへの自動接続・自動取得</td></tr>';
+  html += '<tr><td>C) 過去メディア照合</td><td>画像の知覚ハッシュを自チームの参照DBと比較し、使い回しの可能性を提示</td><td>世界規模の外部データベースへの照会、動画/音声の自動照合</td></tr>';
+  html += '</tbody></table>';
+  html += '<div class="helper" style="margin-top:8px">C)の参照メディアDBは、このブラウザの中でチームが自ら登録・育てていくローカルなデータベースです。件数が少ないうちは「一致しなかった」ことが「本物」を意味しません。</div>';
+  html += '</div>';
+
   html += '<div class="card"><h2>検証手順の考え方</h2>';
   html += '<ol style="line-height:2">';
   html += '<li><b>事実と意見・推測を切り分ける</b> — 個人の意見・感想・価値判断・未来予測は検証対象外。事実として提示されている言明のみを対象にする。</li>';
@@ -2252,6 +2805,7 @@ window.addEventListener('unhandledrejection', function(e){
 });
 
 /* ============================= 起動 ============================= */
+state.referenceDb = loadReferenceDb(); // 参照メディアDB(このツール自身が育てるローカルDB)
 (function initPendingRecovery(){
   var backup = loadDraftBackup();
   var hasContent = backup && backup.draft && ((backup.draft.claimTitle || '').trim() || (backup.draft.claimText || '').trim());

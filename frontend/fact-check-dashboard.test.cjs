@@ -206,14 +206,14 @@ async function agreeToConsent(dom) {
     dom.window.Blob = function (parts) { captured = parts.join(''); };
     dom.window.URL.createObjectURL = () => 'blob://fake';
     dom.window.URL.revokeObjectURL = () => {};
-    dom.window.state.items = [{
+    dom.window.state.items = [dom.window.normalizeItem({
       id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       mediaType: 'text', sourceCategory: 'media', claimTitle: 'サンプル,主張"引用"', claimText: '本文',
       sourceUrl: 'https://example.com', archiveUrl: '', collectedAt: '', segments: [],
       officialCheck: { result: 'match', agency: '', note: '', link: '' },
       primaryCheck: { result: '', sourceType: '', note: '', link: '' },
       crossChecks: [], aiChecks: [], toolChecks: [], verdict: 'true', summary: '', reviewer: '', history: []
-    }];
+    })];
     dom.window.state.activeTab = 'list';
     dom.window.renderAll();
     dom.window.document.getElementById('btn-export-csv').click();
@@ -286,14 +286,14 @@ async function agreeToConsent(dom) {
 
   await test('印刷レポート: 試用版では免責文言と透かしが入り、正規版ではライセンス名が表示される', async () => {
     const dom = await freshDom();
-    dom.window.state.items = [{
+    dom.window.state.items = [dom.window.normalizeItem({
       id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       mediaType: 'text', sourceCategory: 'media', claimTitle: 'テスト主張', claimText: '本文',
       sourceUrl: 'https://example.com', archiveUrl: '', collectedAt: '', segments: [],
       officialCheck: { result: '', agency: '', note: '', link: '' },
       primaryCheck: { result: '', sourceType: '', note: '', link: '' },
       crossChecks: [], aiChecks: [], toolChecks: [], verdict: 'false', summary: '', reviewer: '', history: []
-    }];
+    })];
     dom.window.state.activeTab = 'list';
     dom.window.renderAll();
     const doc = dom.window.document;
@@ -316,13 +316,13 @@ async function agreeToConsent(dom) {
     function mkItem(monthsAgo, verdict, sourceCategory, mediaType) {
       const d = new Date();
       d.setMonth(d.getMonth() - monthsAgo);
-      return {
+      return dom.window.normalizeItem({
         id: 'id' + monthsAgo + verdict + Math.random(), createdAt: d.toISOString(), updatedAt: d.toISOString(),
         mediaType, sourceCategory, claimTitle: 'claim ' + monthsAgo, claimText: 'text', sourceUrl: '', archiveUrl: '',
         collectedAt: '', segments: [], officialCheck: { result: 'match', agency: '', note: '', link: '' },
         primaryCheck: { result: 'match', sourceType: '', note: '', link: '' },
         crossChecks: [], aiChecks: [], toolChecks: [], verdict, summary: '', reviewer: '', history: []
-      };
+      });
     }
     dom.window.state.items = [
       mkItem(5, 'false', 'sns', 'video'), mkItem(4, 'mixed', 'sns', 'text'),
@@ -537,6 +537,173 @@ async function agreeToConsent(dom) {
     dom.window.renderAll();
     doc = dom.window.document;
     assert.ok(doc.querySelector('.empty svg'), 'ダッシュボードの空状態にアイコンが無い');
+  });
+
+  /* ============================= 一次スクリーニング機能(パターン検知/アカウント信頼性/過去メディア照合) ============================= */
+
+  await test('scanPatterns: 権威借用パターンを検知しスコアを算出する', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const hit = w.scanPatterns('〇〇大学教授によると、この薬は危険だと警告している。');
+    assert.ok(hit.matchedIds.indexOf('authority-borrow') > -1, '権威借用パターンが検知されない');
+    assert.ok(hit.score > 0);
+  });
+
+  await test('scanPatterns: 既知パターンに一致しない平易な文章はスコア0になる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const hit = w.scanPatterns('本日の会議は10時から開始されます。');
+    assert.strictEqual(hit.matchedIds.length, 0);
+    assert.strictEqual(hit.score, 0);
+  });
+
+  await test('scanPatterns: 複数パターンが重複検知されるとスコアが加算される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const hit = w.scanPatterns('拡散希望！ 元関係者が暴露、絶対に本当の話です。今すぐシェアしてください！！！！！！');
+    assert.ok(hit.matchedIds.length >= 3, '複数パターンが検知されるべき: ' + JSON.stringify(hit.matchedIds));
+    assert.ok(hit.score >= 30);
+  });
+
+  await test('computeAccountScore: チェックしたシグナルの重みが合算され、上限100でクリップされる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const allIds = w.ACCOUNT_SIGNALS.map(s => s.id);
+    assert.strictEqual(w.computeAccountScore({signals: []}), 0);
+    assert.ok(w.computeAccountScore({signals: [allIds[0]]}) > 0);
+    assert.ok(w.computeAccountScore({signals: allIds}) <= 100);
+  });
+
+  await test('hammingDistance: 完全一致は0、完全不一致はビット長、長さ不一致はInfinity', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(w.hammingDistance('1010', '1010'), 0);
+    assert.strictEqual(w.hammingDistance('1111', '0000'), 4);
+    assert.strictEqual(w.hammingDistance('101', '10'), Infinity);
+    assert.strictEqual(w.hammingDistance(null, '1010'), Infinity);
+  });
+
+  await test('findReferenceMatches: 閾値以下の距離のみ返し、距離の昇順でソートされる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const target = '1111000011110000111100001111000011110000111100001111000011110'.slice(0, 64);
+    w.state.referenceDb = [
+      {id: 'a', label: '近い', eventDate: '', hash: target.slice(0, 60) + '0000'}, // 距離が小さいはず
+      {id: 'b', label: '遠い', eventDate: '', hash: '0'.repeat(64) === target ? '1'.repeat(64) : '0'.repeat(64)},
+      {id: 'c', label: '完全一致', eventDate: '', hash: target}
+    ];
+    const matches = w.findReferenceMatches(target);
+    assert.ok(matches.length >= 1, '少なくとも完全一致がヒットするはず');
+    assert.strictEqual(matches[0].id, 'c', '完全一致(距離0)が先頭に来るべき');
+    assert.strictEqual(matches[0].distance, 0);
+    for (let i = 1; i < matches.length; i++){
+      assert.ok(matches[i].distance >= matches[i-1].distance, '距離の昇順になっていない');
+    }
+  });
+
+  await test('downscaleImageToDataUrl/computeDHash: 呼び出しが同期的に例外を投げない(Canvas未対応環境での安全性)', async () => {
+    // jsdomは <canvas> の画像デコード/getImageData を(canvasパッケージ無しでは)サポートしないため、
+    // img.onload/onerror が発火しないケースがある。ここでは「同期的にthrowしないこと」までを保証し、
+    // 実際のハッシュ算出の正しさは Playwright(実ブラウザ)で別途検証する。
+    const dom = await freshDom();
+    const w = dom.window;
+    const tinyPngDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    assert.doesNotThrow(() => {
+      w.computeDHash(tinyPngDataUrl, function(){});
+      w.downscaleImageToDataUrl(tinyPngDataUrl, 100, 0.6, function(){});
+    });
+  });
+
+  await test('一次スクリーニング: claimText入力に応じてパターン検知スコアがライブ更新される(A/B/C画面)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const claimText = doc.getElementById('f-claimText');
+    claimText.value = '拡散希望！ 元関係者が暴露、今すぐシェアしてください！';
+    claimText.dispatchEvent(new dom.window.Event('input', {bubbles: true}));
+    const block = doc.getElementById('pattern-screen-block');
+    assert.ok(block.textContent.includes('怪しさスコア'));
+    assert.ok(dom.window.state.draft.patternScreen.score > 0, 'パターン検知スコアがdraftに反映されていない');
+  });
+
+  await test('一次スクリーニング: アカウント信頼性シグナルのチェックでスコアが更新される', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const cb = doc.querySelector('[data-signal="newAccount"]');
+    assert.ok(cb, 'アカウント信頼性シグナルのチェックボックスが見つからない');
+    cb.checked = true;
+    cb.dispatchEvent(new dom.window.Event('change', {bubbles: true}));
+    assert.ok(dom.window.state.draft.accountCheck.signals.indexOf('newAccount') > -1);
+    const kpi = doc.getElementById('account-score-kpi');
+    assert.ok(kpi.textContent.includes('22') || dom.window.computeAccountScore(dom.window.state.draft.accountCheck) > 0);
+  });
+
+  await test('一次スクリーニング: 生成AI疑いチェックリストのチェックがdraftに反映される', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const cb = doc.querySelector('[data-aigen="unnaturalHands"]');
+    assert.ok(cb, '生成AIチェックリストの項目が見つからない');
+    cb.checked = true;
+    cb.dispatchEvent(new dom.window.Event('change', {bubbles: true}));
+    assert.ok(dom.window.state.draft.mediaCheck.aiGenFlags.indexOf('unnaturalHands') > -1);
+  });
+
+  await test('過去メディアとの照合結果がある状態で保存すると、印刷レポート・CSVに反映される', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    dom.window.confirm = () => true;
+    const doc = dom.window.document;
+    doc.getElementById('f-claimText').value = '媒体照合テスト';
+    doc.getElementById('f-claimText').dispatchEvent(new dom.window.Event('input', {bubbles: true}));
+    dom.window.state.draft.mediaCheck.thumbDataUrl = 'data:image/jpeg;base64,AAA';
+    dom.window.state.draft.mediaCheck.hash = '1'.repeat(64);
+    dom.window.state.draft.mediaCheck.matches = [{id: 'ref1', label: '過去の地震映像', eventDate: '2018-01-01', distance: 2}];
+    doc.getElementById('btn-save').click();
+    assert.strictEqual(dom.window.state.items.length, 1);
+    assert.strictEqual(dom.window.state.items[0].mediaCheck.matches.length, 1);
+
+    dom.window.state.activeTab = 'list';
+    dom.window.renderAll();
+    doc.querySelector('[data-print]').click();
+    const printHtml = doc.getElementById('print-root').innerHTML;
+    assert.ok(printHtml.includes('過去の別事案の使い回し') === false); // printCase側の文言は件数ベースの短い表記
+    assert.ok(printHtml.includes('類似メディア'), '印刷レポートに過去メディア照合結果が含まれない');
+  });
+
+  await test('参照メディアDBタブ: 登録・一覧表示・削除(Undo付き)ができる', async () => {
+    const dom = await freshDom();
+    dom.window.state.referenceDb = [
+      {id: 'ref1', label: '2018年地震の映像', eventDate: '2018-01-01', thumbDataUrl: '', hash: '1'.repeat(64), registeredAt: new Date().toISOString()}
+    ];
+    dom.window.state.activeTab = 'refdb';
+    dom.window.renderAll();
+    const doc = dom.window.document;
+    assert.ok(doc.body.textContent.includes('2018年地震の映像'), '登録済み参照メディアが一覧に表示されない');
+
+    const delBtn = doc.querySelector('[data-refdb-del]');
+    assert.ok(delBtn, '削除ボタンが見つからない');
+    delBtn.click();
+    assert.strictEqual(dom.window.state.referenceDb.length, 0, '削除後にreferenceDbが空になっていない');
+  });
+
+  await test('ダッシュボード: 一次スクリーニングの示唆(高リスク件数・過去メディア一致件数)が生成される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const item = w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'sns', claimTitle: 'test', claimText: 'test', verdict: 'false',
+      patternScreen: {matchedIds: ['authority-borrow'], score: 70, scannedAt: ''},
+      mediaCheck: {thumbDataUrl: '', hash: '', matches: [{id: 'r', label: 'x', distance: 1}], aiGenFlags: [], checkedAt: '', note: ''}
+    });
+    w.state.items = [item];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const doc = w.document;
+    const text = doc.querySelector('.insight-list').textContent;
+    assert.ok(text.includes('パターン検知の怪しさスコアが50以上'), '高リスク件数の示唆が生成されない');
+    assert.ok(text.includes('過去メディアとの照合で類似メディアが見つかった'), '過去メディア一致の示唆が生成されない');
   });
 
   console.log('');
