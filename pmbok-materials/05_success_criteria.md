@@ -65,4 +65,4 @@
 
 - 4項目の平均から、5.2の2軸マトリクスでどの象限に位置するかをプロットする
 - ③④に該当した場合は、原因を[02の6原則](02_six_principles.md)のどれに
-  紐づけられるか議論する（[07_training_curriculum.md](07_training_curriculum.md) Week3で実施）
+  紐づけられるか議論する（[07_training_curriculum.md](07_training_curriculum.md) Week6で実施）
