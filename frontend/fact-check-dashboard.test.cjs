@@ -706,6 +706,85 @@ async function agreeToConsent(dom) {
     assert.ok(text.includes('過去メディアとの照合で類似メディアが見つかった'), '過去メディア一致の示唆が生成されない');
   });
 
+  /* ============================= B3/F8/K2/K6: UX・a11y・セキュリティの追加改善 ============================= */
+
+  await test('B3: スクロール中(scrollイベント)に現在タブのスクロール位置が継続的に記録される', async () => {
+    // 実ブラウザ検証で判明した通り、「タブを離れるクリックの瞬間」ではスクロール位置が
+    // 既に失われていることがあるため、scrollイベントで継続的に記録する方式にしている。
+    const dom = await freshDom();
+    const w = dom.window;
+    Object.defineProperty(w.window, 'scrollY', { value: 480, configurable: true });
+    w.window.dispatchEvent(new w.Event('scroll'));
+    await new Promise((r) => setTimeout(r, 60)); // requestAnimationFrame/setTimeoutでの間引き待ち
+    assert.strictEqual(w.state.scrollPositions['new'], 480, 'スクロール中に現在タブの位置が記録されていない');
+  });
+
+  await test('B3: タブ切替後、新しいタブのアクティブボタンにフォーカスが移る', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const doc = w.document;
+    doc.querySelector('button[data-tab="dashboard"]').click();
+    const activeBtn = doc.querySelector('nav.tabs button.active');
+    assert.strictEqual(doc.activeElement, activeBtn, 'タブ切替後にアクティブなタブボタンへフォーカスが移っていない');
+  });
+
+  await test('F8: 判定バッジが色だけでなく記号(symbol)でも判別できる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: 'symbol test', claimText: 't', verdict: 'false'
+    })];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const badge = w.document.querySelector('.badge');
+    assert.ok(badge.textContent.includes('✕'), '「誤り」判定のバッジに記号(✕)が含まれていない: ' + badge.textContent);
+  });
+
+  await test('K2: インポートファイルのサイズが上限を超える場合は読み込まず拒否する', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const doc = w.document;
+    w.state.activeTab = 'list';
+    w.renderAll();
+    let toastShown = false;
+    const origToast = w.toast;
+    w.toast = function(msg, opts){ if (msg.includes('大きすぎます')) toastShown = true; return origToast(msg, opts); };
+    const input = doc.getElementById('file-import');
+    const bigFile = { name: 'huge.json', size: 25 * 1024 * 1024 };
+    Object.defineProperty(input, 'files', { value: [bigFile], configurable: true });
+    input.dispatchEvent(new w.Event('change', { bubbles: true }));
+    assert.ok(toastShown, 'サイズ超過時の警告トーストが表示されない');
+  });
+
+  await test('K2: normalizeItemは異常に長い文字列・巨大な配列を上限で切り詰める', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const hugeText = 'a'.repeat(50000);
+    const hugeArray = new Array(1000).fill(0).map(() => ({ outlet: 'x', url: '', result: '', note: '' }));
+    const item = w.normalizeItem({ id: 'x1', claimText: hugeText, summary: hugeText, crossChecks: hugeArray });
+    assert.ok(item.claimText.length <= 20000, 'claimTextが上限で切り詰められていない: ' + item.claimText.length);
+    assert.ok(item.crossChecks.length <= 500, 'crossChecksが上限で切り詰められていない: ' + item.crossChecks.length);
+  });
+
+  await test('K6: 機密情報らしき文字列(APIキー等)を含む状態でサーバー共有しようとすると確認ダイアログが出る', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: 't',
+      claimText: 'メモ: AKIAABCDEFGHIJKLMNOP を使ってください', verdict: ''
+    })];
+    const key = w.licGenerate('テスト株式会社', w.STORE);
+    w.localStorage.setItem('fcd_license', JSON.stringify({ company: 'テスト株式会社', key }));
+    w.state.activeTab = 'list';
+    w.renderAll();
+    let confirmCalled = 0;
+    w.confirm = () => { confirmCalled++; return false; };
+    w.document.getElementById('share-create').click();
+    assert.strictEqual(confirmCalled, 1, '機密情報らしき文字列があるのに確認ダイアログが出ない');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {

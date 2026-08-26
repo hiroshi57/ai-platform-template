@@ -337,12 +337,14 @@ var SOURCE_CATEGORIES = [
   {id:'other', label:'その他'}
 ];
 
+/* F8(a11y): 判定を色だけで区別しないよう、各判定に固有の記号(symbol)を持たせる。
+ * 色覚特性によらず「✓ / ✓~ / △ / ✕ / ?」の形で判別できるようにする。 */
 var VERDICTS = [
-  {id:'true', label:'真実', color:'var(--green)'},
-  {id:'mostly_true', label:'ほぼ真実', color:'#3d8f6b'},
-  {id:'mixed', label:'一部誤り/ミスリード', color:'var(--amber)'},
-  {id:'false', label:'誤り', color:'var(--red)'},
-  {id:'unverifiable', label:'検証不能', color:'var(--gray)'}
+  {id:'true', label:'真実', color:'var(--green)', symbol:'✓'},
+  {id:'mostly_true', label:'ほぼ真実', color:'#3d8f6b', symbol:'✓~'},
+  {id:'mixed', label:'一部誤り/ミスリード', color:'var(--amber)', symbol:'△'},
+  {id:'false', label:'誤り', color:'var(--red)', symbol:'✕'},
+  {id:'unverifiable', label:'検証不能', color:'var(--gray)', symbol:'?'}
 ];
 
 var RESULT_OPTIONS = [
@@ -566,66 +568,81 @@ var SCHEMA_VERSION = 3; // v3: 一次スクリーニング(patternScreen/account
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
+/* K2: インポートされたJSON(信頼できない入力になりうる)が異常に巨大なフィールド・配列を
+ * 持っていても、レンダリングやlocalStorage容量を圧迫しないよう上限を設けて安全側に丸める。
+ */
+function capString(s, max){
+  s = typeof s === 'string' ? s : '';
+  return s.length > max ? s.slice(0, max) : s;
+}
+function capArray(arr, max){
+  return Array.isArray(arr) ? arr.slice(0, max) : [];
+}
 function normalizeSegment(s){
   s = s || {};
-  return {rid: s.rid || uid(), text: typeof s.text === 'string' ? s.text : '', tag: pickEnum(SEGMENT_TAGS, s.tag, 'fact')};
+  return {rid: s.rid || uid(), text: capString(s.text, 2000), tag: pickEnum(SEGMENT_TAGS, s.tag, 'fact')};
 }
 function normalizeCrossCheck(c){
   c = c || {};
-  return {rid: c.rid || uid(), outlet: typeof c.outlet === 'string' ? c.outlet : '', url: typeof c.url === 'string' ? c.url : '',
-    result: pickEnum(RESULT_OPTIONS, c.result, ''), note: typeof c.note === 'string' ? c.note : ''};
+  return {rid: c.rid || uid(), outlet: capString(c.outlet, 300), url: capString(c.url, 2000),
+    result: pickEnum(RESULT_OPTIONS, c.result, ''), note: capString(c.note, 5000)};
 }
 function normalizeAiCheck(a){
   a = a || {};
   return {rid: a.rid || uid(), tool: pickEnum(AI_TOOL_OPTIONS, a.tool, 'chatgpt'),
-    stance: pickEnum(STANCE_OPTIONS, a.stance, ''), note: typeof a.note === 'string' ? a.note : ''};
+    stance: pickEnum(STANCE_OPTIONS, a.stance, ''), note: capString(a.note, 5000)};
 }
 function normalizeToolCheck(t){
   t = t || {};
-  return {rid: t.rid || uid(), service: typeof t.service === 'string' ? t.service : '',
-    finding: pickEnum(TOOL_FINDING_OPTIONS, t.finding, ''), note: typeof t.note === 'string' ? t.note : ''};
+  return {rid: t.rid || uid(), service: capString(t.service, 300),
+    finding: pickEnum(TOOL_FINDING_OPTIONS, t.finding, ''), note: capString(t.note, 5000)};
 }
 function normalizeCheckResult(obj, extraKey){
   obj = obj || {};
-  var out = {result: pickEnum(RESULT_OPTIONS, obj.result, ''), note: typeof obj.note === 'string' ? obj.note : '',
-    link: typeof obj.link === 'string' ? obj.link : ''};
-  out[extraKey] = typeof obj[extraKey] === 'string' ? obj[extraKey] : '';
+  var out = {result: pickEnum(RESULT_OPTIONS, obj.result, ''), note: capString(obj.note, 5000),
+    link: capString(obj.link, 2000)};
+  out[extraKey] = capString(obj[extraKey], 300);
   return out;
 }
 function normalizePatternScreen(p){
   p = p || {};
-  var ids = Array.isArray(p.matchedIds) ? p.matchedIds.filter(function(id){
+  var ids = capArray(p.matchedIds, 50).filter(function(id){
     return MISINFO_PATTERNS.some(function(mp){ return mp.id === id; });
-  }) : [];
+  });
   return {matchedIds: ids, score: typeof p.score === 'number' ? p.score : 0,
     scannedAt: typeof p.scannedAt === 'string' ? p.scannedAt : ''};
 }
 function normalizeAccountCheck(a){
   a = a || {};
-  var ids = Array.isArray(a.signals) ? a.signals.filter(function(id){
+  var ids = capArray(a.signals, 50).filter(function(id){
     return ACCOUNT_SIGNALS.some(function(s){ return s.id === id; });
-  }) : [];
+  });
   return {
-    handle: typeof a.handle === 'string' ? a.handle : '',
+    handle: capString(a.handle, 300),
     createdAt: typeof a.createdAt === 'string' ? a.createdAt : '',
-    followerCount: typeof a.followerCount === 'string' ? a.followerCount : '',
-    followingCount: typeof a.followingCount === 'string' ? a.followingCount : '',
+    followerCount: capString(a.followerCount, 50),
+    followingCount: capString(a.followingCount, 50),
     signals: ids,
-    note: typeof a.note === 'string' ? a.note : ''
+    note: capString(a.note, 5000)
   };
 }
 function normalizeMediaCheck(m){
   m = m || {};
-  var flags = Array.isArray(m.aiGenFlags) ? m.aiGenFlags.filter(function(id){
+  var flags = capArray(m.aiGenFlags, 50).filter(function(id){
     return AI_GEN_CHECKLIST.some(function(f){ return f.id === id; });
-  }) : [];
+  });
+  // 生成物(サムネイル)が異常に大きい場合は破損データとみなし切り捨てる(中途半端な
+  // base64を保持しても画像として復元できないため、truncateせず丸ごと捨てる)。
+  var MAX_THUMB_LEN = 3 * 1024 * 1024; // 概ね2MB強のデコード後サイズに相当
+  var thumb = typeof m.thumbDataUrl === 'string' ? m.thumbDataUrl : '';
+  if (thumb.length > MAX_THUMB_LEN) thumb = '';
   return {
-    thumbDataUrl: typeof m.thumbDataUrl === 'string' ? m.thumbDataUrl : '',
-    hash: typeof m.hash === 'string' ? m.hash : '',
-    matches: Array.isArray(m.matches) ? m.matches : [],
+    thumbDataUrl: thumb,
+    hash: capString(m.hash, 128),
+    matches: capArray(m.matches, 20),
     aiGenFlags: flags,
     checkedAt: typeof m.checkedAt === 'string' ? m.checkedAt : '',
-    note: typeof m.note === 'string' ? m.note : ''
+    note: capString(m.note, 5000)
   };
 }
 function normalizeItem(raw){
@@ -637,21 +654,21 @@ function normalizeItem(raw){
     updatedAt: (typeof raw.updatedAt === 'string' && raw.updatedAt) || (typeof raw.createdAt === 'string' && raw.createdAt) || nowIso,
     mediaType: pickEnum(MEDIA_TYPES, raw.mediaType, 'text'),
     sourceCategory: pickEnum(SOURCE_CATEGORIES, raw.sourceCategory, 'other'),
-    claimTitle: typeof raw.claimTitle === 'string' ? raw.claimTitle : '',
-    claimText: typeof raw.claimText === 'string' ? raw.claimText : '',
-    sourceUrl: typeof raw.sourceUrl === 'string' ? raw.sourceUrl : '',
-    archiveUrl: typeof raw.archiveUrl === 'string' ? raw.archiveUrl : '',
+    claimTitle: capString(raw.claimTitle, 500),
+    claimText: capString(raw.claimText, 20000),
+    sourceUrl: capString(raw.sourceUrl, 2000),
+    archiveUrl: capString(raw.archiveUrl, 2000),
     collectedAt: typeof raw.collectedAt === 'string' ? raw.collectedAt : '',
-    segments: Array.isArray(raw.segments) ? raw.segments.map(normalizeSegment) : [],
+    segments: capArray(raw.segments, 500).map(normalizeSegment),
     officialCheck: normalizeCheckResult(raw.officialCheck, 'agency'),
     primaryCheck: normalizeCheckResult(raw.primaryCheck, 'sourceType'),
-    crossChecks: Array.isArray(raw.crossChecks) ? raw.crossChecks.map(normalizeCrossCheck) : [],
-    aiChecks: Array.isArray(raw.aiChecks) ? raw.aiChecks.map(normalizeAiCheck) : [],
-    toolChecks: Array.isArray(raw.toolChecks) ? raw.toolChecks.map(normalizeToolCheck) : [],
+    crossChecks: capArray(raw.crossChecks, 500).map(normalizeCrossCheck),
+    aiChecks: capArray(raw.aiChecks, 500).map(normalizeAiCheck),
+    toolChecks: capArray(raw.toolChecks, 500).map(normalizeToolCheck),
     verdict: pickEnum(VERDICTS, raw.verdict, ''),
-    summary: typeof raw.summary === 'string' ? raw.summary : '',
-    reviewer: typeof raw.reviewer === 'string' ? raw.reviewer : '',
-    history: Array.isArray(raw.history) ? raw.history : [],
+    summary: capString(raw.summary, 20000),
+    reviewer: capString(raw.reviewer, 500),
+    history: capArray(raw.history, 500),
     patternScreen: normalizePatternScreen(raw.patternScreen),
     accountCheck: normalizeAccountCheck(raw.accountCheck),
     mediaCheck: normalizeMediaCheck(raw.mediaCheck)
@@ -1272,7 +1289,33 @@ function fmtDateTime(iso){
   return d.toLocaleString('ja-JP');
 }
 
+/* B3: タブを行き来する際、各タブごとのスクロール位置を覚えておいて復元する。
+ *
+ * 当初は「タブを離れる瞬間(クリック時)の window.scrollY を保存する」実装にしていたが、
+ * 実ブラウザで検証したところ、デスクトップ幅ではタブナビゲーションが画面上部に固定
+ * されていない(sticky/fixedではない)ため、ページを下にスクロールした状態からタブを
+ * クリックするには一度ナビゲーションが見える位置まで戻る必要があり、クリック時点では
+ * 既にスクロール位置が失われていた(Playwrightの実ブラウザテストでこの不具合を発見)。
+ * → 「離れる瞬間」ではなく、スクロール中ずっと継続的に位置を記録する方式に変更した。
+ */
+if (!state.scrollPositions) state.scrollPositions = {};
+var _lastRenderedTab = null;
+var _scrollTrackingBound = false;
+function bindScrollTracking(){
+  if (_scrollTrackingBound || typeof window === 'undefined' || !window.addEventListener) return;
+  _scrollTrackingBound = true;
+  var raf = null;
+  window.addEventListener('scroll', function(){
+    if (raf) return; // requestAnimationFrameで間引き、スクロール中に過剰実行しない
+    var schedule = window.requestAnimationFrame || function(cb){ return setTimeout(cb, 16); };
+    raf = schedule(function(){
+      raf = null;
+      if (state.activeTab) state.scrollPositions[state.activeTab] = window.scrollY;
+    });
+  }, {passive: true});
+}
 function renderAll(){
+  var tabChanged = _lastRenderedTab !== null && _lastRenderedTab !== state.activeTab;
   renderTabs();
   renderLicenseBar();
   renderActionBar();
@@ -1285,6 +1328,15 @@ function renderAll(){
   else if (state.activeTab === 'dashboard') app.innerHTML = '', renderDashboardTab(app);
   else if (state.activeTab === 'refdb') app.innerHTML = '', renderRefDbTab(app);
   else if (state.activeTab === 'guide') app.innerHTML = '', renderGuideTab(app);
+  if (tabChanged && typeof window !== 'undefined' && window.scrollTo){
+    window.scrollTo(0, state.scrollPositions[state.activeTab] || 0);
+    // F3/F4: キーボード/スクリーンリーダー利用者向けに、タブ切替後は現在アクティブな
+    // タブボタンへフォーカスを移す(新しいコンテンツに切り替わったことを伝える)。
+    var activeTabBtn = document.querySelector('nav.tabs button.active');
+    if (activeTabBtn && document.activeElement !== activeTabBtn) activeTabBtn.focus({preventScroll: true});
+  }
+  _lastRenderedTab = state.activeTab;
+  bindScrollTracking();
 }
 
 /* ============================= 新規/編集タブ ============================= */
@@ -2003,6 +2055,13 @@ function renderListTab(app){
   document.getElementById('file-import').addEventListener('change', function(e){
     var f = e.target.files[0];
     if (!f) return;
+    // K2: 巨大ファイルによるフリーズ・ストレージ圧迫を防ぐための上限チェック
+    var MAX_IMPORT_BYTES = 20 * 1024 * 1024; // 20MB
+    if (f.size > MAX_IMPORT_BYTES){
+      toast('ファイルサイズが大きすぎます(上限20MB、選択されたファイル: 約' + Math.round(f.size/1024/1024) + 'MB)。', {type:'danger', duration:6000});
+      e.target.value = '';
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function(){
       var parsed;
@@ -2011,6 +2070,13 @@ function renderListTab(app){
       if (!parsed || !Array.isArray(parsed.items)){
         toast('ファイル形式が不正です(items配列が見つかりません)。', {type:'danger', duration:6000});
         return;
+      }
+      // K2: 件数が異常に多い場合は先頭N件のみ読み込む(1ファイルでの丸ごとDoS的な負荷を防ぐ)
+      var MAX_IMPORT_ITEMS = 5000;
+      var truncated = false;
+      if (parsed.items.length > MAX_IMPORT_ITEMS){
+        parsed.items = parsed.items.slice(0, MAX_IMPORT_ITEMS);
+        truncated = true;
       }
       // H11: 不正な行はスキップしてレポートする(1件の壊れたデータで全体を失敗させない)
       var validItems = [];
@@ -2023,6 +2089,7 @@ function renderListTab(app){
         }
       });
       var importedWeights = parsed.weights ? normalizeWeights(parsed.weights) : null;
+      if (truncated) toast('件数が上限(' + MAX_IMPORT_ITEMS + '件)を超えていたため、先頭' + MAX_IMPORT_ITEMS + '件のみ読み込みます。', {type:'warning', duration:6000});
       showImportChoice(validItems, importedWeights, skipped);
     };
     reader.readAsText(f);
@@ -2063,6 +2130,27 @@ function shareBody(){
   var lic = licLoad();
   var who = (lic && lic.company) ? lic.company : '';
   return {tool: STORE, title: document.title, who: who, data: {items: state.items, weights: state.weights}};
+}
+/* K6: サーバー共有で送信するデータに、誤って混入した機密情報らしき文字列が
+ * 含まれていないかを簡易チェックする(完全な検知ではなく、代表的なパターンのみ)。
+ */
+var SECRET_LIKE_PATTERNS = [
+  {label:'OpenAI風のAPIキー', regex:/sk-[A-Za-z0-9]{20,}/},
+  {label:'AWSアクセスキーID', regex:/AKIA[0-9A-Z]{16}/},
+  {label:'Google APIキー', regex:/AIza[0-9A-Za-z\-_]{35}/},
+  {label:'Bearerトークン', regex:/Bearer\s+[A-Za-z0-9\-_.]{20,}/},
+  {label:'秘密鍵ファイルの中身', regex:/-----BEGIN (RSA |EC |)PRIVATE KEY-----/}
+];
+function scanItemsForSecrets(items){
+  var hits = [];
+  items.forEach(function(it){
+    var haystack = [it.claimTitle, it.claimText, it.summary, it.sourceUrl, it.archiveUrl,
+      it.officialCheck.note, it.primaryCheck.note].join('\n');
+    SECRET_LIKE_PATTERNS.forEach(function(p){
+      if (p.regex.test(haystack) && hits.indexOf(p.label) === -1) hits.push(p.label);
+    });
+  });
+  return hits;
 }
 function shareRequest(method, url, cb){
   fetch(url, {method: method, headers:{'Content-Type':'application/json'}, body: method === 'GET' ? undefined : JSON.stringify(shareBody())})
@@ -2110,6 +2198,14 @@ function renderSharePanel(){
       '<div class="helper" style="margin-top:6px">' + icon('alert', 13) + ' 編集用リンクを知っている人は誰でも内容を書き換えられます。取り扱いにご注意ください。</div>' +
       '</div>' : '');
   document.getElementById('share-create').addEventListener('click', function(){
+    var secretHits = scanItemsForSecrets(state.items);
+    if (secretHits.length){
+      var proceed = confirm(
+        '送信しようとしている内容に、機密情報のように見える文字列が含まれています(' + secretHits.join('、') + ')。\n' +
+        '誤ってAPIキー等をメモ欄やURLに貼り付けていないか確認してください。\n\nこのまま送信しますか？'
+      );
+      if (!proceed) return;
+    }
     var btn = document.getElementById('share-create');
     btn.classList.add('is-loading');
     btn.disabled = true;
@@ -2209,7 +2305,7 @@ function renderListRows(){
   items.forEach(function(it){
     var overall = computeOverall(it, state.weights);
     var n = evidenceCount(it);
-    var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)'};
+    var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)', symbol:'—'};
     html += '<tr>';
     html += '<td>' + esc(fmtDate(it.updatedAt)) + '</td>';
     html += '<td>' + (function(){
@@ -2218,7 +2314,7 @@ function renderListRows(){
     })() + '</td>';
     html += '<td>' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</td>';
     html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) + '</td>';
-    html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.label) + '</span></td>';
+    html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.symbol) + ' ' + esc(v.label) + '</span></td>';
     html += '<td class="center">' + (overall == null ? '—' : overall) + '<span class="evidence-badge">' + n + '/5</span></td>';
     html += '<td class="center">' +
       '<button class="ghost small" data-edit="' + it.id + '">編集</button> ' +
@@ -2684,23 +2780,34 @@ function renderRefDbTab(app){
   document.getElementById('refdb-import').addEventListener('change', function(e){
     var file = e.target.files[0];
     if (!file) return;
+    // K2: 参照メディアDBのインポートにもファイルサイズ上限を設ける(画像データを含むため)
+    var MAX_REFDB_IMPORT_BYTES = 50 * 1024 * 1024; // 50MB
+    if (file.size > MAX_REFDB_IMPORT_BYTES){
+      toast('ファイルサイズが大きすぎます(上限50MB)。', {type:'danger', duration:6000});
+      e.target.value = '';
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function(){
       try{
         var data = JSON.parse(reader.result);
         if (!Array.isArray(data.entries)) throw new Error('形式が不正です');
-        state.referenceDb = state.referenceDb.concat(data.entries.map(function(r){
+        var MAX_THUMB_LEN = 3 * 1024 * 1024;
+        var entries = data.entries.slice(0, 2000).map(function(r){
+          var thumb = typeof r.thumbDataUrl === 'string' ? r.thumbDataUrl : '';
+          if (thumb.length > MAX_THUMB_LEN) thumb = '';
           return {
             id: (typeof r.id === 'string' && r.id) || uid(),
-            label: typeof r.label === 'string' ? r.label : '(無題)',
+            label: capString(r.label, 300) || '(無題)',
             eventDate: typeof r.eventDate === 'string' ? r.eventDate : '',
-            thumbDataUrl: typeof r.thumbDataUrl === 'string' ? r.thumbDataUrl : '',
-            hash: typeof r.hash === 'string' ? r.hash : '',
+            thumbDataUrl: thumb,
+            hash: capString(r.hash, 128),
             registeredAt: typeof r.registeredAt === 'string' ? r.registeredAt : new Date().toISOString()
           };
-        }));
+        });
+        state.referenceDb = state.referenceDb.concat(entries);
         persistReferenceDb();
-        toast('参照メディアDBを' + data.entries.length + '件インポートしました。', {type:'success'});
+        toast('参照メディアDBを' + entries.length + '件インポートしました。', {type:'success'});
         renderAll();
       }catch(err){
         toast('インポートに失敗しました: ' + err.message, {type:'danger'});
