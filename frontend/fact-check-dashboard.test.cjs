@@ -271,17 +271,18 @@ async function agreeToConsent(dom) {
     const dom = await freshDom();
     const key = dom.window.licGenerate('テスト株式会社', dom.window.STORE);
     dom.window.localStorage.setItem('fcd_license', JSON.stringify({ company: 'テスト株式会社', key }));
-    dom.window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ id: 'abc123', editKey: 'edit999' }) });
+    dom.window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ id: 'abc123', editKey: 'edit999', updatedAt: '2026-08-27T00:00:00.000Z' }) });
     dom.window.state.activeTab = 'list';
     dom.window.renderAll();
     const doc = dom.window.document;
     assert.ok(doc.getElementById('share-create'));
     doc.getElementById('share-create').click();
     await new Promise((r) => setTimeout(r, 50));
-    assert.strictEqual(
-      dom.window.localStorage.getItem(dom.window.STORE + ':__share'),
-      JSON.stringify({ id: 'abc123', editKey: 'edit999' })
-    );
+    // I9: 競合検知用にlastSyncedAtも一緒に保存されるようになった
+    const saved = JSON.parse(dom.window.localStorage.getItem(dom.window.STORE + ':__share'));
+    assert.strictEqual(saved.id, 'abc123');
+    assert.strictEqual(saved.editKey, 'edit999');
+    assert.strictEqual(saved.lastSyncedAt, '2026-08-27T00:00:00.000Z');
   });
 
   await test('印刷レポート: 試用版では免責文言と透かしが入り、正規版ではライセンス名が表示される', async () => {
@@ -1622,6 +1623,158 @@ async function agreeToConsent(dom) {
     w.renderAll();
     w.document.getElementById('btn-export-csv').click();
     assert.ok(captured && captured.includes('claim0') && captured.includes('claim' + (w.HEAVY_EXPORT_WORKER_THRESHOLD + 4)), '大量データのCSVが正しく生成されていない');
+  });
+
+  /* ============================= I5: 自動バックアップ ============================= */
+
+  await test('maybeSnapshotBackup: データが無い場合はスナップショットを作らない(I5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [];
+    w.maybeSnapshotBackup();
+    assert.strictEqual(w.listBackups().length, 0);
+  });
+
+  await test('maybeSnapshotBackup: 直近すぎる場合は追加スナップショットを作らない(スロットリング)(I5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({ id: 'a', claimTitle: 't' })];
+    w.maybeSnapshotBackup();
+    assert.strictEqual(w.listBackups().length, 1, '初回は必ずスナップショットが作られるべき');
+    w.state.items.push(w.normalizeItem({ id: 'b', claimTitle: 't2' }));
+    w.maybeSnapshotBackup();
+    assert.strictEqual(w.listBackups().length, 1, '直近(30分未満)の再呼び出しはスキップされるべき');
+  });
+
+  await test('maybeSnapshotBackup: 最大世代数を超えたら古いものから捨てる(I5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const backups = [];
+    for (let i = 0; i < w.BACKUP_MAX_GENERATIONS + 2; i++) {
+      const d = new Date(); d.setHours(d.getHours() - (w.BACKUP_MAX_GENERATIONS + 2 - i));
+      backups.push({ at: d.toISOString(), itemCount: i, payload: { schemaVersion: 1, items: [], weights: {} } });
+    }
+    w.storageSetJSON(w.BACKUP_STORAGE_KEY, backups);
+    w.state.items = [w.normalizeItem({ id: 'new', claimTitle: 't' })];
+    w.maybeSnapshotBackup();
+    const result = w.listBackups();
+    assert.strictEqual(result.length, w.BACKUP_MAX_GENERATIONS, '最大世代数を超えないべき');
+    assert.strictEqual(result[result.length - 1].itemCount, 1, '最新のスナップショットが末尾に追加されるべき');
+  });
+
+  await test('restoreFromBackup: 指定時点のデータへ復元し、normalizeItemを通す(I5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const at = new Date().toISOString();
+    w.storageSetJSON(w.BACKUP_STORAGE_KEY, [{
+      at, itemCount: 1,
+      payload: { schemaVersion: 1, items: [{ id: 'old', claimTitle: '復元テスト' }], weights: { official: 99 } }
+    }]);
+    w.state.items = [w.normalizeItem({ id: 'current', claimTitle: '現在のデータ' })];
+    const ok = w.restoreFromBackup(at);
+    assert.strictEqual(ok, true);
+    assert.strictEqual(w.state.items.length, 1);
+    assert.strictEqual(w.state.items[0].claimTitle, '復元テスト');
+    assert.strictEqual(w.state.items[0].tags.length, 0, 'normalizeItemを通して新フィールドが補完されるべき');
+    assert.strictEqual(w.state.weights.official, 99);
+  });
+
+  await test('restoreFromBackup: 存在しない時点を指定した場合はfalseを返し、状態を変更しない(I5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({ id: 'current', claimTitle: '現在のデータ' })];
+    const ok = w.restoreFromBackup('存在しない時刻');
+    assert.strictEqual(ok, false);
+    assert.strictEqual(w.state.items[0].claimTitle, '現在のデータ');
+  });
+
+  await test('一覧タブ: 自動バックアップから復元ボタンをクリックすると復元され、元に戻すも機能する(I5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const originalConfirm = w.confirm;
+    w.confirm = () => true;
+    const at = new Date().toISOString();
+    w.storageSetJSON(w.BACKUP_STORAGE_KEY, [{
+      at, itemCount: 1,
+      payload: { schemaVersion: 1, items: [{ id: 'backup1', claimTitle: 'バックアップ案件' }], weights: {} }
+    }]);
+    w.state.items = [w.normalizeItem({ id: 'live1', claimTitle: '現在の案件' })];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const doc = w.document;
+    const restoreBtn = doc.querySelector('[data-restore-backup]');
+    assert.ok(restoreBtn, 'バックアップ復元ボタンが見つからない');
+    restoreBtn.click();
+    assert.strictEqual(w.state.items[0].claimTitle, 'バックアップ案件', '復元ボタンでバックアップ内容に切り替わるべき');
+
+    const undoBtn = doc.querySelector('.toast .toast-msg')?.parentElement?.querySelector('button');
+    assert.ok(undoBtn, '元に戻すボタンが見つからない');
+    undoBtn.click();
+    assert.strictEqual(w.state.items[0].claimTitle, '現在の案件', '元に戻すで復元前の状態に戻るべき');
+    w.confirm = originalConfirm;
+  });
+
+  /* ============================= I9: サーバー共有の競合検知 ============================= */
+
+  await test('checkShareConflictThenSave: 前回同期時点と最新updatedAtが一致すれば確認ダイアログを出さずに保存する(I9)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const key = w.licGenerate('テスト株式会社', w.STORE);
+    w.localStorage.setItem('fcd_license', JSON.stringify({ company: 'テスト株式会社', key }));
+    w.setShareInfo({ id: 'ws1', editKey: 'key1', lastSyncedAt: '2026-08-01T00:00:00.000Z' });
+    let confirmCalled = false;
+    w.confirm = () => { confirmCalled = true; return true; };
+    let putCalled = false;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PUT') { putCalled = true; }
+      return Promise.resolve({ json: () => Promise.resolve(opts && opts.method === 'PUT' ? { ok: true, updatedAt: '2026-08-27T00:00:00.000Z' } : { data: {}, updatedAt: '2026-08-01T00:00:00.000Z' }) });
+    };
+    w.state.activeTab = 'list';
+    w.renderAll();
+    w.document.getElementById('share-create').click();
+    await new Promise((r) => setTimeout(r, 80));
+    assert.strictEqual(confirmCalled, false, '競合が無い場合は確認ダイアログを出さないべき');
+    assert.strictEqual(putCalled, true, '保存(PUT)は実行されるべき');
+  });
+
+  await test('checkShareConflictThenSave: サーバー側が自分の知らない間に更新されていたら警告し、キャンセルすると保存しない(I9)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const key = w.licGenerate('テスト株式会社', w.STORE);
+    w.localStorage.setItem('fcd_license', JSON.stringify({ company: 'テスト株式会社', key }));
+    w.setShareInfo({ id: 'ws1', editKey: 'key1', lastSyncedAt: '2026-08-01T00:00:00.000Z' });
+    let confirmMessage = '';
+    w.confirm = (msg) => { confirmMessage = msg; return false; }; // キャンセルする
+    let putCalled = false;
+    w.fetch = (url, opts) => {
+      if (opts && opts.method === 'PUT') { putCalled = true; }
+      return Promise.resolve({ json: () => Promise.resolve(opts && opts.method === 'PUT' ? { ok: true } : { data: {}, updatedAt: '2026-08-20T00:00:00.000Z', updatedBy: '他の担当者' }) });
+    };
+    w.state.activeTab = 'list';
+    w.renderAll();
+    w.document.getElementById('share-create').click();
+    await new Promise((r) => setTimeout(r, 80));
+    assert.ok(confirmMessage.includes('他の人が更新した可能性'), '競合警告メッセージが表示されるべき: ' + confirmMessage);
+    assert.strictEqual(putCalled, false, 'キャンセルした場合はPUTが実行されないべき');
+  });
+
+  await test('checkShareConflictThenSave: 初回保存(lastSyncedAt未設定)では事前確認GETを行わずそのまま保存する(I9)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const key = w.licGenerate('テスト株式会社', w.STORE);
+    w.localStorage.setItem('fcd_license', JSON.stringify({ company: 'テスト株式会社', key }));
+    let getCalled = false, postCalled = false;
+    w.fetch = (url, opts) => {
+      const method = opts && opts.method;
+      if (!method || method === 'GET') getCalled = true; else if (method === 'POST') postCalled = true;
+      return Promise.resolve({ json: () => Promise.resolve({ id: 'new1', editKey: 'key1', updatedAt: '2026-08-27T00:00:00.000Z' }) });
+    };
+    w.state.activeTab = 'list';
+    w.renderAll();
+    w.document.getElementById('share-create').click();
+    await new Promise((r) => setTimeout(r, 80));
+    assert.strictEqual(getCalled, false, '初回保存では事前確認のGETを行わないべき');
+    assert.strictEqual(postCalled, true, '初回保存はPOSTで作成されるべき');
   });
 
   console.log('');

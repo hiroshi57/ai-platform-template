@@ -348,7 +348,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.11.0';
+var APP_VERSION = '0.12.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -993,6 +993,7 @@ function persist(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify({schemaVersion: SCHEMA_VERSION, items: state.items, weights: state.weights}));
     if (state.saveError){ state.saveError = ''; renderSaveErrorBanner(); }
+    maybeSnapshotBackup(); // I5: 直近N世代の自動バックアップ(頻度は内部でスロットリング)
   }catch(e){
     state.saveError = '保存に失敗しました(ブラウザのストレージ容量が上限に達している可能性があります)。今すぐ「チェック一覧」からJSONエクスポートしてバックアップしてください。';
     renderSaveErrorBanner();
@@ -1028,6 +1029,47 @@ function loadDraftBackup(){
 }
 function clearDraftBackup(){
   storageRemove(DRAFT_KEY);
+}
+
+/* I5: 定期的な自動バックアップ(直近N世代のスナップショットをlocalStorage内に保持)。
+ * 「うっかり全件削除・破損したインポートで置き換えてしまった」場合に、JSONエクスポートを
+ * 忘れていてもある程度戻せるようにするための保険。persist()のたびに毎回スナップショットを
+ * 取ると容量を圧迫するため、一定間隔(既定30分)でスロットリングする。メインデータの保存
+ * (STORAGE_KEY)とは別のキーに保持し、スキーマ移行の対象外(復元時にnormalizeItem()を通す)。 */
+var BACKUP_STORAGE_KEY = STORAGE_KEY + ':__backups';
+var BACKUP_MAX_GENERATIONS = 5;
+var BACKUP_MIN_INTERVAL_MS = 30 * 60 * 1000;
+function listBackups(){
+  var backups = storageGetJSON(BACKUP_STORAGE_KEY, []);
+  return Array.isArray(backups) ? backups : [];
+}
+function maybeSnapshotBackup(){
+  try {
+    if (!state.items || !state.items.length) return; // 空データのバックアップは無意味
+    var backups = listBackups();
+    var last = backups[backups.length - 1];
+    var now = Date.now();
+    if (last){
+      var lastAt = new Date(last.at).getTime();
+      if (!isNaN(lastAt) && (now - lastAt) < BACKUP_MIN_INTERVAL_MS) return;
+    }
+    backups.push({
+      at: new Date(now).toISOString(),
+      itemCount: state.items.length,
+      payload: {schemaVersion: SCHEMA_VERSION, items: state.items, weights: state.weights}
+    });
+    while (backups.length > BACKUP_MAX_GENERATIONS) backups.shift();
+    storageSetJSON(BACKUP_STORAGE_KEY, backups);
+  } catch (e){ /* バックアップの失敗は本体の保存処理に影響させない */ }
+}
+function restoreFromBackup(at){
+  var backups = listBackups();
+  var target = backups.filter(function(b){ return b.at === at; })[0];
+  if (!target || !target.payload) return false;
+  state.items = Array.isArray(target.payload.items) ? target.payload.items.map(normalizeItem) : [];
+  state.weights = normalizeWeights(target.payload.weights);
+  persist();
+  return true;
 }
 
 /* ============================= 試用版/正規版ライセンス =============================
@@ -2615,6 +2657,7 @@ function renderListTab(app){
   html += '</div>';
   html += '<div id="list-table-wrap"></div>';
   html += '</div>';
+  html += '<div class="card noprint"><h2>' + icon('save', 17) + ' 自動バックアップ</h2><div id="backup-panel"></div></div>';
   html += '<div class="card"><h2>' + icon('link', 17) + ' サーバー共有(複数人での閲覧・編集)</h2><div id="share-panel"></div></div>';
   app.innerHTML = html;
 
@@ -2701,7 +2744,51 @@ function renderListTab(app){
   });
 
   renderListRows();
+  renderBackupPanel();
   renderSharePanel();
+}
+
+/* I5: 自動バックアップの一覧表示・復元UI。復元は「元に戻す」付きで、
+ * E4(危険操作のUndo)と同じ考え方を踏襲する。 */
+function renderBackupPanel(){
+  var el = document.getElementById('backup-panel');
+  if (!el) return;
+  var backups = listBackups();
+  if (!backups.length){
+    el.innerHTML = '<div class="helper">保存操作のたびに、一定間隔(約' + Math.round(BACKUP_MIN_INTERVAL_MS / 60000) +
+      '分に1回)で自動的にスナップショットが作られます(最大' + BACKUP_MAX_GENERATIONS + '世代を保持)。まだバックアップはありません。</div>';
+    return;
+  }
+  var rows = backups.slice().reverse().map(function(b){
+    return '<tr><td class="l">' + esc(fmtDateTime(b.at)) + '</td><td class="center">' + b.itemCount + '件</td>' +
+      '<td class="center"><button class="ghost small" data-restore-backup="' + esc(b.at) + '">この時点に復元</button></td></tr>';
+  }).join('');
+  el.innerHTML = '<div class="helper">現在のデータを上書きせず、過去の時点のスナップショットから復元できます(復元後も「元に戻す」が可能です)。</div>' +
+    '<div style="overflow-x:auto"><table class="axis-table"><thead><tr><th class="l" style="text-align:left">記録日時</th><th class="center">件数</th><th class="center">操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  el.querySelectorAll('[data-restore-backup]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var at = btn.getAttribute('data-restore-backup');
+      if (!confirm('この時点(' + fmtDateTime(at) + ')のバックアップに復元します。現在のデータは上書きされます(復元後も「元に戻す」が可能です)。よろしいですか？')) return;
+      var beforeItems = state.items.slice();
+      var beforeWeights = Object.assign({}, state.weights);
+      var ok = restoreFromBackup(at);
+      if (!ok){ toast('バックアップの復元に失敗しました。', {type:'danger'}); return; }
+      renderListRows();
+      renderBackupPanel();
+      toast('バックアップから復元しました。', {
+        type: 'warning',
+        actionLabel: '元に戻す',
+        onAction: function(){
+          state.items = beforeItems;
+          state.weights = beforeWeights;
+          persist();
+          renderListRows();
+          renderBackupPanel();
+          toast('復元前の状態に戻しました。', {type:'success'});
+        }
+      });
+    });
+  });
 }
 
 /* ============================= サーバー共有(複数人共有・正規版限定) ============================= */
@@ -2753,7 +2840,8 @@ function loadFromShareLinkIfPresent(){
     if (res.data && Array.isArray(res.data.items)) state.items = res.data.items.map(normalizeItem);
     if (res.data && res.data.weights) state.weights = normalizeWeights(res.data.weights);
     persist();
-    if (key) setShareInfo({id:id, editKey:key});
+    // I9: 競合検知の基準点として、読み込んだ時点のサーバー側updatedAtを記録しておく
+    if (key) setShareInfo({id:id, editKey:key, lastSyncedAt: res.updatedAt || null});
     if (!sessionStorage.getItem('fcd_loaded_' + id)){
       try{ sessionStorage.setItem('fcd_loaded_' + id, '1'); }catch(e){}
       location.replace(location.pathname);
@@ -2762,6 +2850,60 @@ function loadFromShareLinkIfPresent(){
     renderAll();
   });
 }
+
+/* I9: 複数人が同じ共有リンクを同時編集した場合の競合検知。
+ * di-tools-api workspaceは単純な上書きAPIでサーバー側のロック機構を持たないため
+ * (参照: reference_di_tools_api_workspace.md)、完全な排他制御は実現できない。
+ * ここでは「保存する直前に最新のupdatedAtを取得し、自分が最後に把握していた値と
+ * 食い違っていたら警告する」という楽観的ロック(optimistic concurrency)に近い
+ * 簡易チェックに留める。警告後に上書きを選ぶことは可能であり、完全な防止策では
+ * ないことをダイアログ文言でも明記する。 */
+function checkShareConflictThenSave(){
+  var current = getShareInfo();
+  var btn = document.getElementById('share-create');
+  var url = current ? (API + '?id=' + current.id + '&key=' + current.editKey) : API;
+  var method = current ? 'PUT' : 'POST';
+
+  function doSave(){
+    btn.classList.add('is-loading');
+    btn.disabled = true;
+    shareRequest(method, url, function(res){
+      if (res.error){
+        toast('サーバー共有に失敗しました: ' + res.error, {type:'danger', duration:6000});
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+        return;
+      }
+      var newInfo = current ? Object.assign({}, current) : {};
+      if (res.id) { newInfo.id = res.id; newInfo.editKey = res.editKey; }
+      newInfo.lastSyncedAt = res.updatedAt || new Date().toISOString();
+      setShareInfo(newInfo);
+      renderSharePanel();
+      toast('サーバーに保存しました(' + new Date().toLocaleTimeString('ja-JP') + ')', {type:'success'});
+    });
+  }
+
+  if (!current || !current.lastSyncedAt){
+    doSave();
+    return;
+  }
+  // 保存直前に最新状態を確認する(確認自体に失敗した場合は、警告できないまま
+  // 保存を止めるより通常通り進める方が実用的なので、致命的エラー扱いにはしない)
+  shareRequest('GET', API + '?id=' + current.id, function(res){
+    if (res.error){ doSave(); return; }
+    if (res.updatedAt && res.updatedAt !== current.lastSyncedAt){
+      var proceed = confirm(
+        'この共有データは、あなたが最後に確認した後に他の人が更新した可能性があります。\n' +
+        '最終更新: ' + res.updatedAt + (res.updatedBy ? '(更新者情報: ' + res.updatedBy + ')' : '') + '\n\n' +
+        'このまま上書き保存すると、その人の変更が失われる可能性があります。上書きしてよろしいですか？\n' +
+        '(キャンセルした場合は、まず最新の内容を確認することをおすすめします)'
+      );
+      if (!proceed) return;
+    }
+    doSave();
+  });
+}
+
 function renderSharePanel(){
   var el = document.getElementById('share-panel');
   if (!el) return;
@@ -2792,23 +2934,7 @@ function renderSharePanel(){
       );
       if (!proceed) return;
     }
-    var btn = document.getElementById('share-create');
-    btn.classList.add('is-loading');
-    btn.disabled = true;
-    var current = getShareInfo();
-    var url = current ? (API + '?id=' + current.id + '&key=' + current.editKey) : API;
-    var method = current ? 'PUT' : 'POST';
-    shareRequest(method, url, function(res){
-      if (res.error){
-        toast('サーバー共有に失敗しました: ' + res.error, {type:'danger', duration:6000});
-        btn.classList.remove('is-loading');
-        btn.disabled = false;
-        return;
-      }
-      if (res.id) setShareInfo({id:res.id, editKey:res.editKey});
-      renderSharePanel();
-      toast('サーバーに保存しました(' + new Date().toLocaleTimeString('ja-JP') + ')', {type:'success'});
-    });
+    checkShareConflictThenSave();
   });
   var copyView = document.getElementById('copy-view');
   if (copyView) copyView.addEventListener('click', function(){ copyToClipboard(viewLink); toast('閲覧用リンクをコピーしました。', {type:'success'}); });
