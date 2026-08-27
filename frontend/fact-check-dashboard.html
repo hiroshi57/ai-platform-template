@@ -358,6 +358,13 @@ var VERDICTS = [
   {id:'unverifiable', label:'検証不能', color:'var(--gray)', symbol:'?'}
 ];
 
+/* H7: 複数人での担当者アサイン用のステータス */
+var STATUS_OPTIONS = [
+  {id:'todo', label:'未着手', color:'var(--n-400)', symbol:'○'},
+  {id:'in_progress', label:'確認中', color:'var(--accent-500)', symbol:'◐'},
+  {id:'done', label:'完了', color:'var(--success-600)', symbol:'●'}
+];
+
 var RESULT_OPTIONS = [
   {id:'', label:'(未確認)'},
   {id:'match', label:'一致(裏付けあり)'},
@@ -564,7 +571,7 @@ if (!state.items) state.items = [];
 state.activeTab = state.items.length ? 'dashboard' : 'new';
 state.draft = null;
 state.editingId = null;
-state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:'', tag:''};
+state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:'', tag:'', status:''};
 state.saveError = '';
 state.pendingRecovery = null; // 起動時に見つかった未保存下書き(あれば)。init 末尾で設定する
 
@@ -575,7 +582,7 @@ state.pendingRecovery = null; // 起動時に見つかった未保存下書き(�
  * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
  * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
  */
-var SCHEMA_VERSION = 5; // v5: 自由記述タグ(tags)を追加
+var SCHEMA_VERSION = 6; // v6: 担当者アサイン(assignee/status)を追加
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
@@ -681,6 +688,8 @@ function normalizeItem(raw){
     reviewer: capString(raw.reviewer, 500),
     reviewDueDate: typeof raw.reviewDueDate === 'string' ? raw.reviewDueDate : '',
     tags: capArray(raw.tags, 30).filter(function(t){ return typeof t === 'string' && t.trim(); }).map(function(t){ return capString(t.trim(), 50); }),
+    assignee: capString(raw.assignee, 200),
+    status: pickEnum(STATUS_OPTIONS, raw.status, 'todo'),
     history: capArray(raw.history, 500),
     patternScreen: normalizePatternScreen(raw.patternScreen),
     accountCheck: normalizeAccountCheck(raw.accountCheck),
@@ -1132,6 +1141,8 @@ function newItem(){
     reviewer: '',
     reviewDueDate: '',
     tags: [],
+    assignee: '',
+    status: 'todo',
     history: [],
     patternScreen: {matchedIds: [], score: 0, scannedAt: ''},
     accountCheck: {handle: '', createdAt: '', followerCount: '', followingCount: '', signals: [], note: ''},
@@ -1426,6 +1437,10 @@ function renderNewCheckTab(app){
   html += field('アーカイブ(魚拓)URL', '<input type="url" id="f-archiveUrl" value="' + esc(d.archiveUrl) + '" placeholder="https://web.archive.org/... または https://archive.today/..." />');
   html += '<div class="helper">SNS投稿等は後から削除・編集されることがあります。Web魚拓(archive.today)やWayback Machineで保存したURLを記録してください。</div>';
   html += tagsFieldHtml(d);
+  html += '<div class="grid2">';
+  html += field('担当者(任意)', '<input type="text" id="f-assignee" value="' + esc(d.assignee) + '" placeholder="例: 山田" />');
+  html += field('ステータス', selectHtml('f-status', STATUS_OPTIONS, d.status));
+  html += '</div>';
   html += '</div>';
 
   // ===== 一次スクリーニング(技術で「ふるいにかける」) =====
@@ -2117,6 +2132,7 @@ function renderListTab(app){
   html += '<div>' + field('出所区分', selectHtml('filter-sourceCategory', [{id:'',label:'すべて'}].concat(SOURCE_CATEGORIES), state.filter.sourceCategory)) + '</div>';
   html += '<div>' + field('判定', selectHtml('filter-verdict', [{id:'',label:'すべて'}].concat(VERDICTS), state.filter.verdict)) + '</div>';
   html += '<div>' + field('タグ', selectHtml('filter-tag', [{id:'',label:'すべて'}].concat(allTags().map(function(t){ return {id:t, label:t}; })), state.filter.tag)) + '</div>';
+  html += '<div>' + field('ステータス', selectHtml('filter-status', [{id:'',label:'すべて'}].concat(STATUS_OPTIONS), state.filter.status)) + '</div>';
   html += '<div style="flex:2"><label for="filter-q">キーワード検索</label><input type="text" id="filter-q" value="' + esc(state.filter.q) + '" placeholder="主張タイトル・本文・タグを検索" /></div>';
   html += '</div>';
   html += '<div class="toolbar">';
@@ -2130,7 +2146,7 @@ function renderListTab(app){
   html += '<div class="card"><h2>' + icon('link', 17) + ' サーバー共有(複数人での閲覧・編集)</h2><div id="share-panel"></div></div>';
   app.innerHTML = html;
 
-  ['filter-mediaType','filter-sourceCategory','filter-verdict','filter-tag'].forEach(function(id){
+  ['filter-mediaType','filter-sourceCategory','filter-verdict','filter-tag','filter-status'].forEach(function(id){
     document.getElementById(id).addEventListener('change', function(e){
       var key = id.replace('filter-','');
       state.filter[key] = e.target.value;
@@ -2386,6 +2402,7 @@ function filteredItems(){
     if (f.sourceCategory && it.sourceCategory !== f.sourceCategory) return false;
     if (f.verdict && it.verdict !== f.verdict) return false;
     if (f.tag && (it.tags || []).indexOf(f.tag) === -1) return false;
+    if (f.status && it.status !== f.status) return false;
     if (q && (it.claimTitle + ' ' + it.claimText + ' ' + (it.tags || []).join(' ')).toLowerCase().indexOf(q) === -1) return false;
     return true;
   }).sort(function(a,b){ return new Date(b.updatedAt) - new Date(a.updatedAt); });
@@ -2400,7 +2417,8 @@ function renderListRows(){
   }
   var html = '<table><thead><tr>' +
     '<th>更新日</th><th>種別</th><th>出所区分</th><th class="center" style="min-width:220px">主張</th>' +
-    '<th class="center">判定</th><th class="center">スコア(根拠)</th><th class="center">次回レビュー</th><th class="center">操作</th>' +
+    '<th class="center">判定</th><th class="center">スコア(根拠)</th><th class="center">担当/状況</th>' +
+    '<th class="center">次回レビュー</th><th class="center">操作</th>' +
     '</tr></thead><tbody>';
   items.forEach(function(it){
     var overall = computeOverall(it, state.weights);
@@ -2417,6 +2435,11 @@ function renderListRows(){
       (it.tags && it.tags.length ? '<div style="margin-top:4px">' + tagChipsHtml(it.tags, false) + '</div>' : '') + '</td>';
     html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.symbol) + ' ' + esc(v.label) + '</span></td>';
     html += '<td class="center">' + (overall == null ? '—' : overall) + '<span class="evidence-badge">' + n + '/5</span></td>';
+    html += '<td class="center">' + (function(){
+      var s = findOf(STATUS_OPTIONS, it.status) || STATUS_OPTIONS[0];
+      var assigneeLine = it.assignee ? '<div style="font-size:11.5px;color:var(--n-500);margin-top:2px">' + esc(it.assignee) + '</div>' : '';
+      return '<span class="evidence-badge" style="color:' + s.color + '">' + esc(s.symbol) + ' ' + esc(s.label) + '</span>' + assigneeLine;
+    })() + '</td>';
     html += '<td class="center">' + (function(){
       var st = reviewDueStatus(it);
       if (st === 'none') return '<span class="helper">—</span>';
@@ -2477,13 +2500,15 @@ function renderListRows(){
 
 function exportCsv(){
   var rows = [['更新日','種別','出所区分','主張タイトル','判定','スコア','根拠軸数(/5)',
-    '怪しさスコア(パターン)','アカウント信頼性リスク','過去メディア一致件数','次回レビュー予定日','出典URL','アーカイブURL']];
+    '怪しさスコア(パターン)','アカウント信頼性リスク','過去メディア一致件数','次回レビュー予定日',
+    'タグ','担当者','ステータス','出典URL','アーカイブURL']];
   filteredItems().forEach(function(it){
     rows.push([
       fmtDate(it.updatedAt), labelOf(MEDIA_TYPES, it.mediaType), labelOf(SOURCE_CATEGORIES, it.sourceCategory),
       it.claimTitle, labelOf(VERDICTS, it.verdict), computeOverall(it, state.weights), evidenceCount(it),
       it.patternScreen.score, computeAccountScore(it.accountCheck), (it.mediaCheck.matches || []).length,
-      it.reviewDueDate, it.sourceUrl, it.archiveUrl
+      it.reviewDueDate, (it.tags || []).join('; '), it.assignee, labelOf(STATUS_OPTIONS, it.status),
+      it.sourceUrl, it.archiveUrl
     ]);
   });
   var csv = rows.map(function(r){
@@ -2539,6 +2564,8 @@ function printCase(it){
   html += '<p><b>総評:</b> ' + esc(it.summary) + '</p>';
   html += '<p><b>確認者:</b> ' + esc(it.reviewer) + '</p>';
   if (it.reviewDueDate) html += '<p><b>次回レビュー予定日:</b> ' + esc(fmtDate(it.reviewDueDate)) + (reviewDueStatus(it) === 'overdue' ? '(期限超過)' : '') + '</p>';
+  html += '<p><b>ステータス:</b> ' + esc(labelOf(STATUS_OPTIONS, it.status)) + (it.assignee ? ' / <b>担当者:</b> ' + esc(it.assignee) : '') + '</p>';
+  if (it.tags && it.tags.length) html += '<p><b>タグ:</b> ' + esc(it.tags.join('、')) + '</p>';
   if (it.history && it.history.length){
     html += '<h3>改訂履歴</h3><ul>' + it.history.map(function(h){
       return '<li>' + esc(fmtDateTime(h.at)) + ' ' + esc(labelOf(VERDICTS, h.from) || '(未判定)') + ' → ' + esc(labelOf(VERDICTS, h.to) || '(未判定)') + '</li>';
@@ -2858,6 +2885,12 @@ function generateInsights(items, ctx){
   var soonCount = items.filter(function(it){ return reviewDueStatus(it) === 'soon'; }).length;
   if (overdueCount > 0) out.push('再確認期限を過ぎている案件が' + overdueCount + '件あります。状況が変わっていないか確認してください。');
   if (soonCount > 0) out.push('再確認期限が7日以内に迫っている案件が' + soonCount + '件あります。');
+
+  // H7: 担当者アサイン・ステータス
+  var todoCount = items.filter(function(it){ return it.status === 'todo'; }).length;
+  var unassignedInProgress = items.filter(function(it){ return it.status === 'in_progress' && !it.assignee; }).length;
+  if (total && todoCount > 0) out.push('ステータスが「未着手」の案件が' + todoCount + '件(全体の約' + Math.round(todoCount/total*100) + '%)残っています。');
+  if (unassignedInProgress > 0) out.push('「確認中」なのに担当者が未設定の案件が' + unassignedInProgress + '件あります。誰が確認しているか明確にしてください。');
 
   return out;
 }

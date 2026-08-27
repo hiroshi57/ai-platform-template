@@ -911,6 +911,71 @@ async function agreeToConsent(dom) {
     assert.strictEqual(doc.querySelectorAll('#list-table-wrap tbody tr').length, 1, 'キーワード検索でタグがヒットしない');
   });
 
+  /* ============================= H7: 担当者アサイン・ステータス ============================= */
+
+  await test('normalizeItem: assignee/statusの既定値・不正値のフォールバックが正しい', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const legacy = w.normalizeItem({ id: 'x1' });
+    assert.strictEqual(legacy.assignee, '');
+    assert.strictEqual(legacy.status, 'todo', '旧データのstatus欠損は既定でtodoになるべき');
+    const invalid = w.normalizeItem({ id: 'x2', status: 'not-a-real-status' });
+    assert.strictEqual(invalid.status, 'todo', '不正なstatus値はtodoにフォールバックするべき');
+    const valid = w.normalizeItem({ id: 'x3', status: 'done', assignee: '山田太郎' });
+    assert.strictEqual(valid.status, 'done');
+    assert.strictEqual(valid.assignee, '山田太郎');
+  });
+
+  await test('新規/編集フォーム: 担当者・ステータスを入力するとdraftに反映され保存後も保持される', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    doc.getElementById('f-claimText').value = '担当者テスト';
+    doc.getElementById('f-claimText').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    doc.getElementById('f-assignee').value = '鈴木';
+    doc.getElementById('f-assignee').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const statusSel = doc.getElementById('f-status');
+    statusSel.value = 'in_progress';
+    statusSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.strictEqual(dom.window.state.draft.assignee, '鈴木');
+    assert.strictEqual(dom.window.state.draft.status, 'in_progress');
+    doc.getElementById('btn-save').click();
+    assert.strictEqual(dom.window.state.items[0].assignee, '鈴木');
+    assert.strictEqual(dom.window.state.items[0].status, 'in_progress');
+  });
+
+  await test('一覧タブ: ステータスで絞り込みでき、担当/状況列にステータスと担当者が表示される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [
+      w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 'todo item', claimText: 't', status: 'todo' }),
+      w.normalizeItem({ id: 'b', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 'done item', claimText: 't', status: 'done', assignee: '田中' })
+    ];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const doc = w.document;
+    assert.strictEqual(doc.querySelectorAll('#list-table-wrap tbody tr').length, 2);
+    assert.ok(doc.body.textContent.includes('田中'), '担当者名が一覧に表示されない');
+
+    w.state.filter.status = 'done';
+    w.renderListRows();
+    assert.strictEqual(doc.querySelectorAll('#list-table-wrap tbody tr').length, 1, 'ステータス絞り込みが機能していない');
+  });
+
+  await test('ダッシュボード: 未着手件数・担当者未設定の示唆が生成される(H7)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [
+      w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't1', claimText: 't', status: 'todo' }),
+      w.normalizeItem({ id: 'b', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't2', claimText: 't', status: 'in_progress', assignee: '' })
+    ];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const text = w.document.querySelector('.insight-list').textContent;
+    assert.ok(text.includes('未着手」の案件が1件'), '未着手件数の示唆が生成されない: ' + text);
+    assert.ok(text.includes('担当者が未設定'), '担当者未設定の示唆が生成されない: ' + text);
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {
