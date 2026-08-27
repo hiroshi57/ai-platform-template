@@ -88,6 +88,17 @@
   .field-error input,.field-error textarea,.field-error select{border-color:var(--danger-500);background:var(--danger-50)}
   .field-error-msg{color:var(--danger-600);font-size:var(--fs-xs);margin-top:3px;font-weight:600;display:flex;align-items:center;gap:4px}
   .char-counter{font-size:var(--fs-2xs);color:var(--n-400);text-align:right;margin-top:2px} /* WCAG AA: n-300はコントラスト不足のためn-400を使用 */
+  .tag-input-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--n-200);
+    border-radius:var(--radius-sm);padding:6px 8px;background:var(--n-0)}
+  .tag-input-wrap:focus-within{border-color:var(--accent-500);box-shadow:var(--focus-ring)}
+  .tag-chip{background:var(--accent-50);color:var(--accent-700);border-radius:var(--radius-full);
+    padding:2px 6px 2px 10px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+  .tag-chip button{background:none;padding:0;width:15px;height:15px;display:flex;align-items:center;
+    justify-content:center;color:inherit;border-radius:50%}
+  .tag-chip button:hover{background:rgba(67,56,202,.15)}
+  #tag-input{border:0;flex:1;min-width:120px;padding:3px 2px;font-size:13px;background:transparent}
+  #tag-input:focus{outline:none;box-shadow:none}
+  .tag-chip.readonly{background:var(--n-100);color:var(--n-600)}
   .char-counter.near-limit{color:var(--warning-500)}
   .helper{font-size:var(--fs-xs);color:var(--sub);margin-top:3px}
   .row-list{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--sp-2);margin-top:6px;background:var(--n-25)}
@@ -553,7 +564,7 @@ if (!state.items) state.items = [];
 state.activeTab = state.items.length ? 'dashboard' : 'new';
 state.draft = null;
 state.editingId = null;
-state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:''};
+state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:'', tag:''};
 state.saveError = '';
 state.pendingRecovery = null; // 起動時に見つかった未保存下書き(あれば)。init 末尾で設定する
 
@@ -564,7 +575,7 @@ state.pendingRecovery = null; // 起動時に見つかった未保存下書き(�
  * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
  * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
  */
-var SCHEMA_VERSION = 4; // v4: 再確認期限(reviewDueDate)を追加
+var SCHEMA_VERSION = 5; // v5: 自由記述タグ(tags)を追加
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
@@ -669,6 +680,7 @@ function normalizeItem(raw){
     summary: capString(raw.summary, 20000),
     reviewer: capString(raw.reviewer, 500),
     reviewDueDate: typeof raw.reviewDueDate === 'string' ? raw.reviewDueDate : '',
+    tags: capArray(raw.tags, 30).filter(function(t){ return typeof t === 'string' && t.trim(); }).map(function(t){ return capString(t.trim(), 50); }),
     history: capArray(raw.history, 500),
     patternScreen: normalizePatternScreen(raw.patternScreen),
     accountCheck: normalizeAccountCheck(raw.accountCheck),
@@ -1119,6 +1131,7 @@ function newItem(){
     summary: '',
     reviewer: '',
     reviewDueDate: '',
+    tags: [],
     history: [],
     patternScreen: {matchedIds: [], score: 0, scannedAt: ''},
     accountCheck: {handle: '', createdAt: '', followerCount: '', followingCount: '', signals: [], note: ''},
@@ -1412,6 +1425,7 @@ function renderNewCheckTab(app){
   html += '</div>';
   html += field('アーカイブ(魚拓)URL', '<input type="url" id="f-archiveUrl" value="' + esc(d.archiveUrl) + '" placeholder="https://web.archive.org/... または https://archive.today/..." />');
   html += '<div class="helper">SNS投稿等は後から削除・編集されることがあります。Web魚拓(archive.today)やWayback Machineで保存したURLを記録してください。</div>';
+  html += tagsFieldHtml(d);
   html += '</div>';
 
   // ===== 一次スクリーニング(技術で「ふるいにかける」) =====
@@ -1643,6 +1657,20 @@ function segStatsHtml(item){
   return '<div class="segstats">' + parts.join('') + '</div>';
 }
 
+/* H3: 自由記述タグ */
+function tagChipsHtml(tags, editable){
+  return (tags || []).map(function(t){
+    return '<span class="tag-chip' + (editable ? '' : ' readonly') + '" data-tag="' + esc(t) + '">' + esc(t) +
+      (editable ? '<button type="button" data-remove-tag="' + esc(t) + '" aria-label="タグ「' + esc(t) + '」を削除">' + icon('trash', 10) + '</button>' : '') +
+      '</span>';
+  }).join('');
+}
+function tagsFieldHtml(d){
+  return '<div><label for="tag-input">タグ</label><div class="tag-input-wrap" id="tags-wrap">' +
+    tagChipsHtml(d.tags, true) +
+    '<input type="text" id="tag-input" placeholder="タグを入力してEnter" /></div>' +
+    '<div class="helper">Enterまたはカンマで区切って複数登録できます。一覧タブで絞り込みに使えます。</div></div>';
+}
 function screeningLevel(score){
   if (score >= 50) return {label:'高', color:'var(--red)', bg:'var(--danger-50)'};
   if (score >= 20) return {label:'中', color:'var(--amber)', bg:'var(--warning-50)'};
@@ -1786,6 +1814,51 @@ function bindNewCheckEvents(app){
   }
   // 初回描画時点でも(claimTextが既に入っている編集ケース向けに)スキャン結果を最新化しておく
   refreshPatternScreen();
+
+  // H3: タグ入力(Enter/カンマで追加、チップのボタンで削除)
+  function refreshTags(){
+    var wrap = document.getElementById('tags-wrap');
+    if (!wrap) return;
+    var input = document.getElementById('tag-input');
+    var focused = document.activeElement === input;
+    wrap.querySelectorAll('.tag-chip').forEach(function(el){ el.remove(); });
+    wrap.insertAdjacentHTML('afterbegin', tagChipsHtml(d.tags, true));
+    if (focused && input) input.focus();
+  }
+  function addTag(raw){
+    var t = capString(raw, 50).trim();
+    if (!t) return;
+    if (d.tags.length >= 30){ toast('タグは最大30個までです。', {type:'warning'}); return; }
+    if (d.tags.indexOf(t) === -1) d.tags.push(t);
+    scheduleDraftAutosave();
+    refreshTags();
+  }
+  var tagInput = document.getElementById('tag-input');
+  if (tagInput){
+    tagInput.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ','){
+        e.preventDefault();
+        addTag(tagInput.value);
+        tagInput.value = '';
+      } else if (e.key === 'Backspace' && !tagInput.value && d.tags.length){
+        d.tags.pop();
+        scheduleDraftAutosave();
+        refreshTags();
+      }
+    });
+    tagInput.addEventListener('blur', function(){
+      if (tagInput.value.trim()){ addTag(tagInput.value); tagInput.value = ''; }
+    });
+  }
+  app.addEventListener('click', function(e){
+    var rmTag = e.target.closest('[data-remove-tag]');
+    if (rmTag){
+      var val = rmTag.dataset.removeTag;
+      d.tags = d.tags.filter(function(t){ return t !== val; });
+      scheduleDraftAutosave();
+      refreshTags();
+    }
+  });
 
   // アカウント信頼性シグナルのチェックボックス
   app.querySelectorAll('[data-signal]').forEach(function(cb){
@@ -2043,7 +2116,8 @@ function renderListTab(app){
   html += '<div>' + field('種別', selectHtml('filter-mediaType', [{id:'',label:'すべて'}].concat(MEDIA_TYPES), state.filter.mediaType)) + '</div>';
   html += '<div>' + field('出所区分', selectHtml('filter-sourceCategory', [{id:'',label:'すべて'}].concat(SOURCE_CATEGORIES), state.filter.sourceCategory)) + '</div>';
   html += '<div>' + field('判定', selectHtml('filter-verdict', [{id:'',label:'すべて'}].concat(VERDICTS), state.filter.verdict)) + '</div>';
-  html += '<div style="flex:2"><label for="filter-q">キーワード検索</label><input type="text" id="filter-q" value="' + esc(state.filter.q) + '" placeholder="主張タイトル・本文を検索" /></div>';
+  html += '<div>' + field('タグ', selectHtml('filter-tag', [{id:'',label:'すべて'}].concat(allTags().map(function(t){ return {id:t, label:t}; })), state.filter.tag)) + '</div>';
+  html += '<div style="flex:2"><label for="filter-q">キーワード検索</label><input type="text" id="filter-q" value="' + esc(state.filter.q) + '" placeholder="主張タイトル・本文・タグを検索" /></div>';
   html += '</div>';
   html += '<div class="toolbar">';
   html += '<button class="ghost small" id="btn-export-json">' + icon('download', 14) + ' JSONエクスポート</button>';
@@ -2056,7 +2130,7 @@ function renderListTab(app){
   html += '<div class="card"><h2>' + icon('link', 17) + ' サーバー共有(複数人での閲覧・編集)</h2><div id="share-panel"></div></div>';
   app.innerHTML = html;
 
-  ['filter-mediaType','filter-sourceCategory','filter-verdict'].forEach(function(id){
+  ['filter-mediaType','filter-sourceCategory','filter-verdict','filter-tag'].forEach(function(id){
     document.getElementById(id).addEventListener('change', function(e){
       var key = id.replace('filter-','');
       state.filter[key] = e.target.value;
@@ -2299,6 +2373,11 @@ function showImportChoice(validItems, importedWeights, skipped){
   });
 }
 
+function allTags(){
+  var set = {};
+  state.items.forEach(function(it){ (it.tags || []).forEach(function(t){ set[t] = true; }); });
+  return Object.keys(set).sort(function(a,b){ return a.localeCompare(b, 'ja'); });
+}
 function filteredItems(){
   var f = state.filter;
   var q = (f.q || '').toLowerCase();
@@ -2306,7 +2385,8 @@ function filteredItems(){
     if (f.mediaType && it.mediaType !== f.mediaType) return false;
     if (f.sourceCategory && it.sourceCategory !== f.sourceCategory) return false;
     if (f.verdict && it.verdict !== f.verdict) return false;
-    if (q && (it.claimTitle + ' ' + it.claimText).toLowerCase().indexOf(q) === -1) return false;
+    if (f.tag && (it.tags || []).indexOf(f.tag) === -1) return false;
+    if (q && (it.claimTitle + ' ' + it.claimText + ' ' + (it.tags || []).join(' ')).toLowerCase().indexOf(q) === -1) return false;
     return true;
   }).sort(function(a,b){ return new Date(b.updatedAt) - new Date(a.updatedAt); });
 }
@@ -2333,7 +2413,8 @@ function renderListRows(){
       return mt ? '<span style="display:inline-flex;align-items:center;gap:5px;color:var(--n-500)">' + icon(mt.icon, 14) + '<span>' + esc(mt.label) + '</span></span>' : esc(it.mediaType);
     })() + '</td>';
     html += '<td>' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</td>';
-    html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) + '</td>';
+    html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) +
+      (it.tags && it.tags.length ? '<div style="margin-top:4px">' + tagChipsHtml(it.tags, false) + '</div>' : '') + '</td>';
     html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.symbol) + ' ' + esc(v.label) + '</span></td>';
     html += '<td class="center">' + (overall == null ? '—' : overall) + '<span class="evidence-badge">' + n + '/5</span></td>';
     html += '<td class="center">' + (function(){

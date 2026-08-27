@@ -856,6 +856,61 @@ async function agreeToConsent(dom) {
     assert.strictEqual(item.reviewDueDate, '');
   });
 
+  /* ============================= H3: 自由記述タグ ============================= */
+
+  await test('normalizeItem: tagsは重複排除せず配列として保持し、上限(30件)・文字数(50字)で切り詰める', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const longTag = 'x'.repeat(80);
+    const many = new Array(40).fill(0).map((_, i) => 'tag' + i);
+    const item = w.normalizeItem({ id: 'x1', tags: many.concat([longTag, '', '  ', 123]) });
+    assert.ok(item.tags.length <= 30, 'tagsが30件を超えている: ' + item.tags.length);
+    assert.ok(item.tags.every((t) => t.length <= 50), '50字を超えるタグが残っている');
+    assert.ok(!item.tags.includes(''), '空文字タグが混入している');
+  });
+
+  await test('新規/編集フォーム: タグ入力欄でEnterを押すとチップが追加され、削除ボタンで消える', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const input = doc.getElementById('tag-input');
+    assert.ok(input, 'タグ入力欄が見つからない');
+    input.value = '災害';
+    input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    assert.deepStrictEqual(Array.from(dom.window.state.draft.tags), ['災害']);
+    assert.ok(doc.querySelector('.tag-chip[data-tag="災害"]'), 'タグチップがDOMに反映されていない');
+
+    const removeBtn = doc.querySelector('[data-remove-tag="災害"]');
+    assert.ok(removeBtn, 'タグ削除ボタンが見つからない');
+    removeBtn.click();
+    assert.strictEqual(dom.window.state.draft.tags.length, 0, 'タグが削除されていない');
+  });
+
+  await test('タグは保存後も保持され、一覧のキーワード検索・タグ絞り込みで対象になる(H3)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    dom.window.confirm = () => true;
+    const doc = dom.window.document;
+    doc.getElementById('f-claimText').value = 'タグ検索テスト';
+    doc.getElementById('f-claimText').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const input = doc.getElementById('tag-input');
+    input.value = '地震';
+    input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    doc.getElementById('btn-save').click();
+    assert.strictEqual(dom.window.state.items[0].tags[0], '地震');
+
+    dom.window.state.activeTab = 'list';
+    dom.window.renderAll();
+    // タグでの絞り込み
+    dom.window.state.filter.tag = '地震';
+    dom.window.renderListRows();
+    assert.strictEqual(doc.querySelectorAll('#list-table-wrap tbody tr').length, 1, 'タグ絞り込みで表示されない');
+    dom.window.state.filter.tag = '';
+    dom.window.state.filter.q = '地震';
+    dom.window.renderListRows();
+    assert.strictEqual(doc.querySelectorAll('#list-table-wrap tbody tr').length, 1, 'キーワード検索でタグがヒットしない');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {
