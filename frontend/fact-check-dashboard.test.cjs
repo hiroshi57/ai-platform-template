@@ -1777,6 +1777,40 @@ async function agreeToConsent(dom) {
     assert.strictEqual(postCalled, true, '初回保存はPOSTで作成されるべき');
   });
 
+  /* ============================= K4: Content-Security-Policy ============================= */
+
+  await test('CSPのmetaタグが設定され、想定ドメイン以外へのconnect-srcを制限している(K4)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const meta = w.document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+    assert.ok(meta, 'CSPのmetaタグが見つからない');
+    const content = meta.getAttribute('content');
+    assert.ok(content.includes("default-src 'none'"), 'default-srcが原則拒否になっていない');
+    assert.ok(content.includes('connect-src') && content.includes('di-tools-api.vercel.app'), 'connect-srcにサーバー共有APIドメインが含まれていない');
+    assert.ok(content.includes('worker-src') && content.includes('blob:'), "worker-srcにblob:が無いとG6のWeb Workerが動作しない");
+    assert.ok(content.includes("object-src 'none'"), 'object-srcが制限されていない');
+  });
+
+  /* ============================= K5: ライセンス秘密値の難読化 ============================= */
+
+  await test('K5: ライセンス秘密値がソース中に平文で存在せず、実行時に正しく復元されてlicVerifyが機能する', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    // 難読化バイト配列からの復元関数が正しく動作し、既存のlicGenerate/licVerifyと整合すること
+    assert.strictEqual(typeof w._licSecret, 'function', '_licSecret()が公開されていない');
+    const secret = w._licSecret();
+    assert.ok(secret.length > 10, '復元された秘密値が空/極端に短い');
+    const key = w.licGenerate('難読化テスト株式会社', w.STORE);
+    assert.strictEqual(w.licVerify('難読化テスト株式会社', w.STORE, key), true, '難読化後もライセンス検証が正しく機能するべき');
+    assert.strictEqual(w.licVerify('別の会社', w.STORE, key), false, '会社名が違えば検証は失敗するべき');
+  });
+
+  await test('K5: 生のHTMLソースをテキスト検索しても、ライセンス秘密値の平文が見つからない', async () => {
+    const html = HTML;
+    // 難読化前に使っていた秘密値の平文がソース中に残っていないことを確認する
+    assert.ok(!html.includes('fc-dash-2026-08-tR4nP8vK2xQ7'), '旧・平文の秘密値がソースに残っている');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {

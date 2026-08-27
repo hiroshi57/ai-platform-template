@@ -9,6 +9,12 @@
 <meta property="og:description" content="テキスト・画像・音声・映像の主張を、情報源確認/一次情報比較/クロスチェック/AI活用の手順に沿って記録し、多面的に集計するオフライン動作の記録・集計ツール。インストール不要・登録不要・データは端末内(localStorage)に保存されます。" />
 <meta name="description" content="ファクトチェックの進め方(情報源確認・一次情報比較・クロスチェック・事実と意見の切り分け・AI活用)を標準化して記録し、判定内訳や時系列トレンドを可視化するダッシュボード。" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232b6cb0'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E2%9C%93%3C/text%3E%3C/svg%3E" />
+<!-- K4: 単一HTMLファイル(インラインscript/style)のため 'unsafe-inline' が必須になるが、
+     それ以外は原則デフォルト拒否とし、想定外の外部リソース読み込み・スクリプト注入の
+     影響範囲を軽減する。connect-srcはサーバー共有機能(I9)が使うAPIドメインのみ許可し、
+     worker-srcはG6のBlob URL経由Web Workerのために必要。meta要素のCSPは
+     frame-ancestors/sandbox等を強制できない制約があるため、それらは含めていない。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://di-tools-api.vercel.app; worker-src blob:; base-uri 'none'; form-action 'none'; object-src 'none';" />
 <!-- OFFLINE-BUNDLED: 外部通信なしで動作します(外部リンクはユーザーが手動で開くリンクのみ) -->
 <style>
   /* ===== デザイントークン ===== */
@@ -348,7 +354,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.12.0';
+var APP_VERSION = '0.13.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -577,7 +583,8 @@ var AI_GEN_CHECKLIST = [
 
 /* ===== 外販(商用配布)関連の設定 =====
  * STORE: このツール固有の識別子(ライセンス/サーバー共有のテナント分離キー)。
- * LIC_SECRET: 発行者のみが知る値。ライセンスキーは "会社名+STORE+この値" のハッシュ。
+ * _licSecret(): 発行者のみが知る値を返す関数。ライセンスキーは "会社名+STORE+この値" のハッシュ。
+ *   (K5: ソース中に平文で置かず難読化している。詳細は定義箇所のコメント参照)
  *   ※ クライアント側JSに埋め込む以上、閲覧者がソースを読めば理論上は自己発行できる
  *     (強固なDRMではない)。無登録利用の心理的抑止と誤配布防止が目的の簡易な仕組みであり、
  *     契約上の抑止力はライセンス条項側で担保する前提。
@@ -594,7 +601,16 @@ var AI_GEN_CHECKLIST = [
  *     不要になった共有データの削除は、当面はAPI提供側(サーバー運用者)に依頼すること。
  */
 var STORE = 'factcheck-dashboard';
-var LIC_SECRET = 'fc-dash-2026-08-tR4nP8vK2xQ7';
+/* K5: LIC_SECRETをソース中に平文の文字列リテラルとして置かない(難読化)。
+ * ⚠ 根本的なセキュリティ対策ではない。クライアント側JSである以上、実行時にはメモリ上へ
+ *   復元されるため、実行してconsoleで変数を覗けば理論上は誰でも取得できる。目的は
+ *   「ソースをテキスト検索しただけで秘密値がそのまま見つかる」状態を避け、
+ *   無登録利用への心理的抑止力をわずかに上げることに留まる(licVerify()参照)。 */
+var _licObfBytes = [60,57,119,62,59,41,50,119,104,106,104,108,119,106,98,119,46,8,110,52,10,98,44,17,104,34,11,109];
+var _licObfKey = 0x5A;
+function _licSecret(){
+  return _licObfBytes.map(function(b){ return String.fromCharCode(b ^ _licObfKey); }).join('');
+}
 var PROVIDER_NAME = '株式会社デジタルアイデンティティ';
 var LEGAL_TERMS_URL = 'https://di-tools-legal.vercel.app/terms.html';
 var LEGAL_PRIVACY_URL = 'https://di-tools-legal.vercel.app/privacy.html';
@@ -1099,7 +1115,7 @@ function licEncode(n, len){
 function licNormalize(s){ return String(s || '').replace(/[\s　]/g, '').toUpperCase(); }
 function licNormCompany(s){ return String(s || '').replace(/[\s　]/g, '').toLowerCase(); }
 function licGenerate(company, tool){
-  var base = licNormCompany(company) + '|' + tool + '|' + LIC_SECRET;
+  var base = licNormCompany(company) + '|' + tool + '|' + _licSecret();
   var h = licHash(base);
   return licEncode(h[0], 5) + '-' + licEncode(h[1], 5);
 }
