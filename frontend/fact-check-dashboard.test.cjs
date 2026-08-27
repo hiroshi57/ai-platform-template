@@ -785,6 +785,77 @@ async function agreeToConsent(dom) {
     assert.strictEqual(confirmCalled, 1, '機密情報らしき文字列があるのに確認ダイアログが出ない');
   });
 
+  /* ============================= H9: 再確認期限(次回レビュー日) ============================= */
+
+  await test('reviewDueStatus: 期限なし/超過/7日以内/まだ先を正しく判定する', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const today = new Date();
+    const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    const in3days = new Date(today); in3days.setDate(in3days.getDate() + 3);
+    const in30days = new Date(today); in30days.setDate(in30days.getDate() + 30);
+
+    assert.strictEqual(w.reviewDueStatus({ reviewDueDate: '' }), 'none');
+    assert.strictEqual(w.reviewDueStatus({ reviewDueDate: fmt(yesterday) }), 'overdue');
+    assert.strictEqual(w.reviewDueStatus({ reviewDueDate: fmt(in3days) }), 'soon');
+    assert.strictEqual(w.reviewDueStatus({ reviewDueDate: fmt(in30days) }), 'ok');
+  });
+
+  await test('新規/編集フォーム: 次回レビュー予定日を入力するとdraftに反映され、保存後も保持される', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    dom.window.confirm = () => true;
+    const doc = dom.window.document;
+    doc.getElementById('f-claimText').value = 'レビュー期限テスト';
+    doc.getElementById('f-claimText').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const dateInput = doc.getElementById('f-reviewDueDate');
+    assert.ok(dateInput, '次回レビュー予定日の入力欄が見つからない');
+    dateInput.value = '2099-01-01';
+    dateInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.strictEqual(dom.window.state.draft.reviewDueDate, '2099-01-01');
+    doc.getElementById('btn-save').click();
+    assert.strictEqual(dom.window.state.items[0].reviewDueDate, '2099-01-01', '保存後にreviewDueDateが保持されていない');
+  });
+
+  await test('一覧タブ: 期限超過の案件が「期限超過」バッジ付きで表示される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    w.state.items = [w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: 'overdue test', claimText: 't',
+      verdict: 'unverifiable', reviewDueDate: fmt(yesterday)
+    })];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    assert.ok(w.document.body.textContent.includes('期限超過'), '一覧に期限超過バッジが表示されない');
+  });
+
+  await test('ダッシュボード: 再確認期限に関する示唆(期限超過/まもなく)が生成される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    w.state.items = [w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: 'overdue test', claimText: 't',
+      verdict: 'unverifiable', reviewDueDate: fmt(yesterday)
+    })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const text = w.document.querySelector('.insight-list').textContent;
+    assert.ok(text.includes('再確認期限を過ぎている案件が1件'), '期限超過の示唆が生成されない: ' + text);
+  });
+
+  await test('normalizeItem: 旧データ(reviewDueDate欠損)を読み込んでも空文字列に補完される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const item = w.normalizeItem({ id: 'x1', claimTitle: 'legacy' });
+    assert.strictEqual(item.reviewDueDate, '');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {
