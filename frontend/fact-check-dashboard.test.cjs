@@ -976,6 +976,54 @@ async function agreeToConsent(dom) {
     assert.ok(text.includes('担当者が未設定'), '担当者未設定の示唆が生成されない: ' + text);
   });
 
+  /* ============================= C2/C3: ドーナツチャート・ヒートマップ ============================= */
+
+  await test('svgDonutChart: 合計値0でも例外を投げずグレーの円を返し、値がある場合は件数分のcircleを描く', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const empty = w.svgDonutChart([{ label: 'a', value: 0, color: '#fff' }, { label: 'b', value: 0, color: '#000' }]);
+    assert.ok(empty.includes('<svg'));
+    const withData = w.svgDonutChart([{ label: 'a', value: 3, color: '#111111' }, { label: 'b', value: 1, color: '#222222' }]);
+    const circleCount = (withData.match(/<circle/g) || []).length;
+    assert.strictEqual(circleCount, 2, '値のあるセグメント数だけcircleが描かれるべき: ' + circleCount);
+    assert.ok(withData.includes('>4<'), '中央のテキストに合計件数(4)が表示されていない: ' + withData);
+  });
+
+  await test('blendHexWithWhite: fraction=0で白、fraction=1で元の色になる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(w.blendHexWithWhite('#ff0000', 0), 'rgb(255,255,255)');
+    assert.strictEqual(w.blendHexWithWhite('#ff0000', 1), 'rgb(255,0,0)');
+  });
+
+  await test('heatmapTable: 件数が0のセルは背景transparentになり、件数がある場合は数値も表示される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const matrix = { politician: { true: 2, mixed: 1 } };
+    const html = w.heatmapTable(
+      [{ id: 'politician', label: '政治家' }],
+      [{ id: 'true', label: '真実', symbol: '✓' }, { id: 'mixed', label: '一部誤り', symbol: '△' }],
+      matrix, 2
+    );
+    assert.ok(html.includes('>2<'), '件数2が表示されていない');
+    assert.ok(html.includes('background:transparent') === false || html.includes('background:rgb'), 'セルの背景が設定されていない');
+  });
+
+  await test('ダッシュボード: 判定内訳にドーナツチャートと出所区分×判定ヒートマップが表示される(C2/C3)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [
+      w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'politician', claimTitle: 't1', claimText: 't', verdict: 'false' }),
+      w.normalizeItem({ id: 'b', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'politician', claimTitle: 't2', claimText: 't', verdict: 'true' })
+    ];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const doc = w.document;
+    assert.ok(doc.body.textContent.includes('出所区分×判定のクロス集計'), 'ヒートマップの見出しが表示されない');
+    const donutSvg = doc.querySelector('.card svg[aria-label*="ドーナツ"]');
+    assert.ok(donutSvg, 'ドーナツチャートのSVGが見つからない');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {

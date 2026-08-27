@@ -2646,6 +2646,20 @@ function renderDashResults(){
     }
   });
 
+  // C3: 出所区分×判定のクロス集計(ヒートマップ用)
+  var srcVerdictMatrix = {};
+  var srcVerdictMax = 0;
+  SOURCE_CATEGORIES.forEach(function(c){
+    srcVerdictMatrix[c.id] = {};
+    VERDICTS.forEach(function(v){ srcVerdictMatrix[c.id][v.id] = 0; });
+  });
+  items.forEach(function(it){
+    if (srcVerdictMatrix[it.sourceCategory] && it.verdict && srcVerdictMatrix[it.sourceCategory].hasOwnProperty(it.verdict)){
+      srcVerdictMatrix[it.sourceCategory][it.verdict]++;
+      if (srcVerdictMatrix[it.sourceCategory][it.verdict] > srcVerdictMax) srcVerdictMax = srcVerdictMatrix[it.sourceCategory][it.verdict];
+    }
+  });
+
   // 月次系列
   var monthly = {};
   items.forEach(function(it){
@@ -2700,12 +2714,16 @@ function renderDashResults(){
 
   html += '<div class="card">';
   html += '<h2>判定内訳(多面評価①: 判定別)</h2>';
-  html += VERDICTS.map(function(v){
+  html += '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">';
+  html += '<div class="noprint">' + svgDonutChart(VERDICTS.map(function(v){
+    return {label: v.label, value: verdictCounts[v.id] || 0, color: VERDICT_HEATMAP_HEX[v.id] || '#7a8699'};
+  })) + '</div>';
+  html += '<div style="flex:1;min-width:240px">' + VERDICTS.map(function(v){
     var n = verdictCounts[v.id] || 0;
     var pct = items.length ? Math.round(n/items.length*100) : 0;
     return barrow(esc(v.label), n, pct, v.color);
-  }).join('');
-  html += '</div>';
+  }).join('') + '</div>';
+  html += '</div></div>';
 
   html += '<div class="grid2">';
   html += '<div class="card"><h2>種別ごとの件数(多面評価②)</h2>' + MEDIA_TYPES.map(function(m){
@@ -2719,6 +2737,16 @@ function renderDashResults(){
     var pct = Math.round(srcFalse[c.id]/n*100);
     return barrow(esc(c.label) + '(n=' + n + ')', srcFalse[c.id], pct, pct >= 50 ? 'var(--red)' : (pct>=25?'var(--amber)':'var(--green)'));
   }).join('') + '</div>';
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<h2>出所区分×判定のクロス集計(多面評価③・ヒートマップ)</h2>';
+  html += '<div class="helper">セルの色の濃さは件数に応じて変化しますが、数値も必ず併記しています(色だけに依存しない表示)。</div>';
+  if (!items.length){
+    html += '<div class="empty">データがありません。</div>';
+  } else {
+    html += heatmapTable(SOURCE_CATEGORIES, VERDICTS, srcVerdictMatrix, srcVerdictMax);
+  }
   html += '</div>';
 
   html += '<div class="card">';
@@ -2757,6 +2785,65 @@ function barrow(name, num, pct, color){
     '<div class="track"><div class="fill" style="width:' + Math.max(0,Math.min(100,pct)) + '%;background:' + color + '"></div></div>' +
     '<div class="num">' + num + '件(' + pct + '%)</div>' +
   '</div>';
+}
+
+/* C2: ドーナツチャート。色だけに頼らないよう、必ず横棒+テキストの内訳(barrow)と
+ * 併記して補助的に使う(F8の方針を踏襲)。segments: [{label, value, color}] */
+function svgDonutChart(segments, size){
+  size = size || 176;
+  var strokeWidth = 24;
+  var r = size / 2 - strokeWidth / 2 - 2;
+  var cx = size / 2, cy = size / 2;
+  var circumference = 2 * Math.PI * r;
+  var total = segments.reduce(function(s, x){ return s + (x.value > 0 ? x.value : 0); }, 0);
+  var svgBody = '';
+  if (total === 0){
+    svgBody = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="var(--n-100)" stroke-width="' + strokeWidth + '"></circle>';
+  } else {
+    var offset = 0;
+    segments.forEach(function(s){
+      if (s.value <= 0) return;
+      var frac = s.value / total;
+      var dash = frac * circumference;
+      var gap = circumference - dash;
+      svgBody += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + s.color + '" stroke-width="' + strokeWidth +
+        '" stroke-dasharray="' + dash.toFixed(2) + ' ' + gap.toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) +
+        '" transform="rotate(-90 ' + cx + ' ' + cy + ')"><title>' + esc(s.label) + ': ' + s.value + '件(' + Math.round(frac * 100) + '%)</title></circle>';
+      offset += dash;
+    });
+  }
+  var centerText = '<text x="' + cx + '" y="' + (cy - 3) + '" text-anchor="middle" font-size="22" font-weight="800" fill="var(--n-900)">' + total + '</text>' +
+    '<text x="' + cx + '" y="' + (cy + 15) + '" text-anchor="middle" font-size="10" fill="var(--n-400)">件</text>';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" role="img" aria-label="内訳ドーナツチャート(詳細は右の一覧を参照)">' + svgBody + centerText + '</svg>';
+}
+
+/* C3: 出所区分×判定のクロス集計ヒートマップ。セルの背景色の濃淡に加え、
+ * 件数を数値でも表示するため、色だけに依存しない(F8の方針)。
+ * CSS color-mix() はブラウザ対応がまだ不安定なため使わず、JS側でRGBを補間する。 */
+var VERDICT_HEATMAP_HEX = {true:'#0f9d6b', mostly_true:'#3d8f6b', mixed:'#b7791f', false:'#dc2626', unverifiable:'#7a8699'};
+function blendHexWithWhite(hex, fraction){
+  hex = hex.replace('#', '');
+  var r = parseInt(hex.substr(0,2), 16), g = parseInt(hex.substr(2,2), 16), b = parseInt(hex.substr(4,2), 16);
+  var mix = function(c){ return Math.round(255 + (c - 255) * fraction); };
+  return 'rgb(' + mix(r) + ',' + mix(g) + ',' + mix(b) + ')';
+}
+function heatmapTable(sourceCategories, verdicts, matrix, maxCount){
+  var html = '<div style="overflow-x:auto"><table class="axis-table"><thead><tr><th class="l" style="text-align:left">出所区分</th>';
+  verdicts.forEach(function(v){ html += '<th class="center">' + esc(v.symbol) + '<br>' + esc(v.label) + '</th>'; });
+  html += '</tr></thead><tbody>';
+  sourceCategories.forEach(function(c){
+    html += '<tr><td class="l">' + esc(c.label) + '</td>';
+    verdicts.forEach(function(v){
+      var n = (matrix[c.id] && matrix[c.id][v.id]) || 0;
+      var intensity = maxCount > 0 ? n / maxCount : 0;
+      var hex = VERDICT_HEATMAP_HEX[v.id] || '#7a8699';
+      var bg = n === 0 ? 'transparent' : blendHexWithWhite(hex, 0.15 + intensity * 0.7);
+      html += '<td class="center" style="background:' + bg + '">' + (n || '') + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
 }
 
 function linearForecastNext(values){
