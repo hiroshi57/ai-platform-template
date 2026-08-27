@@ -373,6 +373,21 @@ var STATUS_OPTIONS = [
   {id:'done', label:'完了', color:'var(--success-600)', symbol:'●'}
 ];
 
+/* H8: よくある確認パターンのテンプレート。選択すると種別・出所区分・タグの初期値を
+ * 適用するが、既に入力済みの主張タイトル・本文は上書きしない(あくまで開始点の提案)。 */
+var CASE_TEMPLATES = [
+  {id:'sns-viral', label:'SNS拡散系(画像/動画の使い回し疑い)', mediaType:'image', sourceCategory:'sns',
+   hint:'例: 「〇〇で△△が起きた」として拡散している画像・動画。③過去メディアとの照合を優先的に確認してください。', tags:['SNS拡散']},
+  {id:'authority-quote', label:'権威者引用系(専門家発言の真偽)', mediaType:'text', sourceCategory:'sns',
+   hint:'例: 「〇〇大学教授によると××」という発言の真偽。一次情報(本人の発言・論文)を確認してください。', tags:['権威引用']},
+  {id:'government-announcement', label:'政府・自治体発表の解釈', mediaType:'text', sourceCategory:'government',
+   hint:'例: 〇〇省・自治体が発表した内容の解釈や引用が妥当か。公式発表そのものと照合してください。', tags:['公的発表']},
+  {id:'ad-claim', label:'広告・マーケティング表示', mediaType:'text', sourceCategory:'ad',
+   hint:'例: 「効果が科学的に証明された」等の広告表現の妥当性。景品表示法等の観点も含め確認してください。', tags:['広告表現']},
+  {id:'disaster-footage', label:'災害・事故映像の真正性', mediaType:'video', sourceCategory:'sns',
+   hint:'例: 災害・事故として拡散している映像が現在・現地のものか。撮影日時・場所の裏付けと③の照合を優先してください。', tags:['災害映像']}
+];
+
 var RESULT_OPTIONS = [
   {id:'', label:'(未確認)'},
   {id:'match', label:'一致(裏付けあり)'},
@@ -590,7 +605,7 @@ state.pendingRecovery = null; // 起動時に見つかった未保存下書き(�
  * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
  * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
  */
-var SCHEMA_VERSION = 7; // v7: 高解像度画像をIndexedDBへ退避(mediaCheck.fullImageKey)を追加
+var SCHEMA_VERSION = 8; // v8: 文字起こし(transcript)・関連案件(relatedIds)・添付ファイル(attachments)・コメント(comments)を追加
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
@@ -672,6 +687,31 @@ function normalizeMediaCheck(m){
     note: capString(m.note, 5000)
   };
 }
+/* H5: 添付ファイル(スクリーンショット等)。I3と同じくマイクロサムネイルのみ
+ * localStorageに保存し、フル解像度はIndexedDBに保存する。 */
+function normalizeAttachment(a){
+  a = a || {};
+  var MAX_THUMB_LEN = 3 * 1024 * 1024;
+  var thumb = typeof a.thumbDataUrl === 'string' ? a.thumbDataUrl : '';
+  if (thumb.length > MAX_THUMB_LEN) thumb = '';
+  return {
+    id: (typeof a.id === 'string' && a.id) || uid(),
+    name: capString(a.name, 200),
+    thumbDataUrl: thumb,
+    fullImageKey: capString(a.fullImageKey, 200),
+    addedAt: typeof a.addedAt === 'string' ? a.addedAt : new Date().toISOString()
+  };
+}
+/* H12: 複数人でのコメント(ディスカッションログ) */
+function normalizeComment(c){
+  c = c || {};
+  return {
+    id: (typeof c.id === 'string' && c.id) || uid(),
+    author: capString(c.author, 200),
+    text: capString(c.text, 4000),
+    at: typeof c.at === 'string' ? c.at : new Date().toISOString()
+  };
+}
 function normalizeItem(raw){
   raw = raw || {};
   var nowIso = new Date().toISOString();
@@ -686,6 +726,10 @@ function normalizeItem(raw){
     sourceUrl: capString(raw.sourceUrl, 2000),
     archiveUrl: capString(raw.archiveUrl, 2000),
     collectedAt: typeof raw.collectedAt === 'string' ? raw.collectedAt : '',
+    transcript: capString(raw.transcript, 20000),
+    relatedIds: capArray(raw.relatedIds, 50).filter(function(id){ return typeof id === 'string' && id; }),
+    attachments: capArray(raw.attachments, 30).map(normalizeAttachment),
+    comments: capArray(raw.comments, 200).map(normalizeComment),
     segments: capArray(raw.segments, 500).map(normalizeSegment),
     officialCheck: normalizeCheckResult(raw.officialCheck, 'agency'),
     primaryCheck: normalizeCheckResult(raw.primaryCheck, 'sourceType'),
@@ -1222,6 +1266,10 @@ function newItem(){
     sourceUrl: '',
     archiveUrl: '',
     collectedAt: '',
+    transcript: '',
+    relatedIds: [],
+    attachments: [],
+    comments: [],
     segments: [],
     officialCheck: {result:'', agency:'', note:'', link:''},
     primaryCheck: {result:'', sourceType:'', note:'', link:''},
@@ -1528,6 +1576,11 @@ function renderNewCheckTab(app){
   var html = '';
   html += '<div class="card">';
   html += '<h2>' + icon('edit', 17) + (isEdit ? ' チェックを編集' : ' 新規チェックを記録') + '</h2>';
+  if (!isEdit){
+    html += field('テンプレートから開始(任意、H8)', '<select id="case-template-picker"><option value="">選択してください(種別・出所区分・タグの初期値を設定します)</option>' +
+      CASE_TEMPLATES.map(function(t){ return '<option value="' + esc(t.id) + '">' + esc(t.label) + '</option>'; }).join('') + '</select>');
+    html += '<div id="template-hint"></div>';
+  }
   html += '<div class="note-box">個人の意見・感想・価値判断・未来予測はファクトチェックの対象外です。検証対象は「事実として提示されている言明」に限定してください。</div>';
   html += '<div class="grid2">';
   html += field('対象の種別', selectHtml('f-mediaType', MEDIA_TYPES, d.mediaType));
@@ -1536,6 +1589,9 @@ function renderNewCheckTab(app){
   html += field('主張の要約(タイトル)', '<input type="text" id="f-claimTitle" value="' + esc(d.claimTitle) + '" placeholder="例: 〇〇氏「△△の予算は前年比2倍になった」と発言" />', 'wrap-claimTitle');
   html += field('主張の本文・書き起こし', '<textarea id="f-claimText" maxlength="4000" placeholder="検証対象の発言・投稿・記事本文などをできるだけそのまま記録">' + esc(d.claimText) + '</textarea>', 'wrap-claimText',
     '<div class="char-counter" id="claimText-counter">' + d.claimText.length + ' / 4000</div>');
+  html += '<div id="wrap-transcript" style="display:' + ((d.mediaType === 'audio' || d.mediaType === 'video') ? 'block' : 'none') + '">' +
+    field('文字起こし(音声・映像用、任意)', '<textarea id="f-transcript" maxlength="20000" placeholder="音声・映像の発言内容をできるだけ正確に書き起こしてください">' + esc(d.transcript) + '</textarea>') +
+    '<div class="helper" style="margin-top:-6px">主張本文が要約の場合、こちらに全文の書き起こしを残しておくと後で見返す際に有用です。</div></div>';
   html += '<div class="grid2">';
   html += field('出典URL', '<input type="url" id="f-sourceUrl" value="' + esc(d.sourceUrl) + '" placeholder="https://..." />');
   html += field('収集日', '<input type="date" id="f-collectedAt" value="' + esc(d.collectedAt) + '" />');
@@ -1547,7 +1603,12 @@ function renderNewCheckTab(app){
   html += field('担当者(任意)', '<input type="text" id="f-assignee" value="' + esc(d.assignee) + '" placeholder="例: 山田" />');
   html += field('ステータス', selectHtml('f-status', STATUS_OPTIONS, d.status));
   html += '</div>';
+  html += '<h3>' + icon('link', 13) + ' 関連する案件(H4)</h3>';
+  html += '<div id="related-cases-block">' + relatedCasesHtml(d) + '</div>';
+  html += '<div id="similar-cases-hint"></div>';
   html += '</div>';
+
+  html += '<div class="card"><h2>' + icon('image', 17) + ' 添付ファイル</h2>' + attachmentsCardHtml(d) + '</div>';
 
   // ===== 一次スクリーニング(技術で「ふるいにかける」) =====
   html += '<div class="card elevated">';
@@ -1641,6 +1702,8 @@ function renderNewCheckTab(app){
     }).join('') + '</ul>';
   }
   html += '</div>';
+
+  html += '<div class="card"><h2>' + icon('edit', 17) + ' コメント(複数人でのディスカッション)</h2>' + commentsCardHtml(d) + '</div>';
 
   html += '<div class="sticky-toolbar-spacer noprint"></div>';
   html += '<div class="toolbar sticky-toolbar noprint" id="save-toolbar">';
@@ -1891,6 +1954,72 @@ function mediaCheckHtml(d){
   return html;
 }
 
+/* H5: 添付ファイル(スクリーンショット等)。I3と同じくマイクロサムネイルは即時表示、
+ * フル解像度はIndexedDBから非同期取得する。 */
+function attachmentsListHtml(attachments){
+  if (!attachments || !attachments.length){
+    return '<div class="helper">まだ添付ファイルはありません。</div>';
+  }
+  return '<div class="toolgrid">' + attachments.map(function(a){
+    return '<div class="toolcard">' +
+      (a.thumbDataUrl ? '<img src="' + esc(a.thumbDataUrl) + '"' + (a.fullImageKey ? ' data-idb-key="' + esc(a.fullImageKey) + '"' : '') +
+        ' alt="' + esc(a.name || '添付ファイル') + '" style="width:100%;height:100px;object-fit:cover;border-radius:8px;margin-bottom:6px" />' : '') +
+      '<div style="font-size:12px;word-break:break-all">' + esc(a.name || '(無題)') + '</div>' +
+      '<div class="note">' + esc(fmtDate(a.addedAt)) + '</div>' +
+      '<button class="danger small" data-remove-attachment="' + esc(a.id) + '" style="margin-top:6px">' + icon('trash', 12) + ' 削除</button>' +
+      '</div>';
+  }).join('') + '</div>';
+}
+function attachmentsCardHtml(d){
+  var html = '<div class="helper">スクリーンショット等の証拠画像を添付できます(画像のみ対応)。端末内で処理され、外部送信はありません。</div>';
+  html += '<div class="toolbar"><label class="ghost small" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer">' +
+    icon('upload', 14) + ' ファイルを選択(複数可)<input type="file" id="attachment-file-input" accept="image/*" multiple style="display:none" /></label></div>';
+  html += '<div id="attachments-list">' + attachmentsListHtml(d.attachments) + '</div>';
+  return html;
+}
+
+/* H4: 関連する案件(同じ主張の複数バリエーションのグルーピング) */
+function relatedCasesHtml(d){
+  var linked = (d.relatedIds || []).map(function(id){ return state.items.filter(function(it){ return it.id === id; })[0]; }).filter(Boolean);
+  var candidates = state.items.filter(function(it){ return it.id !== d.id && (d.relatedIds || []).indexOf(it.id) === -1; });
+  var html = '<div class="helper">同じ主張の別バージョン・関連する投稿などがあれば紐付けておくと、一覧から辿れるようになります。</div>';
+  if (linked.length){
+    html += '<div style="margin:8px 0">' + linked.map(function(it){
+      return '<span class="tag-chip" data-tag="' + esc(it.id) + '">' + esc(it.claimTitle || it.claimText.slice(0, 30) || '(無題)') +
+        '<button type="button" data-unlink-case="' + esc(it.id) + '" aria-label="関連付けを解除">' + icon('trash', 10) + '</button></span>';
+    }).join(' ') + '</div>';
+  } else {
+    html += '<div class="helper" style="margin:8px 0">まだ関連付けられた案件はありません。</div>';
+  }
+  if (candidates.length){
+    html += '<select id="related-case-picker"><option value="">+ 関連する案件を追加...</option>' +
+      candidates.map(function(it){
+        return '<option value="' + esc(it.id) + '">' + esc(it.claimTitle || it.claimText.slice(0, 40) || '(無題)') + '</option>';
+      }).join('') + '</select>';
+  }
+  return html;
+}
+
+/* H12: 複数人でのコメント(ディスカッションログ) */
+function commentsListHtml(comments){
+  if (!comments || !comments.length) return '<div class="helper">まだコメントはありません。</div>';
+  return '<div class="row-list">' + comments.slice().sort(function(a, b){ return new Date(a.at) - new Date(b.at); }).map(function(c){
+    return '<div class="row-item" style="grid-template-columns:1fr auto" data-comment-id="' + esc(c.id) + '">' +
+      '<div><b>' + esc(c.author || '匿名') + '</b> <span class="helper">' + esc(fmtDateTime(c.at)) + '</span><div style="margin-top:2px;white-space:pre-wrap">' + esc(c.text) + '</div></div>' +
+      '<button class="danger small" data-remove-comment="' + esc(c.id) + '">' + icon('trash', 12) + '</button>' +
+      '</div>';
+  }).join('') + '</div>';
+}
+function commentsCardHtml(d){
+  var html = '<div id="comments-list">' + commentsListHtml(d.comments) + '</div>';
+  html += '<div class="grid2" style="margin-top:8px">';
+  html += field('お名前', '<input type="text" id="comment-author" placeholder="例: 山田" />');
+  html += field('コメント', '<textarea id="comment-text" placeholder="確認状況の共有、疑問点など"></textarea>');
+  html += '</div>';
+  html += '<div class="toolbar"><button class="ghost small" id="comment-add-btn">' + icon('edit', 14) + ' コメントを追加</button></div>';
+  return html;
+}
+
 function bindNewCheckEvents(app){
   var d = state.draft;
 
@@ -1898,6 +2027,32 @@ function bindNewCheckEvents(app){
   function scheduleDraftAutosave(){
     if (draftSaveTimer) clearTimeout(draftSaveTimer);
     draftSaveTimer = setTimeout(function(){ persistDraft(); }, 600);
+  }
+
+  // H8: テンプレート選択(新規作成時のみ表示)
+  var templatePicker = document.getElementById('case-template-picker');
+  if (templatePicker){
+    templatePicker.addEventListener('change', function(){
+      var tpl = CASE_TEMPLATES.filter(function(t){ return t.id === templatePicker.value; })[0];
+      var hintEl = document.getElementById('template-hint');
+      if (!tpl){ if (hintEl) hintEl.innerHTML = ''; return; }
+      d.mediaType = tpl.mediaType;
+      d.sourceCategory = tpl.sourceCategory;
+      tpl.tags.forEach(function(t){ if (d.tags.indexOf(t) === -1) d.tags.push(t); });
+      var mtSel = document.getElementById('f-mediaType');
+      var scSel = document.getElementById('f-sourceCategory');
+      if (mtSel) mtSel.value = tpl.mediaType;
+      if (scSel) scSel.value = tpl.sourceCategory;
+      var transcriptWrap2 = document.getElementById('wrap-transcript');
+      if (transcriptWrap2) transcriptWrap2.style.display = (tpl.mediaType === 'audio' || tpl.mediaType === 'video') ? 'block' : 'none';
+      var tagsWrap = document.getElementById('tags-wrap');
+      if (tagsWrap){
+        tagsWrap.querySelectorAll('.tag-chip').forEach(function(el){ el.remove(); });
+        tagsWrap.insertAdjacentHTML('afterbegin', tagChipsHtml(d.tags, true));
+      }
+      if (hintEl) hintEl.innerHTML = '<div class="helper">' + esc(tpl.hint) + '</div>';
+      scheduleDraftAutosave();
+    });
   }
 
   // 単純フィールド(input/change時に draft を直接更新。全体再描画はしない)
@@ -1921,6 +2076,12 @@ function bindNewCheckEvents(app){
           counter.classList.toggle('near-limit', el.value.length >= 3600);
         }
         refreshPatternScreen();
+        refreshSimilarCasesHint();
+      }
+      if (path === 'mediaType'){
+        // H6: 音声・映像のときだけ文字起こし欄を表示する
+        var transcriptWrap = document.getElementById('wrap-transcript');
+        if (transcriptWrap) transcriptWrap.style.display = (el.value === 'audio' || el.value === 'video') ? 'block' : 'none';
       }
     });
   });
@@ -1980,6 +2141,156 @@ function bindNewCheckEvents(app){
       d.tags = d.tags.filter(function(t){ return t !== val; });
       scheduleDraftAutosave();
       refreshTags();
+    }
+  });
+
+  // H4: 関連する案件(双方向リンク。相手側のアイテムがstate.itemsに保存済みの場合は
+  // 相手側のrelatedIdsも更新し、リンクの解除も同様に双方向で行う)
+  function refreshRelatedCases(){
+    var block = document.getElementById('related-cases-block');
+    if (block) block.innerHTML = relatedCasesHtml(d);
+  }
+  var relatedPicker = document.getElementById('related-case-picker');
+  if (relatedPicker){
+    relatedPicker.addEventListener('change', function(){
+      var otherId = relatedPicker.value;
+      if (!otherId) return;
+      if (d.relatedIds.indexOf(otherId) === -1) d.relatedIds.push(otherId);
+      var other = state.items.filter(function(it){ return it.id === otherId; })[0];
+      if (other && other.relatedIds.indexOf(d.id) === -1){
+        other.relatedIds.push(d.id);
+        persist();
+      }
+      scheduleDraftAutosave();
+      refreshRelatedCases();
+    });
+  }
+  app.addEventListener('click', function(e){
+    var unlinkBtn = e.target.closest('[data-unlink-case]');
+    if (unlinkBtn){
+      var otherId2 = unlinkBtn.dataset.unlinkCase;
+      d.relatedIds = d.relatedIds.filter(function(id){ return id !== otherId2; });
+      var other2 = state.items.filter(function(it){ return it.id === otherId2; })[0];
+      if (other2){
+        other2.relatedIds = other2.relatedIds.filter(function(id){ return id !== d.id; });
+        persist();
+      }
+      scheduleDraftAutosave();
+      refreshRelatedCases();
+    }
+  });
+
+  // H10: 類似案件の簡易検出(claimTextの単語集合のJaccard類似度)。あくまで参考の
+  // リマインドであり、自動で重複と断定するものではない。
+  // 日本語には単語間のスペースが無いため、正規表現での「単語」分割(\p{L}+等)では
+  // 文章全体が1つの巨大なトークンになってしまい類似度が正しく機能しない。
+  // 代わりに文字2-gram(バイグラム)のJaccard類似度を使う(形態素解析器なしで
+  // 日本語・英語どちらにもそれなりに機能する簡易的な手法)。
+  function charBigrams(s){
+    s = String(s || '').toLowerCase().replace(/\s+/g, '');
+    var grams = new Set();
+    for (var i = 0; i < s.length - 1; i++) grams.add(s.substr(i, 2));
+    return grams;
+  }
+  function jaccardSimilarity(a, b){
+    var gramsA = charBigrams(a), gramsB = charBigrams(b);
+    if (!gramsA.size || !gramsB.size) return 0;
+    var intersection = 0;
+    gramsA.forEach(function(g){ if (gramsB.has(g)) intersection++; });
+    var union = gramsA.size + gramsB.size - intersection;
+    return union ? intersection / union : 0;
+  }
+  function findSimilarItems(claimText, excludeId){
+    if (!claimText || claimText.trim().length < 10) return [];
+    return state.items
+      .filter(function(it){ return it.id !== excludeId; })
+      .map(function(it){ return {item: it, score: jaccardSimilarity(claimText, it.claimText)}; })
+      .filter(function(x){ return x.score >= 0.35; })
+      .sort(function(a, b){ return b.score - a.score; })
+      .slice(0, 3);
+  }
+  function refreshSimilarCasesHint(){
+    var hintEl = document.getElementById('similar-cases-hint');
+    if (!hintEl) return;
+    var similar = findSimilarItems(d.claimText, d.id);
+    if (!similar.length){ hintEl.innerHTML = ''; return; }
+    hintEl.innerHTML = '<div class="note-box">' + icon('alert', 15) + '<div>本文が似ている既存の案件があります(重複登録の可能性)。' +
+      '確認の上、必要であれば上の「関連する案件」から紐付けてください。<ul style="margin:6px 0 0 18px">' +
+      similar.map(function(s){ return '<li>' + esc(s.item.claimTitle || s.item.claimText.slice(0,30) || '(無題)') + '(類似度 約' + Math.round(s.score*100) + '%)</li>'; }).join('') +
+      '</ul></div></div>';
+  }
+
+  // H5: 添付ファイル(複数選択可・スクリーンショット等)
+  function refreshAttachments(){
+    var block = document.getElementById('attachments-list');
+    if (block){
+      block.innerHTML = attachmentsListHtml(d.attachments);
+      upgradeImagesFromIndexedDb(block);
+    }
+  }
+  var attachmentInput = document.getElementById('attachment-file-input');
+  if (attachmentInput){
+    attachmentInput.addEventListener('change', function(e){
+      var files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      files.forEach(function(file){
+        var reader = new FileReader();
+        reader.onload = function(){
+          downscaleImageToDataUrl(reader.result, 480, 0.6, function(fullThumb){
+            if (!fullThumb){ toast('画像「' + file.name + '」の読み込みに失敗しました。', {type:'danger'}); return; }
+            downscaleImageToDataUrl(fullThumb, 72, 0.5, function(microThumb){
+              var attId = uid();
+              var key = 'attachment:' + attId;
+              d.attachments.push({id: attId, name: file.name, thumbDataUrl: microThumb || fullThumb, fullImageKey: key, addedAt: new Date().toISOString()});
+              scheduleDraftAutosave();
+              refreshAttachments();
+              idbPutImage(key, fullThumb);
+            });
+          });
+        };
+        reader.onerror = function(){ toast('ファイル「' + file.name + '」の読み込みに失敗しました。', {type:'danger'}); };
+        reader.readAsDataURL(file);
+      });
+      attachmentInput.value = '';
+    });
+  }
+  app.addEventListener('click', function(e){
+    var rmAttachment = e.target.closest('[data-remove-attachment]');
+    if (rmAttachment){
+      var attId2 = rmAttachment.dataset.removeAttachment;
+      var att = d.attachments.filter(function(a){ return a.id === attId2; })[0];
+      if (att && att.fullImageKey) idbDeleteImage(att.fullImageKey);
+      d.attachments = d.attachments.filter(function(a){ return a.id !== attId2; });
+      scheduleDraftAutosave();
+      refreshAttachments();
+    }
+  });
+
+  // H12: コメント(複数人でのディスカッションログ)
+  function refreshComments(){
+    var block = document.getElementById('comments-list');
+    if (block) block.innerHTML = commentsListHtml(d.comments);
+  }
+  var commentAddBtn = document.getElementById('comment-add-btn');
+  if (commentAddBtn){
+    commentAddBtn.addEventListener('click', function(){
+      var authorEl = document.getElementById('comment-author');
+      var textEl = document.getElementById('comment-text');
+      var text = (textEl.value || '').trim();
+      if (!text){ toast('コメント内容を入力してください。', {type:'warning'}); return; }
+      d.comments.push({id: uid(), author: (authorEl.value || '').trim(), text: text, at: new Date().toISOString()});
+      textEl.value = '';
+      scheduleDraftAutosave();
+      refreshComments();
+    });
+  }
+  app.addEventListener('click', function(e){
+    var rmComment = e.target.closest('[data-remove-comment]');
+    if (rmComment){
+      var cId = rmComment.dataset.removeComment;
+      d.comments = d.comments.filter(function(c){ return c.id !== cId; });
+      scheduleDraftAutosave();
+      refreshComments();
     }
   });
 
@@ -2267,6 +2578,7 @@ function renderListTab(app){
   html += '<div class="toolbar">';
   html += '<button class="ghost small" id="btn-export-json">' + icon('download', 14) + ' JSONエクスポート</button>';
   html += '<button class="ghost small" id="btn-export-csv">' + icon('download', 14) + ' CSVエクスポート</button>';
+  html += '<button class="ghost small" id="btn-export-md">' + icon('download', 14) + ' Markdownエクスポート</button>';
   html += '<label class="ghost small" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;cursor:pointer">' + icon('upload', 14) + ' JSONインポート<input type="file" id="file-import" accept="application/json" style="display:none" /></label>';
   html += '<button class="danger small" id="btn-clear-all">' + icon('trash', 14) + ' 全件削除</button>';
   html += '</div>';
@@ -2291,6 +2603,7 @@ function renderListTab(app){
     toast('JSONファイルをダウンロードしました。', {type:'success'});
   });
   document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
+  document.getElementById('btn-export-md').addEventListener('click', exportMarkdown);
   document.getElementById('file-import').addEventListener('change', function(e){
     var f = e.target.files[0];
     if (!f) return;
@@ -2553,7 +2866,10 @@ function renderListRows(){
     var overall = computeOverall(it, state.weights);
     var n = evidenceCount(it);
     var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)', symbol:'—'};
-    html += '<tr>';
+    // H13: 再確認期限が過ぎている行は背景をうっすら強調してハイライトする(色以外に
+    // 「次回レビュー」列のテキストラベルも併記済みのためF8の方針にも反しない)
+    var rowStyle = reviewDueStatus(it) === 'overdue' ? ' style="background:var(--danger-50)"' : '';
+    html += '<tr' + rowStyle + '>';
     html += '<td>' + esc(fmtDate(it.updatedAt)) + '</td>';
     html += '<td>' + (function(){
       var mt = findOf(MEDIA_TYPES, it.mediaType);
@@ -2650,6 +2966,48 @@ function exportCsv(){
   toast('CSVファイルをダウンロードしました。', {type:'success'});
 }
 
+/* H14: Markdownレポート出力(Wiki・ドキュメントへの貼り付け用) */
+function mdEscape(s){
+  return String(s == null ? '' : s).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+function exportMarkdown(){
+  var items = filteredItems();
+  var lines = [];
+  lines.push('# ファクトチェック一覧レポート');
+  lines.push('');
+  lines.push('作成日時: ' + new Date().toLocaleString('ja-JP') + ' / 件数: ' + items.length + '件');
+  lines.push('');
+  lines.push('> 本レポートは記録内容に基づく参考情報であり、公的な認証・真偽の証明ではありません。');
+  lines.push('> 最終的な真偽判定は必ず人が行ってください。');
+  lines.push('');
+  lines.push('| 更新日 | 判定 | スコア(根拠) | 主張 | タグ | ステータス |');
+  lines.push('|---|---|---|---|---|---|');
+  items.forEach(function(it){
+    var overall = computeOverall(it, state.weights);
+    lines.push('| ' + mdEscape(fmtDate(it.updatedAt)) + ' | ' + mdEscape(labelOf(VERDICTS, it.verdict) || '未判定') +
+      ' | ' + (overall == null ? '—' : overall) + '(' + evidenceCount(it) + '/5)' +
+      ' | ' + mdEscape(it.claimTitle || it.claimText.slice(0, 40)) +
+      ' | ' + mdEscape((it.tags || []).join('、')) +
+      ' | ' + mdEscape(labelOf(STATUS_OPTIONS, it.status)) + ' |');
+  });
+  lines.push('');
+  lines.push('## 案件ごとの詳細');
+  items.forEach(function(it){
+    var overall = computeOverall(it, state.weights);
+    lines.push('');
+    lines.push('### ' + (it.claimTitle || '(無題)'));
+    lines.push('');
+    lines.push('- 種別: ' + labelOf(MEDIA_TYPES, it.mediaType) + ' / 出所区分: ' + labelOf(SOURCE_CATEGORIES, it.sourceCategory));
+    lines.push('- 判定: ' + (labelOf(VERDICTS, it.verdict) || '未判定') + ' / スコア: ' + (overall == null ? '—' : overall) + '(根拠 ' + evidenceCount(it) + '/5軸)');
+    if (it.tags && it.tags.length) lines.push('- タグ: ' + it.tags.join('、'));
+    if (it.assignee) lines.push('- 担当者: ' + it.assignee + '(' + labelOf(STATUS_OPTIONS, it.status) + ')');
+    if (it.sourceUrl) lines.push('- 出典: ' + it.sourceUrl);
+    if (it.summary) lines.push('- 総評: ' + it.summary.replace(/\n/g, ' '));
+  });
+  download('fact-check-report-' + Date.now() + '.md', lines.join('\n'));
+  toast('Markdownファイルをダウンロードしました。', {type:'success'});
+}
+
 function printCase(it){
   var overall = computeOverall(it, state.weights);
   var v = findOf(VERDICTS, it.verdict) || {label:'未判定'};
@@ -2695,6 +3053,20 @@ function printCase(it){
   if (it.reviewDueDate) html += '<p><b>次回レビュー予定日:</b> ' + esc(fmtDate(it.reviewDueDate)) + (reviewDueStatus(it) === 'overdue' ? '(期限超過)' : '') + '</p>';
   html += '<p><b>ステータス:</b> ' + esc(labelOf(STATUS_OPTIONS, it.status)) + (it.assignee ? ' / <b>担当者:</b> ' + esc(it.assignee) : '') + '</p>';
   if (it.tags && it.tags.length) html += '<p><b>タグ:</b> ' + esc(it.tags.join('、')) + '</p>';
+  if (it.transcript) html += '<h3>文字起こし</h3><p style="white-space:pre-wrap">' + esc(it.transcript) + '</p>';
+  if (it.relatedIds && it.relatedIds.length){
+    var relatedLabels = it.relatedIds.map(function(rid){
+      var r = state.items.filter(function(x){ return x.id === rid; })[0];
+      return r ? (r.claimTitle || r.claimText.slice(0,30) || '(無題)') : null;
+    }).filter(Boolean);
+    if (relatedLabels.length) html += '<p><b>関連する案件:</b> ' + esc(relatedLabels.join('、')) + '</p>';
+  }
+  if (it.attachments && it.attachments.length) html += '<p><b>添付ファイル:</b> ' + it.attachments.length + '件</p>';
+  if (it.comments && it.comments.length){
+    html += '<h3>コメント(' + it.comments.length + '件)</h3><ul>' + it.comments.map(function(c){
+      return '<li>' + esc(fmtDateTime(c.at)) + ' ' + esc(c.author || '匿名') + ': ' + esc(c.text) + '</li>';
+    }).join('') + '</ul>';
+  }
   if (it.history && it.history.length){
     html += '<h3>改訂履歴</h3><ul>' + it.history.map(function(h){
       return '<li>' + esc(fmtDateTime(h.at)) + ' ' + esc(labelOf(VERDICTS, h.from) || '(未判定)') + ' → ' + esc(labelOf(VERDICTS, h.to) || '(未判定)') + '</li>';

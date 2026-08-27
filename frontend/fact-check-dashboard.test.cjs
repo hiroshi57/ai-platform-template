@@ -1122,6 +1122,206 @@ async function agreeToConsent(dom) {
     assert.ok(doc.getElementById('refdb-new-label'), 'トグルボタンの委譲リスナーが重複し、開いた直後に閉じてしまっている');
   });
 
+  /* ============================= H6: 文字起こし(音声・映像用) ============================= */
+
+  await test('H6: 種別を音声/映像に変えると文字起こし欄が表示され、テキストだと非表示になる', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const wrap = doc.getElementById('wrap-transcript');
+    assert.ok(wrap, '文字起こし欄のラッパーが見つからない');
+    assert.strictEqual(wrap.style.display, 'none', '既定(テキスト)では非表示のはず');
+    const mtSel = doc.getElementById('f-mediaType');
+    mtSel.value = 'video';
+    mtSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.strictEqual(wrap.style.display, 'block', '映像を選ぶと文字起こし欄が表示されるべき');
+    doc.getElementById('f-transcript').value = '書き起こしテスト';
+    doc.getElementById('f-transcript').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.strictEqual(dom.window.state.draft.transcript, '書き起こしテスト');
+  });
+
+  await test('normalizeItem: transcriptが上限文字数で切り詰められる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const item = w.normalizeItem({ id: 'x1', transcript: 'a'.repeat(30000) });
+    assert.ok(item.transcript.length <= 20000);
+  });
+
+  /* ============================= H4: 関連する案件(双方向リンク) ============================= */
+
+  await test('H4: 関連する案件を追加すると双方向にrelatedIdsが設定され、解除も双方向で行われる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const other = w.normalizeItem({
+      id: 'other1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: '関連候補', claimText: 't'
+    });
+    w.state.items = [other];
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    w.state.activeTab = 'new';
+    w.renderAll();
+    const picker = doc.getElementById('related-case-picker');
+    assert.ok(picker, '関連案件ピッカーが見つからない');
+    picker.value = 'other1';
+    picker.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.strictEqual(w.state.draft.relatedIds[0], 'other1');
+    assert.strictEqual(w.state.items[0].relatedIds[0], w.state.draft.id, '相手側にも双方向でリンクが張られるべき');
+
+    // 解除
+    doc.querySelector('[data-unlink-case="other1"]').click();
+    assert.strictEqual(w.state.draft.relatedIds.length, 0);
+    assert.strictEqual(w.state.items[0].relatedIds.length, 0, '相手側のリンクも解除されるべき');
+  });
+
+  /* ============================= H10: 類似案件の簡易検出 ============================= */
+
+  await test('jaccardSimilarity/findSimilarItems: よく似た文章は高スコア、無関係な文章は低スコアになる', async () => {
+    const dom = await freshDom();
+    // jaccardSimilarity/findSimilarItemsはbindNewCheckEvents内のローカル関数のためグローバルには
+    // 公開されていない。ここではUI(類似案件のヒント表示)経由で挙動を検証する。
+    const w2 = dom.window;
+    w2.state.items = [w2.normalizeItem({
+      id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: '既存案件',
+      claimText: '東京都内で大規模な地震が発生し多数の建物が倒壊したという情報がSNSで拡散している'
+    })];
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    doc.getElementById('f-claimText').value = '東京都内で大規模な地震が発生し多数の建物が倒壊したとSNSで拡散されている情報について';
+    doc.getElementById('f-claimText').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const hint = doc.getElementById('similar-cases-hint').innerHTML;
+    assert.ok(hint.includes('似ている既存の案件'), '類似案件のヒントが表示されない: ' + hint);
+
+    doc.getElementById('f-claimText').value = '本日は晴天なり。';
+    doc.getElementById('f-claimText').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const hint2 = doc.getElementById('similar-cases-hint').innerHTML;
+    assert.strictEqual(hint2, '', '無関係な文章では類似案件のヒントが出ないべき');
+  });
+
+  /* ============================= H5: 添付ファイル ============================= */
+
+  await test('H5: 添付ファイルを直接draftへ追加すると一覧に表示され、削除ボタンで消える', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    dom.window.state.draft.attachments.push({
+      id: 'att1', name: 'screenshot.png', thumbDataUrl: 'data:image/jpeg;base64,micro', fullImageKey: 'attachment:att1', addedAt: new Date().toISOString()
+    });
+    dom.window.state.activeTab = 'new';
+    dom.window.renderAll();
+    assert.ok(doc.body.textContent.includes('screenshot.png'), '添付ファイル名が一覧に表示されない');
+    const rmBtn = doc.querySelector('[data-remove-attachment="att1"]');
+    assert.ok(rmBtn, '添付ファイルの削除ボタンが見つからない');
+    rmBtn.click();
+    assert.strictEqual(dom.window.state.draft.attachments.length, 0);
+  });
+
+  await test('normalizeItem: attachments/commentsが正しく正規化され、上限件数で切り詰められる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const manyAttachments = new Array(40).fill(0).map((_, i) => ({ id: 'a' + i, name: 'f' + i, thumbDataUrl: '', fullImageKey: '' }));
+    const manyComments = new Array(250).fill(0).map((_, i) => ({ id: 'c' + i, author: 'x', text: 'y' }));
+    const item = w.normalizeItem({ id: 'x1', attachments: manyAttachments, comments: manyComments });
+    assert.ok(item.attachments.length <= 30, 'attachmentsが上限で切り詰められていない: ' + item.attachments.length);
+    assert.ok(item.comments.length <= 200, 'commentsが上限で切り詰められていない: ' + item.comments.length);
+  });
+
+  /* ============================= H8: 案件テンプレート ============================= */
+
+  await test('H8: テンプレートを選択すると種別・出所区分・タグが設定される', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const picker = doc.getElementById('case-template-picker');
+    assert.ok(picker, '新規作成時はテンプレートピッカーが表示されるべき');
+    picker.value = 'sns-viral';
+    picker.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.strictEqual(dom.window.state.draft.mediaType, 'image');
+    assert.strictEqual(dom.window.state.draft.sourceCategory, 'sns');
+    assert.ok(dom.window.state.draft.tags.includes('SNS拡散'), 'テンプレートのタグが適用されていない');
+    assert.ok(doc.getElementById('f-mediaType').value === 'image', 'mediaType選択欄の表示が更新されていない');
+  });
+
+  await test('H8: 編集時(既存案件)はテンプレートピッカーが表示されない', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: 'edit target', claimText: 't'
+    })];
+    w.state.draft = w.cloneItem(w.state.items[0]);
+    w.state.editingId = 'x1';
+    w.state.activeTab = 'new';
+    w.renderAll();
+    assert.strictEqual(w.document.getElementById('case-template-picker'), null, '編集時にテンプレートピッカーが出てはいけない');
+  });
+
+  /* ============================= H12: コメント(ディスカッションログ) ============================= */
+
+  await test('H12: コメントを追加すると一覧に表示され、削除もできる', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    doc.getElementById('comment-author').value = '佐藤';
+    doc.getElementById('comment-text').value = '一次情報を確認中です';
+    doc.getElementById('comment-add-btn').click();
+    assert.strictEqual(dom.window.state.draft.comments.length, 1);
+    assert.strictEqual(dom.window.state.draft.comments[0].author, '佐藤');
+    assert.ok(doc.body.textContent.includes('一次情報を確認中です'));
+
+    const commentId = dom.window.state.draft.comments[0].id;
+    doc.querySelector('[data-remove-comment="' + commentId + '"]').click();
+    assert.strictEqual(dom.window.state.draft.comments.length, 0);
+  });
+
+  await test('H12: コメント内容が空のまま追加しようとすると警告し、追加しない', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    doc.getElementById('comment-add-btn').click();
+    assert.strictEqual(dom.window.state.draft.comments.length, 0);
+  });
+
+  /* ============================= H13: 再確認期限のハイライト ============================= */
+
+  await test('H13: 期限超過の案件は一覧の行が強調表示される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    w.state.items = [w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: 'overdue', claimText: 't', reviewDueDate: fmt(yesterday)
+    })];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const row = w.document.querySelector('#list-table-wrap tbody tr');
+    assert.ok(row.getAttribute('style') && row.getAttribute('style').includes('background'), '期限超過の行に背景色が設定されていない');
+  });
+
+  /* ============================= H14: Markdownエクスポート ============================= */
+
+  await test('H14: Markdownエクスポートが正しい内容(表・見出し)を出力する', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    let captured = null;
+    w.Blob = function (parts) { captured = parts.join(''); };
+    w.URL.createObjectURL = () => 'blob://fake';
+    w.URL.revokeObjectURL = () => {};
+    w.state.items = [w.normalizeItem({
+      id: 'x1', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      mediaType: 'text', sourceCategory: 'media', claimTitle: 'MDテスト', claimText: 't', verdict: 'true', tags: ['タグA']
+    })];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    w.document.getElementById('btn-export-md').click();
+    assert.ok(captured.includes('# ファクトチェック一覧レポート'));
+    assert.ok(captured.includes('MDテスト'));
+    assert.ok(captured.includes('タグA'));
+    assert.ok(captured.includes('| 更新日 | 判定 |'), 'テーブルヘッダーが含まれていない');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {
