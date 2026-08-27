@@ -148,6 +148,11 @@
   .kpi .trend.good{color:var(--success-600);background:var(--success-50)}
   .kpi .trend.bad{color:var(--danger-600);background:var(--danger-50)}
   .kpi .trend.neutral{color:var(--n-400);background:var(--n-100)}
+  /* C7: KPIカードのドラッグ並び替え */
+  .kpi[draggable="true"]{cursor:grab}
+  .kpi[draggable="true"]:active{cursor:grabbing}
+  .kpi[draggable="true"].dragging{opacity:.4}
+  .kpi[draggable="true"]:focus-visible{outline:2px solid var(--accent-500);outline-offset:2px}
 
   .barrow{display:flex;align-items:center;gap:var(--sp-2);margin:7px 0;font-size:var(--fs-sm)}
   .barrow .name{width:190px;flex-shrink:0;color:var(--n-600)}
@@ -237,6 +242,11 @@
     body{background:#fff!important;padding:0!important}
     nav.tabs,.noprint,.banner,.filterbar,button,#toast-root{display:none!important}
     .card{box-shadow:none!important;border:1px solid #ccc!important;break-inside:avoid;page-break-inside:avoid}
+    /* C9: グラフが1ページに収まるよう、印刷時は最大幅を紙面いっぱいに制限する。
+       (svg-chart/donut/radar/histogramは全てwidth:100%;height:autoで生成しているため
+        コンテナ幅に自動追従する。念のためここでも上書きしておく) */
+    svg.svg-chart, svg[role="img"], svg[id^="chart-"]{max-width:100%!important;width:100%!important;height:auto!important}
+    .grid2, .grid3{display:block!important}
     #print-root{display:none}
     body.print-mode #app{display:none!important}
     body.print-mode #print-root{display:block!important}
@@ -333,7 +343,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.9.0';
+var APP_VERSION = '0.10.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -1777,16 +1787,18 @@ function selectHtml(domId, list, current, allowEmpty){
     return '<option value="' + esc(o.id) + '"' + (o.id === current ? ' selected' : '') + '>' + esc(o.label) + '</option>';
   }).join('') + '</select>';
 }
-function kpi(value, label, trend){
+function kpi(value, label, trend, dragKey){
   // trend: {arrow:'up'|'down'|'flat', sentiment:'good'|'bad'|'neutral', text:'...'} で前月比等を表示する(A8)。
   // arrow は実際の増減方向、sentiment はその増減が「良いことか悪いことか」を指標ごとに判断して渡す
   // (例: スコアの上昇はgood、誤り件数の上昇はbad)。
+  // dragKey を渡すとC7のドラッグ並び替え対象になる(ダッシュボードのKPIカードのみ想定)。
   var trendHtml = '';
   if (trend){
     var arrowChar = trend.arrow === 'up' ? '▲' : trend.arrow === 'down' ? '▼' : '―';
     trendHtml = '<span class="trend ' + esc(trend.sentiment || 'neutral') + '">' + arrowChar + ' ' + esc(trend.text) + '</span>';
   }
-  return '<div class="kpi"><div class="kpi-top"><div class="v">' + esc(value) + '</div>' + trendHtml + '</div><div class="l">' + esc(label) + '</div></div>';
+  var dragAttrs = dragKey ? ' draggable="true" data-kpi-key="' + esc(dragKey) + '" tabindex="0" aria-label="' + esc(label) + '(ドラッグして並び替え可能)"' : '';
+  return '<div class="kpi"' + dragAttrs + '><div class="kpi-top"><div class="v">' + esc(value) + '</div>' + trendHtml + '</div><div class="l">' + esc(label) + '</div></div>';
 }
 
 function segRowHtml(row){
@@ -3202,29 +3214,79 @@ function renderDashResults(){
     };
   }
 
+  // C4: 前年同月比較(前年の同じ月にデータがある場合のみ)
+  var yoyRows = computeYoyRows(monthly);
+
+  // C5: スコア分布のヒストグラム(10点刻み)
+  var scoreBuckets = [0,0,0,0,0,0,0,0,0,0];
+  scored.forEach(function(s){
+    if (s.score == null) return;
+    var idx = Math.min(9, Math.max(0, Math.floor(s.score/10)));
+    scoreBuckets[idx]++;
+  });
+  var scoreBucketLabels = scoreBuckets.map(function(_,i){ return i===9 ? '90-100' : (i*10) + '-' + (i*10+9); });
+  var scoredN = scored.filter(function(s){ return s.score != null; }).length;
+
+  // C6: 軸別平均スコア(レーダーチャート用)
+  var axisAvg = axisAverages(items);
+
+  // C7: KPIカードは並び順をドラッグで変更・保存できる
+  var kpiDefs = {
+    total: {value: items.length, label: '総チェック件数'},
+    avgScore: {value: avgScore == null ? '—' : avgScore, label: '平均スコア(0-100)', trend: scoreTrend},
+    falseCount: {value: (verdictCounts.false + verdictCounts.mixed), label: '誤り/ミスリード件数', trend: falseTrend},
+    lastMonth: {value: months.length ? months[months.length-1] : '—', label: '直近チェック月'}
+  };
+  var kpiOrder = getKpiOrder();
+
   var html = '';
   html += '<div class="card">';
   html += '<h2>全体サマリー</h2>';
-  html += '<div class="kpis">';
-  html += kpi(items.length, '総チェック件数');
-  html += kpi(avgScore == null ? '—' : avgScore, '平均スコア(0-100)', scoreTrend);
-  html += kpi((verdictCounts.false + verdictCounts.mixed), '誤り/ミスリード件数', falseTrend);
-  html += kpi(months.length ? months[months.length-1] : '—', '直近チェック月');
+  html += '<div class="helper noprint">' + icon('info', 12) + ' カードをドラッグすると並び順を変更できます(設定は保存されます)。</div>';
+  html += '<div class="kpis" id="kpi-cards">';
+  kpiOrder.forEach(function(k){
+    var d = kpiDefs[k];
+    if (!d) return;
+    html += kpi(d.value, d.label, d.trend, k);
+  });
   html += '</div>';
   html += '</div>';
 
   html += '<div class="card">';
   html += '<h2>判定内訳(多面評価①: 判定別)</h2>';
+  html += '<div class="toolbar noprint">' + pngExportButtonHtml('chart-donut-verdict', '判定内訳.png') + '</div>';
   html += '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">';
   html += '<div class="noprint">' + svgDonutChart(VERDICTS.map(function(v){
     return {label: v.label, value: verdictCounts[v.id] || 0, color: VERDICT_HEATMAP_HEX[v.id] || '#7a8699'};
-  })) + '</div>';
+  }), 176, 'chart-donut-verdict') + '</div>';
   html += '<div style="flex:1;min-width:240px">' + VERDICTS.map(function(v){
     var n = verdictCounts[v.id] || 0;
     var pct = items.length ? Math.round(n/items.length*100) : 0;
     return barrow(esc(v.label), n, pct, v.color);
   }).join('') + '</div>';
   html += '</div></div>';
+
+  html += '<div class="card">';
+  html += '<h2>スコア分布(多面評価①-2・ヒストグラム)</h2>';
+  html += '<div class="helper">全チェックの総合スコア(0-100)を10点刻みで集計したものです。低スコア帯に偏っていないか、極端な二極化がないかの確認に使えます。</div>';
+  if (!scoredN){
+    html += '<div class="empty">スコアが算出された記録がまだありません(評価軸の入力が必要です)。</div>';
+  } else {
+    html += '<div class="toolbar noprint">' + pngExportButtonHtml('chart-histogram', 'スコア分布.png') + '</div>';
+    html += svgHistogram(scoreBuckets, scoreBucketLabels, 'var(--blue)', 'chart-histogram');
+  }
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<h2>軸別平均スコア(多面評価①-3・レーダーチャート)</h2>';
+  html += '<div class="helper">①〜⑤の各検証軸について、記録があるチェックだけを対象に平均スコアを算出しています(記録が無い軸は0として扱っていません)。</div>';
+  if (!items.length){
+    html += '<div class="empty">データがありません。</div>';
+  } else {
+    html += '<div class="toolbar noprint">' + pngExportButtonHtml('chart-radar', '軸別平均スコア.png') + '</div>';
+    html += '<div style="display:flex;justify-content:center">' + svgRadarChart(axisAvg, 'chart-radar') + '</div>';
+  }
+  html += '</div>';
 
   html += '<div class="grid2">';
   html += '<div class="card"><h2>種別ごとの件数(多面評価②)</h2>' + MEDIA_TYPES.map(function(m){
@@ -3255,8 +3317,12 @@ function renderDashResults(){
   if (series.length < 2){
     html += '<div class="empty">月別トレンドを表示するには2か月以上のデータが必要です。</div>';
   } else {
-    html += '<h3>月別チェック件数</h3>' + svgLineChart(series.map(function(s){ return {label:s.month, value:s.count}; }), 'var(--blue)');
-    html += '<h3>月別 誤り/ミスリード比率(%)</h3>' + svgLineChart(series.map(function(s){ return {label:s.month, value:s.falseRate}; }), 'var(--red)');
+    html += '<h3>月別チェック件数</h3>';
+    html += '<div class="toolbar noprint">' + pngExportButtonHtml('chart-monthly-count', '月別チェック件数.png') + '</div>';
+    html += svgLineChart(series.map(function(s){ return {label:s.month, value:s.count}; }), 'var(--blue)', 'chart-monthly-count');
+    html += '<h3>月別 誤り/ミスリード比率(%)</h3>';
+    html += '<div class="toolbar noprint">' + pngExportButtonHtml('chart-monthly-falserate', '月別誤り比率.png') + '</div>';
+    html += svgLineChart(series.map(function(s){ return {label:s.month, value:s.falseRate}; }), 'var(--red)', 'chart-monthly-falserate');
   }
   html += '<h3>将来予測(参考値・単純線形外挿)</h3>';
   if (forecast == null || series.length < 3){
@@ -3271,11 +3337,19 @@ function renderDashResults(){
   html += '</div>';
 
   html += '<div class="card">';
+  html += '<h2>前年同月比較(多面評価④-2)</h2>';
+  html += '<div class="helper">同じ月の前年データが記録されている場合のみ、件数・平均スコアを比較します。</div>';
+  html += yoyTableHtml(yoyRows);
+  html += '</div>';
+
+  html += '<div class="card">';
   html += '<h2>示唆(総評)</h2>';
   html += '<ul class="insight-list">' + insights.map(function(i){ return '<li>' + esc(i) + '</li>'; }).join('') + '</ul>';
   html += '</div>';
 
   el.innerHTML = html;
+  bindKpiDragDrop(el, function(){ renderDashResults(); toast('KPIカードの並び順を変更しました'); });
+  bindChartPngExportButtons(el);
 }
 
 function barrow(name, num, pct, color){
@@ -3290,7 +3364,7 @@ function barrow(name, num, pct, color){
 
 /* C2: ドーナツチャート。色だけに頼らないよう、必ず横棒+テキストの内訳(barrow)と
  * 併記して補助的に使う(F8の方針を踏襲)。segments: [{label, value, color}] */
-function svgDonutChart(segments, size){
+function svgDonutChart(segments, size, chartId){
   size = size || 176;
   var strokeWidth = 24;
   var r = size / 2 - strokeWidth / 2 - 2;
@@ -3315,7 +3389,72 @@ function svgDonutChart(segments, size){
   }
   var centerText = '<text x="' + cx + '" y="' + (cy - 3) + '" text-anchor="middle" font-size="22" font-weight="800" fill="var(--n-900)">' + total + '</text>' +
     '<text x="' + cx + '" y="' + (cy + 15) + '" text-anchor="middle" font-size="10" fill="var(--n-400)">件</text>';
-  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" role="img" aria-label="内訳ドーナツチャート(詳細は右の一覧を参照)">' + svgBody + centerText + '</svg>';
+  return '<svg' + (chartId ? ' id="' + esc(chartId) + '"' : '') + ' width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" role="img" aria-label="内訳ドーナツチャート(詳細は右の一覧を参照)">' + svgBody + centerText + '</svg>';
+}
+
+/* C10: SVGチャート単体をPNG画像として書き出す。Canvas APIに依存するため、
+ * (canvas npmパッケージ未導入の)jsdom環境では例外を投げず「対応していません」と
+ * 案内するだけに留める(グレースフルデグラデーション、I3のIndexedDB対応と同じ方針)。 */
+function canExportPng(){
+  try {
+    var c = document.createElement('canvas');
+    return !!(c && c.getContext && c.getContext('2d'));
+  } catch (e){ return false; }
+}
+function exportSvgAsPng(svgEl, filename){
+  if (!svgEl){ toast('グラフが見つかりませんでした', {type:'danger'}); return; }
+  if (!canExportPng()){
+    toast('この環境ではPNG保存に対応していません(Canvas APIが利用できません)', {type:'warning'});
+    return;
+  }
+  try {
+    var w = (svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width) || Number(svgEl.getAttribute('width')) || 640;
+    var h = (svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.height) || Number(svgEl.getAttribute('height')) || 240;
+    var clone = svgEl.cloneNode(true);
+    clone.setAttribute('width', w);
+    clone.setAttribute('height', h);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    var svgStr = new XMLSerializer().serializeToString(clone);
+    var svgBlob = new Blob([svgStr], {type:'image/svg+xml;charset=utf-8'});
+    var url = URL.createObjectURL(svgBlob);
+    var img = new Image();
+    img.onload = function(){
+      var scale = 2; // 印刷/共有用に少し高解像度化
+      var canvas = document.createElement('canvas');
+      canvas.width = w * scale; canvas.height = h * scale;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(function(blob){
+        if (!blob){ toast('PNGの生成に失敗しました', {type:'danger'}); return; }
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename || 'chart.png';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast('グラフをPNGとして保存しました');
+      });
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); toast('PNGの生成に失敗しました(画像変換エラー)', {type:'danger'}); };
+    img.src = url;
+  } catch (e){
+    toast('PNGの生成に失敗しました: ' + (e && e.message ? e.message : e), {type:'danger'});
+  }
+}
+function pngExportButtonHtml(chartId, filename, label){
+  return '<button type="button" class="ghost small noprint" data-export-chart="' + esc(chartId) + '" data-filename="' + esc(filename) + '">' +
+    icon('download', 12) + ' ' + esc(label || 'PNG保存') + '</button>';
+}
+function bindChartPngExportButtons(root){
+  root.querySelectorAll('[data-export-chart]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var svgEl = document.getElementById(btn.getAttribute('data-export-chart'));
+      exportSvgAsPng(svgEl, btn.getAttribute('data-filename'));
+    });
+  });
 }
 
 /* C3: 出所区分×判定のクロス集計ヒートマップ。セルの背景色の濃淡に加え、
@@ -3360,8 +3499,177 @@ function linearForecastNext(values){
   return intercept + slope*n;
 }
 
+/* C4: 前年同月比較。monthly は {'YYYY-MM': {count, falseish, scoreSum, scoreN}} 形式。
+ * 前年の同じ月にデータが1件も無い月は比較対象から除外する(データが無いのに0%減と
+ * 誤解させないため)。データが1年分に満たない場合は空配列を返し、呼び出し側で
+ * 「データ不足」の案内を出す。 */
+function computeYoyRows(monthly){
+  var months = Object.keys(monthly).filter(function(m){ return m !== '不明'; }).sort();
+  var out = [];
+  months.forEach(function(m){
+    var year = Number(m.slice(0,4)), mm = m.slice(5);
+    if (!year || !mm) return;
+    var prevKey = (year - 1) + '-' + mm;
+    var prev = monthly[prevKey];
+    if (!prev) return;
+    var cur = monthly[m];
+    var curAvg = cur.scoreN ? Math.round(cur.scoreSum / cur.scoreN) : null;
+    var prevAvg = prev.scoreN ? Math.round(prev.scoreSum / prev.scoreN) : null;
+    out.push({
+      month: m, prevMonth: prevKey,
+      count: cur.count, prevCount: prev.count,
+      avgScore: curAvg, prevAvgScore: prevAvg
+    });
+  });
+  return out;
+}
+function yoyTableHtml(rows){
+  if (!rows.length){
+    return '<div class="empty">前年同月のデータがまだありません(1年以上分の記録が蓄積すると自動的に表示されます)。</div>';
+  }
+  var html = '<div style="overflow-x:auto"><table class="axis-table"><thead><tr>' +
+    '<th class="l" style="text-align:left">対象月</th><th class="center">件数</th><th class="center">前年同月</th>' +
+    '<th class="center">件数の増減</th><th class="center">平均スコア</th><th class="center">前年同月</th><th class="center">スコア差</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function(r){
+    var countDiff = r.count - r.prevCount;
+    var countPct = r.prevCount ? Math.round(countDiff / r.prevCount * 100) : null;
+    var scoreDiff = (r.avgScore != null && r.prevAvgScore != null) ? (r.avgScore - r.prevAvgScore) : null;
+    html += '<tr><td class="l">' + esc(r.month) + '</td><td class="center">' + r.count + '件</td>' +
+      '<td class="center">' + r.prevCount + '件(' + esc(r.prevMonth) + ')</td>' +
+      '<td class="center">' + (countPct == null ? '—' : (countPct > 0 ? '+' : '') + countPct + '%') + '</td>' +
+      '<td class="center">' + (r.avgScore == null ? '—' : r.avgScore) + '</td>' +
+      '<td class="center">' + (r.prevAvgScore == null ? '—' : r.prevAvgScore) + '</td>' +
+      '<td class="center">' + (scoreDiff == null ? '—' : (scoreDiff > 0 ? '+' : '') + scoreDiff) + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+/* C5: スコア分布のヒストグラム(10点刻み) */
+function svgHistogram(buckets, labels, color, chartId){
+  color = color || 'var(--blue)';
+  var w = 640, h = 200, pad = 34;
+  var max = Math.max.apply(null, buckets.concat([1]));
+  var barW = (w - pad*2) / buckets.length;
+  var bars = buckets.map(function(v, i){
+    var bh = max ? (v / max) * (h - pad*2) : 0;
+    var x = pad + i*barW + 3;
+    var y = h - pad - bh;
+    var bw = Math.max(0, barW - 6);
+    return '<g><title>' + esc(labels[i]) + ': ' + v + '件</title>' +
+      '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="3" fill="' + color + '"></rect>' +
+      (v > 0 ? '<text x="' + (x + bw/2).toFixed(1) + '" y="' + (y-5).toFixed(1) + '" text-anchor="middle">' + v + '</text>' : '') +
+      '<text x="' + (x + bw/2).toFixed(1) + '" y="' + (h-10) + '" text-anchor="middle" font-size="9">' + esc(labels[i]) + '</text>' +
+    '</g>';
+  }).join('');
+  return '<svg' + (chartId ? ' id="' + esc(chartId) + '"' : '') + ' class="svg-chart" viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;max-width:' + w + 'px;height:auto" role="img" aria-label="スコア分布ヒストグラム">' +
+    '<line x1="' + pad + '" y1="' + (h-pad) + '" x2="' + (w-pad) + '" y2="' + (h-pad) + '" stroke="#cbd5e1" />' +
+    bars +
+  '</svg>';
+}
+
+/* C6: 軸別平均スコア(レーダー/五角形チャート)。①〜⑤のうち記録がある軸だけを平均する。 */
+function axisAverages(items){
+  var sums = {}, counts = {};
+  AXIS_ORDER.forEach(function(k){ sums[k] = 0; counts[k] = 0; });
+  items.forEach(function(it){
+    var ax = axisScores(it);
+    AXIS_ORDER.forEach(function(k){ if (ax[k] != null){ sums[k] += ax[k]; counts[k]++; } });
+  });
+  var out = {};
+  AXIS_ORDER.forEach(function(k){ out[k] = counts[k] ? Math.round(sums[k] / counts[k]) : null; });
+  return out;
+}
+function svgRadarChart(averages, chartId){
+  var size = 280, cx = size/2, cy = size/2, r = size/2 - 46;
+  var keys = AXIS_ORDER;
+  var n = keys.length;
+  var angleStep = (Math.PI * 2) / n;
+  var gridLevels = [0.25, 0.5, 0.75, 1];
+  var gridPolys = gridLevels.map(function(lv){
+    var pts = keys.map(function(_, i){
+      var a = -Math.PI/2 + i*angleStep;
+      return (cx + Math.cos(a)*r*lv).toFixed(1) + ',' + (cy + Math.sin(a)*r*lv).toFixed(1);
+    }).join(' ');
+    return '<polygon points="' + pts + '" fill="none" stroke="#e2e8f0" stroke-width="1"></polygon>';
+  }).join('');
+  var axisLines = keys.map(function(k, i){
+    var a = -Math.PI/2 + i*angleStep;
+    var x2 = cx + Math.cos(a)*r, y2 = cy + Math.sin(a)*r;
+    var lx = cx + Math.cos(a)*(r + 24), ly = cy + Math.sin(a)*(r + 24);
+    return '<line x1="' + cx + '" y1="' + cy + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="#e2e8f0"></line>' +
+      '<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle" font-size="9.5">' + esc(AXIS_LABELS[k]) + '</text>';
+  }).join('');
+  var hasAny = keys.some(function(k){ return averages[k] != null; });
+  var dataLayer = '';
+  if (hasAny){
+    var pts = keys.map(function(k, i){
+      var v = averages[k] == null ? 0 : averages[k];
+      var a = -Math.PI/2 + i*angleStep;
+      var rr = r * (v / 100);
+      return (cx + Math.cos(a)*rr).toFixed(1) + ',' + (cy + Math.sin(a)*rr).toFixed(1);
+    }).join(' ');
+    var dots = keys.map(function(k, i){
+      if (averages[k] == null) return '';
+      var a = -Math.PI/2 + i*angleStep;
+      var rr = r * (averages[k] / 100);
+      var x = cx + Math.cos(a)*rr, y = cy + Math.sin(a)*rr;
+      return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3" fill="var(--accent-600)"><title>' + esc(AXIS_LABELS[k]) + ': ' + averages[k] + '</title></circle>';
+    }).join('');
+    dataLayer = '<polygon points="' + pts + '" fill="var(--accent-500)" fill-opacity="0.22" stroke="var(--accent-600)" stroke-width="2"></polygon>' + dots;
+  }
+  return '<svg' + (chartId ? ' id="' + esc(chartId) + '"' : '') + ' width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" role="img" aria-label="軸別平均スコアのレーダーチャート" style="width:100%;max-width:' + size + 'px;height:auto">' +
+    gridPolys + axisLines + dataLayer +
+  '</svg>';
+}
+
+/* C7: ダッシュボードKPIカードの並び順(ドラッグで並び替え、localStorageに保存)。
+ * メインデータ(state.items等)とは分離した独立のUI設定のため、専用のstorageキーを使う。 */
+var KPI_ORDER_STORAGE_KEY = 'fc_dashboard_kpi_order_v1';
+var KPI_KEYS_DEFAULT = ['total', 'avgScore', 'falseCount', 'lastMonth'];
+function getKpiOrder(){
+  var stored = storageGetJSON(KPI_ORDER_STORAGE_KEY, null);
+  if (!Array.isArray(stored)) return KPI_KEYS_DEFAULT.slice();
+  var valid = stored.filter(function(k){ return KPI_KEYS_DEFAULT.indexOf(k) !== -1; });
+  KPI_KEYS_DEFAULT.forEach(function(k){ if (valid.indexOf(k) === -1) valid.push(k); });
+  return valid;
+}
+function setKpiOrder(order){ storageSetJSON(KPI_ORDER_STORAGE_KEY, order); }
+function bindKpiDragDrop(container, onReorder){
+  var dragKey = null;
+  var kpiEls = container.querySelectorAll('.kpi[data-kpi-key]');
+  kpiEls.forEach(function(elx){
+    elx.addEventListener('dragstart', function(e){
+      dragKey = elx.getAttribute('data-kpi-key');
+      elx.classList.add('dragging');
+      if (e.dataTransfer){
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', dragKey); } catch(_e){}
+      }
+    });
+    elx.addEventListener('dragend', function(){ elx.classList.remove('dragging'); });
+    elx.addEventListener('dragover', function(e){
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
+    elx.addEventListener('drop', function(e){
+      e.preventDefault();
+      var targetKey = elx.getAttribute('data-kpi-key');
+      if (!dragKey || dragKey === targetKey) return;
+      var order = getKpiOrder();
+      var from = order.indexOf(dragKey), to = order.indexOf(targetKey);
+      if (from === -1 || to === -1) return;
+      order.splice(from, 1);
+      order.splice(to, 0, dragKey);
+      setKpiOrder(order);
+      if (onReorder) onReorder();
+    });
+  });
+}
+
 var _chartInstanceCounter = 0;
-function svgLineChart(points, color){
+function svgLineChart(points, color, chartId){
   if (!points.length) return '<div class="empty">データなし</div>';
   var w = 640, h = 180, pad = 34;
   var max = Math.max.apply(null, points.map(function(p){ return p.value; }).concat([1]));
@@ -3398,7 +3706,7 @@ function svgLineChart(points, color){
     if (i !== 0 && i !== coords.length - 1 && i % labelStep !== 0) return '';
     return '<text x="' + c.x.toFixed(1) + '" y="' + (h-10) + '" text-anchor="middle">' + esc(c.label) + '</text>';
   }).join('');
-  return '<svg class="svg-chart" viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;max-width:' + w + 'px;height:auto" role="img" aria-label="' +
+  return '<svg' + (chartId ? ' id="' + esc(chartId) + '"' : '') + ' class="svg-chart" viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;max-width:' + w + 'px;height:auto" role="img" aria-label="' +
     esc(points.map(function(p){ return p.label + ':' + p.value; }).join(', ')) + '">' +
     '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
       '<stop offset="0%" stop-color="' + color + '" stop-opacity="0.28"></stop>' +

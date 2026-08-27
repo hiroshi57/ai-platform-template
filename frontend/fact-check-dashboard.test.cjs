@@ -1322,6 +1322,185 @@ async function agreeToConsent(dom) {
     assert.ok(captured.includes('| 更新日 | 判定 |'), 'テーブルヘッダーが含まれていない');
   });
 
+  /* ============================= C4: 前年同月比較 ============================= */
+
+  await test('computeYoyRows: 前年同月データがある場合のみ比較行を返す', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const monthly = {
+      '2025-06': { count: 4, falseish: 1, scoreSum: 240, scoreN: 4 },
+      '2026-06': { count: 6, falseish: 2, scoreSum: 480, scoreN: 6 },
+      '2026-07': { count: 2, falseish: 0, scoreSum: 180, scoreN: 2 } // 前年同月(2025-07)無し
+    };
+    const rows = w.computeYoyRows(monthly);
+    assert.strictEqual(rows.length, 1, '前年同月データがある月だけが対象になるべき');
+    assert.strictEqual(rows[0].month, '2026-06');
+    assert.strictEqual(rows[0].prevMonth, '2025-06');
+    assert.strictEqual(rows[0].count, 6);
+    assert.strictEqual(rows[0].prevCount, 4);
+    assert.strictEqual(rows[0].avgScore, 80);
+    assert.strictEqual(rows[0].prevAvgScore, 60);
+  });
+
+  await test('ダッシュボード: 前年同月データが無い場合は「データがまだありません」と案内する(C4)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true' })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    assert.ok(w.document.body.textContent.includes('前年同月比較'), '前年同月比較の見出しが表示されない');
+    assert.ok(w.document.body.textContent.includes('前年同月のデータがまだありません'), 'データ不足時の案内文が表示されない');
+  });
+
+  /* ============================= C5: スコア分布ヒストグラム ============================= */
+
+  await test('svgHistogram: 各バケットの値がバー・ツールチップとして描画される', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const svg = w.svgHistogram([1, 0, 3], ['0-9', '10-19', '20-29'], 'var(--blue)', 'hist-test');
+    assert.ok(svg.includes('id="hist-test"'), 'chartIdが反映されない');
+    assert.ok(svg.includes('<title>0-9: 1件</title>'));
+    assert.ok(svg.includes('<title>20-29: 3件</title>'));
+    assert.strictEqual((svg.match(/<rect/g) || []).length, 3, 'バケット数分のrectが描画されるべき');
+  });
+
+  await test('ダッシュボード: スコア分布ヒストグラムが表示される(C5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({
+      id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text',
+      sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true', officialCheck: { result: 'match' }
+    })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    assert.ok(w.document.getElementById('chart-histogram'), 'スコア分布ヒストグラムのSVGが見つからない');
+  });
+
+  /* ============================= C6: 軸別平均スコア(レーダーチャート) ============================= */
+
+  await test('axisAverages: 記録がある軸だけを平均し、記録が無い軸はnullのままにする', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const items = [
+      w.normalizeItem({ id: 'a', officialCheck: { result: 'match' } }), // official=100
+      w.normalizeItem({ id: 'b', officialCheck: { result: 'mismatch' } }) // official=0
+    ];
+    const avg = w.axisAverages(items);
+    assert.strictEqual(avg.official, 50, '①情報源の確認の平均が正しくない');
+    assert.strictEqual(avg.primary, null, '記録の無い軸はnullであるべき(0として扱ってはいけない)');
+  });
+
+  await test('ダッシュボード: 軸別平均スコアのレーダーチャートが表示される(C6)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({
+      id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text',
+      sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true', officialCheck: { result: 'match' }
+    })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const radar = w.document.getElementById('chart-radar');
+    assert.ok(radar, 'レーダーチャートのSVGが見つからない');
+    assert.ok(radar.outerHTML.includes('<polygon'), 'データ多角形が描画されない');
+  });
+
+  /* ============================= C7: KPIカードのドラッグ並び替え ============================= */
+
+  await test('getKpiOrder/setKpiOrder: 既定順を保ち、保存された順序を読み戻せる(C7)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.deepStrictEqual(w.getKpiOrder().slice().sort(), w.KPI_KEYS_DEFAULT.slice().sort());
+    w.setKpiOrder(['avgScore', 'total', 'falseCount', 'lastMonth']);
+    assert.strictEqual(w.getKpiOrder()[0], 'avgScore', '保存した並び順が読み戻せない');
+    // 不正なキーが混じっていても既知のキーだけにフィルタされる
+    w.setKpiOrder(['total', 'unknown-key']);
+    const order = w.getKpiOrder();
+    assert.ok(order.indexOf('unknown-key') === -1, '未知のキーは除外されるべき');
+    assert.strictEqual(order.length, w.KPI_KEYS_DEFAULT.length, '欠けたキーは末尾に補完されるべき');
+  });
+
+  await test('ダッシュボード: KPIカードがdraggable属性とdata-kpi-key付きで描画される(C7)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.setKpiOrder(['falseCount', 'total', 'avgScore', 'lastMonth']);
+    w.state.items = [w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true' })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const cards = w.document.querySelectorAll('#kpi-cards .kpi[data-kpi-key]');
+    assert.strictEqual(cards.length, 4, '4枚のKPIカードすべてがドラッグ可能であるべき');
+    assert.strictEqual(cards[0].getAttribute('data-kpi-key'), 'falseCount', '保存した並び順が反映されていない');
+    assert.strictEqual(cards[0].getAttribute('draggable'), 'true');
+  });
+
+  await test('KPIカードをドロップすると並び順が更新され再描画される(C7)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true' })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const doc = w.document;
+    const cardsBefore = doc.querySelectorAll('#kpi-cards .kpi[data-kpi-key]');
+    const firstKey = cardsBefore[0].getAttribute('data-kpi-key');
+    const lastKey = cardsBefore[cardsBefore.length - 1].getAttribute('data-kpi-key');
+
+    const dragStart = new w.Event('dragstart', { bubbles: true });
+    dragStart.dataTransfer = { setData: () => {} };
+    cardsBefore[0].dispatchEvent(dragStart);
+
+    const dropTarget = doc.querySelectorAll('#kpi-cards .kpi[data-kpi-key]')[cardsBefore.length - 1];
+    const dropEvt = new w.Event('drop', { bubbles: true, cancelable: true });
+    dropEvt.dataTransfer = {};
+    dropTarget.dispatchEvent(dropEvt);
+
+    const newOrder = w.getKpiOrder();
+    assert.strictEqual(newOrder[newOrder.length - 1], firstKey, 'ドラッグしたカードが末尾に移動しているべき');
+    assert.ok(newOrder.indexOf(lastKey) < newOrder.indexOf(firstKey), '順序が入れ替わっているべき');
+  });
+
+  /* ============================= C9: 印刷時のグラフ幅制限 ============================= */
+
+  await test('印刷用CSSでチャートSVGの最大幅がコンテナ幅に制限される(C9)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const styleText = Array.from(w.document.querySelectorAll('style')).map((s) => s.textContent).join('\n');
+    assert.ok(/@media print[\s\S]*svg\.svg-chart[\s\S]*max-width:100%/i.test(styleText), '印刷CSSにチャートの最大幅制限が見つからない');
+  });
+
+  /* ============================= C10: グラフのPNGエクスポート ============================= */
+
+  await test('canExportPng: jsdom(canvas未インストール)環境ではfalseを返す(C10)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(w.canExportPng(), false, 'jsdomはcanvas npmパッケージ無しではgetContextがnullのはず');
+  });
+
+  await test('exportSvgAsPng: PNG非対応環境では例外を投げず警告トーストを出す(C10)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true' })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const svgEl = w.document.getElementById('chart-donut-verdict');
+    assert.ok(svgEl, 'PNG保存対象のドーナツチャートが見つからない');
+    w.exportSvgAsPng(svgEl, 'test.png');
+    const toastEl = w.document.querySelector('.toast.warning');
+    assert.ok(toastEl, '非対応環境向けの警告トーストが出ていない');
+    assert.ok(toastEl.textContent.includes('対応していません'));
+  });
+
+  await test('ダッシュボード: 各チャートカードにPNG保存ボタンが表示される(C10)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({
+      id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text',
+      sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true', officialCheck: { result: 'match' }
+    })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const btns = w.document.querySelectorAll('[data-export-chart]');
+    assert.ok(btns.length >= 3, 'ドーナツ/ヒストグラム/レーダーの最低3つはPNG保存ボタンがあるべき: ' + btns.length);
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {
