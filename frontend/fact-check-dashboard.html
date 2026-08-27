@@ -328,6 +328,14 @@ function icon(name, size, extraClass){
 }
 
 /* ============================= 定数 ============================= */
+/* I8: このツール自体のバージョン表示。「常に改善し続けられる」ことを支えるための
+ * 最小限の仕組みとして、まずはバージョン番号を画面上で確認できるようにする。
+ * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
+ * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
+ *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
+var APP_VERSION = '0.9.0';
+var APP_RELEASED_AT = '2026-08-27';
+
 var STORAGE_KEY = 'fc_dashboard_v1';
 
 var MEDIA_TYPES = [
@@ -582,7 +590,7 @@ state.pendingRecovery = null; // 起動時に見つかった未保存下書き(�
  * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
  * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
  */
-var SCHEMA_VERSION = 6; // v6: 担当者アサイン(assignee/status)を追加
+var SCHEMA_VERSION = 7; // v7: 高解像度画像をIndexedDBへ退避(mediaCheck.fullImageKey)を追加
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
@@ -655,7 +663,8 @@ function normalizeMediaCheck(m){
   var thumb = typeof m.thumbDataUrl === 'string' ? m.thumbDataUrl : '';
   if (thumb.length > MAX_THUMB_LEN) thumb = '';
   return {
-    thumbDataUrl: thumb,
+    thumbDataUrl: thumb, // マイクロサムネイル(即時プレビュー用、localStorage保存)
+    fullImageKey: capString(m.fullImageKey, 200), // フル解像度画像のIndexedDBキー(I3)
     hash: capString(m.hash, 128),
     matches: capArray(m.matches, 20),
     aiGenFlags: flags,
@@ -774,6 +783,89 @@ function downscaleImageToDataUrl(srcDataUrl, maxWidth, quality, callback){
   };
   img.onerror = function(){ callback(null); };
   img.src = srcDataUrl;
+}
+/* ============================= I3: 高解像度画像はIndexedDBに保存する =============================
+ * localStorageは5〜10MB程度の容量制限があり、参照メディアDBが育つ(画像が増える)ほど
+ * すぐに上限に達してしまう。そこで:
+ *   - localStorage側(state.items / state.referenceDb)には「マイクロサムネイル」
+ *     (数KB程度の極小画像)だけを保存し、一覧・フォームの即時プレビューに使う。
+ *   - フル解像度のプレビュー画像(既存の480px相当)はIndexedDBに保存し、
+ *     表示のタイミングで非同期に取得して<img>を差し替える(プログレッシブ表示)。
+ *   - 知覚ハッシュ(dHash)の計算対象は従来通りの480px画像のままで変更しない
+ *     (照合ロジック自体は完全に同期のまま、安全に保つ)。
+ * IndexedDB非対応環境(jsdom、一部の古いブラウザ/プライベートブラウジング等)では
+ * 静かに諦め、マイクロサムネイルのみで通常通り動作する(グレースフルデグラデーション)。
+ */
+var IDB_NAME = 'fcd_images_v1';
+var IDB_STORE = 'images';
+var _idbOpenPromise = null;
+function idbOpen(){
+  if (_idbOpenPromise) return _idbOpenPromise;
+  _idbOpenPromise = new Promise(function(resolve){
+    if (typeof indexedDB === 'undefined' || !indexedDB){ resolve(null); return; }
+    try{
+      var req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = function(){
+        if (!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = function(){ resolve(req.result); };
+      req.onerror = function(){ resolve(null); };
+      req.onblocked = function(){ resolve(null); };
+    }catch(e){ resolve(null); }
+  });
+  return _idbOpenPromise;
+}
+function idbPutImage(key, dataUrl){
+  return idbOpen().then(function(db){
+    if (!db) return false;
+    return new Promise(function(resolve){
+      try{
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(dataUrl, key);
+        tx.oncomplete = function(){ resolve(true); };
+        tx.onerror = function(){ resolve(false); };
+      }catch(e){ resolve(false); }
+    });
+  });
+}
+function idbGetImage(key){
+  if (!key) return Promise.resolve(null);
+  return idbOpen().then(function(db){
+    if (!db) return null;
+    return new Promise(function(resolve){
+      try{
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = function(){ resolve(req.result || null); };
+        req.onerror = function(){ resolve(null); };
+      }catch(e){ resolve(null); }
+    });
+  });
+}
+function idbDeleteImage(key){
+  if (!key) return Promise.resolve(false);
+  return idbOpen().then(function(db){
+    if (!db) return false;
+    return new Promise(function(resolve){
+      try{
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(key);
+        tx.oncomplete = function(){ resolve(true); };
+        tx.onerror = function(){ resolve(false); };
+      }catch(e){ resolve(false); }
+    });
+  });
+}
+/* 描画済みの<img data-idb-key="...">要素を、IndexedDBのフル解像度画像が取得でき次第
+ * 差し替える(プログレッシブ表示)。対象がDOMから消えていても安全(何もしないだけ)。 */
+function upgradeImagesFromIndexedDb(root){
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('img[data-idb-key]').forEach(function(img){
+    var key = img.getAttribute('data-idb-key');
+    idbGetImage(key).then(function(fullDataUrl){
+      if (fullDataUrl && img.isConnected !== false) img.src = fullDataUrl;
+    });
+  });
 }
 function computeDHash(srcDataUrl, callback){
   var img = new Image();
@@ -1146,7 +1238,7 @@ function newItem(){
     history: [],
     patternScreen: {matchedIds: [], score: 0, scannedAt: ''},
     accountCheck: {handle: '', createdAt: '', followerCount: '', followingCount: '', signals: [], note: ''},
-    mediaCheck: {thumbDataUrl: '', hash: '', matches: [], aiGenFlags: [], checkedAt: '', note: ''}
+    mediaCheck: {thumbDataUrl: '', fullImageKey: '', hash: '', matches: [], aiGenFlags: [], checkedAt: '', note: ''}
   };
 }
 function cloneItem(it){ return JSON.parse(JSON.stringify(it)); }
@@ -1189,7 +1281,7 @@ function renderFooter(){
   }).join('');
   var consent = loadConsent();
   el.innerHTML =
-    '<div><b>提供</b>：' + esc(PROVIDER_NAME) + '</div>' +
+    '<div><b>提供</b>：' + esc(PROVIDER_NAME) + ' / バージョン ' + esc(APP_VERSION) + '(' + esc(APP_RELEASED_AT) + ')</div>' +
     '<div><b>データの取り扱い</b>：入力された内容は<b>お使いの端末の中だけ</b>に保存されます。' +
     '「サーバー共有」を使わない限り、当社のサーバーへ送信・保存されることはありません。共有リンクを発行した場合、その内容はサーバーに保存されます。</div>' +
     '<div><b>ご利用にあたって</b>：本ツールが算出するスコア・推奨判定は<b>記録内容に基づく参考情報</b>であり、' +
@@ -1416,6 +1508,20 @@ function renderConsentGate(app){
 
 function renderNewCheckTab(app){
   if (!hasConsent()){ renderConsentGate(app); return; }
+  // 重要なバグ修正: #app 要素自体はタブ切替のたびに再生成されず(innerHTML更新のみ)
+  // 使い回されるため、bindNewCheckEvents() 内の app.addEventListener(...) による
+  // 委譲リスナーは「このタブに来るたび」に上に重ねて登録されてしまう。これにより、
+  // 例えば2回目以降にこのタブへ来ると、1回のクリックで同じ処理が複数回実行される
+  // (トグルボタンが開いた瞬間に閉じてしまう等)不具合が起きていた。
+  // 要素を複製して差し替えることで、過去のリスナーをまとめて破棄してから登録し直す。
+  var freshApp = app.cloneNode(false);
+  app.parentNode.replaceChild(freshApp, app);
+  app = freshApp;
+  // 防御的プログラミング: 呼び出し元によっては(通常はタブクリック時の分岐で保証されるが)
+  // state.draft が未設定のまま 'new' タブが描画されようとする可能性があるため、
+  // ここでも念のため補完する。normalizeItem/newItem 同様、呼び出し側の実装漏れに
+  // 依存しない安全側の設計にする。
+  if (!state.draft){ state.draft = newItem(); state.editingId = null; }
   var d = state.draft;
   var isEdit = !!state.editingId;
 
@@ -1546,6 +1652,7 @@ function renderNewCheckTab(app){
   app.innerHTML = html;
   bindNewCheckEvents(app);
   renderDraftRecoverBanner(app);
+  upgradeImagesFromIndexedDb(app); // I3: 編集時、既存のフル解像度画像があれば非同期で差し替える
 }
 
 function verdictBlockHtml(d){
@@ -1750,7 +1857,8 @@ function mediaCheckResultHtml(mc){
     return '<div class="helper" style="margin-top:8px">まだ画像が登録されていません。上のボタンから画像を選択してください。</div>';
   }
   var html = '<div style="display:flex;gap:14px;align-items:flex-start;margin-top:10px;flex-wrap:wrap">';
-  html += '<img src="' + mc.thumbDataUrl + '" style="width:130px;height:auto;border-radius:8px;border:1px solid var(--line)" alt="アップロードされた画像のサムネイル" />';
+  html += '<img src="' + mc.thumbDataUrl + '"' + (mc.fullImageKey ? ' data-idb-key="' + esc(mc.fullImageKey) + '"' : '') +
+    ' style="width:130px;height:auto;border-radius:8px;border:1px solid var(--line)" alt="アップロードされた画像のサムネイル(表示中は縮小版。読み込みが完了すると高解像度版に自動で切り替わります)" />';
   html += '<div style="flex:1;min-width:220px">';
   if (!mc.hash){
     html += '<div class="note-box">' + icon('alert', 15) + '<div>特徴量を計算できませんでした。お使いのブラウザがCanvas APIに対応していない可能性があります。</div></div>';
@@ -1901,7 +2009,10 @@ function bindNewCheckEvents(app){
   // 過去メディアとの照合(画像アップロード→ハッシュ計算→参照DB照合)
   function refreshMediaResult(){
     var block = document.getElementById('media-check-result');
-    if (block) block.innerHTML = mediaCheckResultHtml(d.mediaCheck);
+    if (block){
+      block.innerHTML = mediaCheckResultHtml(d.mediaCheck);
+      upgradeImagesFromIndexedDb(block); // I3: フル解像度が取得でき次第<img>を差し替える
+    }
   }
   var mediaFileInput = document.getElementById('media-file-input');
   if (mediaFileInput){
@@ -1910,20 +2021,28 @@ function bindNewCheckEvents(app){
       if (!file) return;
       var reader = new FileReader();
       reader.onload = function(){
-        downscaleImageToDataUrl(reader.result, 480, 0.6, function(thumb){
-          if (!thumb){
-            d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
+        // ハッシュ計算・参照DB照合は従来通り480px画像で行う(ロジックは変更しない)
+        downscaleImageToDataUrl(reader.result, 480, 0.6, function(fullThumb){
+          if (!fullThumb){
+            d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.fullImageKey = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
             refreshMediaResult();
             toast('画像の読み込みに失敗しました。', {type:'danger'});
             return;
           }
-          computeDHash(thumb, function(hash){
-            d.mediaCheck.thumbDataUrl = thumb;
-            d.mediaCheck.hash = hash || '';
-            d.mediaCheck.matches = hash ? findReferenceMatches(hash) : [];
-            d.mediaCheck.checkedAt = new Date().toISOString();
-            scheduleDraftAutosave();
-            refreshMediaResult();
+          computeDHash(fullThumb, function(hash){
+            // I3: localStorage圧迫を避けるため、保存するのはマイクロサムネイルのみ。
+            // フル解像度画像はIndexedDBに保存し、表示時に非同期で取得する。
+            downscaleImageToDataUrl(fullThumb, 72, 0.5, function(microThumb){
+              var key = 'media:' + d.id;
+              d.mediaCheck.thumbDataUrl = microThumb || fullThumb; // IndexedDB非対応環境ではfullThumbをそのまま使う保険
+              d.mediaCheck.fullImageKey = key;
+              d.mediaCheck.hash = hash || '';
+              d.mediaCheck.matches = hash ? findReferenceMatches(hash) : [];
+              d.mediaCheck.checkedAt = new Date().toISOString();
+              scheduleDraftAutosave();
+              refreshMediaResult();
+              idbPutImage(key, fullThumb); // 非同期・失敗しても無視(マイクロサムネイルで代替表示される)
+            });
           });
         });
       };
@@ -1934,7 +2053,8 @@ function bindNewCheckEvents(app){
   app.addEventListener('click', function(e){
     var clearBtn = e.target.closest('#media-clear-btn');
     if (clearBtn){
-      d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
+      if (d.mediaCheck.fullImageKey) idbDeleteImage(d.mediaCheck.fullImageKey);
+      d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.fullImageKey = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
       if (mediaFileInput) mediaFileInput.value = '';
       scheduleDraftAutosave();
       refreshMediaResult();
@@ -1956,13 +2076,22 @@ function bindNewCheckEvents(app){
         var label = (document.getElementById('refdb-new-label').value || '').trim();
         var eventDate = document.getElementById('refdb-new-date').value || '';
         if (!label){ toast('ラベルを入力してください。', {type:'warning'}); return; }
+        var refId = uid();
+        var refKey = 'refdb:' + refId;
         state.referenceDb.push({
-          id: uid(), label: label, eventDate: eventDate, thumbDataUrl: d.mediaCheck.thumbDataUrl,
+          id: refId, label: label, eventDate: eventDate, thumbDataUrl: d.mediaCheck.thumbDataUrl,
+          fullImageKey: d.mediaCheck.fullImageKey ? refKey : '',
           hash: d.mediaCheck.hash, registeredAt: new Date().toISOString()
         });
         persistReferenceDb();
         formEl.innerHTML = '';
         toast('参照メディアDBに登録しました。', {type:'success'});
+        // I3: このケース用に保存済みのフル解像度画像を、参照DBエントリ用のキーにも複製する
+        if (d.mediaCheck.fullImageKey){
+          idbGetImage(d.mediaCheck.fullImageKey).then(function(fullDataUrl){
+            if (fullDataUrl) idbPutImage(refKey, fullDataUrl);
+          });
+        }
       });
     }
   });
@@ -3001,7 +3130,8 @@ function renderRefDbTab(app){
   } else {
     html += '<div class="card"><div class="toolgrid">' + state.referenceDb.slice().reverse().map(function(ref){
       return '<div class="toolcard">' +
-        (ref.thumbDataUrl ? '<img src="' + ref.thumbDataUrl + '" alt="' + esc(ref.label) + '" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px" />' : '') +
+        (ref.thumbDataUrl ? '<img src="' + ref.thumbDataUrl + '"' + (ref.fullImageKey ? ' data-idb-key="' + esc(ref.fullImageKey) + '"' : '') +
+          ' alt="' + esc(ref.label) + '" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px" />' : '') +
         '<div style="font-weight:700;font-size:13px">' + esc(ref.label) + '</div>' +
         '<div class="note">' + esc(ref.eventDate || '日付不明') + ' / 登録日: ' + esc(fmtDate(ref.registeredAt)) + '</div>' +
         '<div class="toolbar" style="margin-top:6px"><button class="danger small" data-refdb-del="' + esc(ref.id) + '">' + icon('trash', 13) + ' 削除</button></div>' +
@@ -3010,6 +3140,7 @@ function renderRefDbTab(app){
   }
 
   app.innerHTML = html;
+  upgradeImagesFromIndexedDb(app); // I3: マイクロサムネイル表示後、フル解像度が取得でき次第差し替える
 
   document.getElementById('refdb-export').addEventListener('click', function(){
     download('reference-media-db-' + Date.now() + '.json', JSON.stringify({entries: state.referenceDb}, null, 2));
@@ -3038,13 +3169,17 @@ function renderRefDbTab(app){
             label: capString(r.label, 300) || '(無題)',
             eventDate: typeof r.eventDate === 'string' ? r.eventDate : '',
             thumbDataUrl: thumb,
+            // I3: フル解像度画像はIndexedDBにしか無くJSONには含まれないため、
+            // インポート先の端末にそのキーの実体が無ければ自動的にマイクロサムネイルへ
+            // フォールバックする(upgradeImagesFromIndexedDbがnullの場合は何もしないため安全)。
+            fullImageKey: capString(r.fullImageKey, 200),
             hash: capString(r.hash, 128),
             registeredAt: typeof r.registeredAt === 'string' ? r.registeredAt : new Date().toISOString()
           };
         });
         state.referenceDb = state.referenceDb.concat(entries);
         persistReferenceDb();
-        toast('参照メディアDBを' + entries.length + '件インポートしました。', {type:'success'});
+        toast('参照メディアDBを' + entries.length + '件インポートしました。(高解像度画像は別端末のIndexedDBには無いため、縮小版のみ表示されます)', {type:'success', duration:6000});
         renderAll();
       }catch(err){
         toast('インポートに失敗しました: ' + err.message, {type:'danger'});
@@ -3054,6 +3189,9 @@ function renderRefDbTab(app){
   });
   app.querySelectorAll('[data-refdb-del]').forEach(function(btn){
     btn.addEventListener('click', function(){
+      // 注: IndexedDB側のフル解像度画像はここでは削除しない(Undoで復元できるようにする
+      // ための意図的な判断)。IndexedDBはlocalStorageよりずっと容量に余裕があるため、
+      // 削除された画像が残り続けても実害は小さいと判断した。
       var id = btn.dataset.refdbDel;
       var removed = state.referenceDb.filter(function(r){ return r.id === id; })[0];
       state.referenceDb = state.referenceDb.filter(function(r){ return r.id !== id; });

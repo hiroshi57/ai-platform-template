@@ -1024,6 +1024,104 @@ async function agreeToConsent(dom) {
     assert.ok(donutSvg, 'ドーナツチャートのSVGが見つからない');
   });
 
+  /* ============================= I3: 高解像度画像のIndexedDB退避 ============================= */
+
+  await test('IndexedDB非対応環境(jsdom)でもidbPut/Get/Deleteは例外を投げず安全にfalse/nullを返す', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(typeof w.indexedDB, 'undefined', '前提: jsdomはindexedDBを実装していないはず');
+    const putResult = await w.idbPutImage('test-key', 'data:image/png;base64,AAA');
+    assert.strictEqual(putResult, false, '非対応環境でのidbPutImageはfalseを返すべき');
+    const getResult = await w.idbGetImage('test-key');
+    assert.strictEqual(getResult, null, '非対応環境でのidbGetImageはnullを返すべき');
+    const delResult = await w.idbDeleteImage('test-key');
+    assert.strictEqual(delResult, false, '非対応環境でのidbDeleteImageはfalseを返すべき');
+  });
+
+  await test('upgradeImagesFromIndexedDb: data-idb-key付き<img>があっても例外を投げず、非対応環境ではsrcを変更しない', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const doc = w.document;
+    const img = doc.createElement('img');
+    img.src = 'data:image/png;base64,micro';
+    img.setAttribute('data-idb-key', 'nonexistent-key');
+    doc.body.appendChild(img);
+    assert.doesNotThrow(() => w.upgradeImagesFromIndexedDb(doc.body));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.ok(img.src.includes('micro'), '非対応環境でsrcが書き換わってしまっている');
+  });
+
+  await test('normalizeItem: mediaCheck.fullImageKeyが正しく保持・上限で切り詰められる', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const item = w.normalizeItem({ id: 'x1', mediaCheck: { fullImageKey: 'media:x1', thumbDataUrl: '', hash: '', matches: [], aiGenFlags: [], checkedAt: '', note: '' } });
+    assert.strictEqual(item.mediaCheck.fullImageKey, 'media:x1');
+    const longKey = w.normalizeItem({ id: 'x2', mediaCheck: { fullImageKey: 'a'.repeat(500) } });
+    assert.ok(longKey.mediaCheck.fullImageKey.length <= 200, 'fullImageKeyが上限で切り詰められていない');
+  });
+
+  await test('参照メディアDB登録: fullImageKeyが正しく設定され、IndexedDB非対応環境でも例外を投げない', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    // 画像アップロードを経由せず、直接draftのmediaCheckにfullImageKeyがある状態を模擬
+    dom.window.state.draft.mediaCheck.thumbDataUrl = 'data:image/jpeg;base64,micro';
+    dom.window.state.draft.mediaCheck.fullImageKey = 'media:' + dom.window.state.draft.id;
+    dom.window.state.draft.mediaCheck.hash = '1'.repeat(64);
+    dom.window.state.activeTab = 'new';
+    dom.window.renderAll();
+    const registerBtn = doc.getElementById('media-register-btn');
+    assert.ok(registerBtn, '登録ボタンが見つからない');
+    registerBtn.click();
+    await new Promise((r) => setTimeout(r, 30));
+    doc.getElementById('refdb-new-label').value = 'テスト事案';
+    assert.doesNotThrow(() => doc.getElementById('refdb-new-confirm').click());
+    await new Promise((r) => setTimeout(r, 30));
+    const ref = dom.window.state.referenceDb[0];
+    assert.ok(ref, '参照メディアDBに登録されていない');
+    assert.strictEqual(ref.label, 'テスト事案');
+    // 元のケースにfullImageKeyがある場合、参照DBエントリ側にも専用キー(refdb:<id>)が
+    // 設定されるべき(実際にIndexedDBへ複製できるかはPlaywrightの実ブラウザ側で確認する)
+    assert.strictEqual(ref.fullImageKey, 'refdb:' + ref.id, 'fullImageKeyがrefdb:<id>の形式で設定されていない: ' + ref.fullImageKey);
+  });
+
+  /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
+   * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
+   * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の
+   * app.addEventListener(...) が積み重なり、1回のクリックで同じ処理が複数回走る
+   * (トグルボタンが開いた瞬間に閉じる等)不具合を発見した。二度と再発させないための
+   * 回帰テスト。
+   */
+  await test('回帰: 「新規/編集」タブに複数回訪れても、行追加やトグルボタンが1回のクリックにつき1回だけ動作する', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    await agreeToConsent(dom);
+    const doc = w.document;
+
+    // 1回目: 保存して一覧タブへ、再度「新規/編集」タブへ戻る(renderNewCheckTabが2回呼ばれる状況を作る)
+    doc.getElementById('f-claimText').value = '1件目';
+    doc.getElementById('f-claimText').dispatchEvent(new w.Event('input', { bubbles: true }));
+    doc.getElementById('btn-save').click();
+    w.state.activeTab = 'new';
+    w.renderAll(); // renderNewCheckTab / bindNewCheckEvents が2回目の呼び出しになる
+
+    // 行追加ボタンは1クリックにつき1行だけ増えるべき(委譲リスナーが重複していれば2行以上増える)
+    doc.querySelector('[data-add="segments"]').click();
+    assert.strictEqual(doc.querySelectorAll('#segments-list [data-rid]').length, 1, 'segments行の追加が重複している(委譲リスナー重複の疑い)');
+
+    // タグ追加も同様(Enterで1個だけ追加されるべき)
+    const tagInput = doc.getElementById('tag-input');
+    tagInput.value = '重複確認用タグ';
+    tagInput.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    assert.strictEqual(w.state.draft.tags.length, 1, 'タグ追加が重複している(委譲リスナー重複の疑い)');
+
+    // 過去メディア登録フォームのトグルボタンは1クリックで「開く」べき(重複していると開いた瞬間に閉じる)
+    w.state.draft.mediaCheck.thumbDataUrl = 'data:image/jpeg;base64,micro';
+    w.renderAll();
+    doc.getElementById('media-register-btn').click();
+    assert.ok(doc.getElementById('refdb-new-label'), 'トグルボタンの委譲リスナーが重複し、開いた直後に閉じてしまっている');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {
