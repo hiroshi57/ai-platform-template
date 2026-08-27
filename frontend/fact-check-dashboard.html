@@ -12,9 +12,11 @@
 <!-- K4: 単一HTMLファイル(インラインscript/style)のため 'unsafe-inline' が必須になるが、
      それ以外は原則デフォルト拒否とし、想定外の外部リソース読み込み・スクリプト注入の
      影響範囲を軽減する。connect-srcはサーバー共有機能(I9)が使うAPIドメインのみ許可し、
-     worker-srcはG6のBlob URL経由Web Workerのために必要。meta要素のCSPは
-     frame-ancestors/sandbox等を強制できない制約があるため、それらは含めていない。 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://di-tools-api.vercel.app; worker-src blob:; base-uri 'none'; form-action 'none'; object-src 'none';" />
+     worker-srcはG6のBlob URL経由Web Workerのために必要。media-srcはN11の動画フレーム抽出
+     (<video>要素にdata:動画URLを設定する)に必要 — これが無いと`default-src 'none'`の
+     フォールバックで動画読み込み自体がCSP違反としてブロックされる(実ブラウザ検証で発覚)。
+     meta要素のCSPはframe-ancestors/sandbox等を強制できない制約があるため、それらは含めていない。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src data: blob:; connect-src 'self' https://di-tools-api.vercel.app; worker-src blob:; base-uri 'none'; form-action 'none'; object-src 'none';" />
 <!-- OFFLINE-BUNDLED: 外部通信なしで動作します(外部リンクはユーザーが手動で開くリンクのみ) -->
 <style>
   /* ===== デザイントークン ===== */
@@ -31,7 +33,10 @@
     --danger-50:#fef2f2; --danger-500:#dc2626; --danger-600:#b91c1c;
     --neutral-info-50:#f1f5f9; --neutral-info-500:#64748b;
     /* 役割別エイリアス(可読性のため既存コードとの互換名も残す) */
-    --bg:var(--n-50); --card:var(--n-0); --ink:var(--n-900); --sub:var(--n-400); --line:var(--n-100);
+    /* J4: --subは元--n-400(#64748b)だったが、--n-50(#f1f5f9)背景でのコントラスト比が
+       4.34:1でWCAG AA(4.5:1)未達とLighthouseのアクセシビリティ監査で指摘されたため、
+       --n-500(#475569、同背景で約6.9:1)に変更した。 */
+    --bg:var(--n-50); --card:var(--n-0); --ink:var(--n-900); --sub:var(--n-500); --line:var(--n-100);
     --blue:var(--accent-500); --blue-dark:var(--accent-700);
     --green:var(--success-600); --amber:var(--warning-500); --red:var(--danger-600); --gray:var(--n-400);
     /* タイポグラフィスケール */
@@ -194,7 +199,8 @@
   .segstats{display:flex;gap:6px;flex-wrap:wrap;font-size:var(--fs-xs);margin-top:6px}
   .segstats span{background:var(--n-100);border-radius:var(--radius-full);padding:2px 10px;color:var(--n-600);font-weight:600}
   footer.refs{font-size:var(--fs-xs);color:var(--sub);line-height:1.9;margin-top:var(--sp-6)}
-  footer.refs a{color:var(--accent-600)}
+  /* J4(Lighthouse target-size監査): リンク1件ごとにpaddingを足し、タップ領域を広げる */
+  footer.refs a{color:var(--accent-600);display:inline-block;padding:3px 0}
   .svg-chart text{font-size:10px;fill:var(--n-400)}
   .printonly{display:none}
   .trialmark{display:none}
@@ -291,7 +297,8 @@
   <div id="action-bar" class="actionbar noprint"></div>
 
   <nav class="tabs noprint" id="tabs"></nav>
-  <div id="app"></div>
+  <!-- J4(Lighthouse landmark-one-main監査): ページ内の主要コンテンツ領域を<main>にする -->
+  <main id="app"></main>
 
   <footer class="refs noprint" id="app-footer"></footer>
 </div>
@@ -354,7 +361,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.13.0';
+var APP_VERSION = '0.14.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -520,17 +527,52 @@ function countEmphasisMarks(text){
   var m = String(text || '').match(/[!！?？]|[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu);
   return m ? m.length : 0;
 }
+/* N12: パターンカタログ(MISINFO_PATTERNS)はこれまでコード直接編集でしか追加できなかった。
+ * チーム運用で「新しい手口を見つけたら追加していく」ことを想定した設計だったため、
+ * ノーコードで追加・削除できるUIを用意する。
+ * ⚠ セキュリティ上の理由により、カスタムパターンは正規表現ではなく「キーワードのいずれかを
+ *   含むか」の単純な部分一致方式にしている(ユーザー入力をそのままnew RegExp()に渡すと
+ *   壊れた/悪意ある正規表現によるReDoS等のリスクがあるため、意図的に機能を絞っている)。
+ */
+var CUSTOM_PATTERNS_STORAGE_KEY = 'fc_dashboard_custom_patterns_v1';
+function loadCustomPatterns(){
+  var arr = storageGetJSON(CUSTOM_PATTERNS_STORAGE_KEY, []);
+  return Array.isArray(arr) ? arr : [];
+}
+function saveCustomPatterns(list){ storageSetJSON(CUSTOM_PATTERNS_STORAGE_KEY, list); }
+function normalizeCustomPattern(raw){
+  raw = raw || {};
+  var keywordsRaw = typeof raw.keywords === 'string' ? raw.keywords : (Array.isArray(raw.keywords) ? raw.keywords.join(',') : '');
+  var keywords = capArray(keywordsRaw.split(',').map(function(s){ return s.trim(); }).filter(Boolean), 20);
+  return {
+    id: (typeof raw.id === 'string' && raw.id) ? raw.id : ('custom-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    label: capString(raw.label, 60) || '(無題のパターン)',
+    category: capString(raw.category, 30) || 'カスタム',
+    keywords: keywords,
+    weight: Math.max(1, Math.min(30, Math.round(Number(raw.weight)) || 10)),
+    tip: capString(raw.tip, 300) || ''
+  };
+}
+function allPatterns(){
+  var custom = loadCustomPatterns().map(function(p){
+    return {id: p.id, category: p.category, label: p.label, weight: p.weight, tip: p.tip, detect: 'keywords', keywords: p.keywords};
+  });
+  return MISINFO_PATTERNS.concat(custom);
+}
 function scanPatterns(text){
   text = String(text || '');
+  var lower = text.toLowerCase();
+  var all = allPatterns();
   var matched = [];
-  MISINFO_PATTERNS.forEach(function(p){
+  all.forEach(function(p){
     var hit = false;
     if (p.detect === 'punctFlood') hit = countEmphasisMarks(text) >= 6;
+    else if (p.detect === 'keywords') hit = (p.keywords || []).some(function(kw){ return kw && lower.indexOf(String(kw).toLowerCase()) > -1; });
     else if (p.regex) hit = p.regex.test(text);
     if (hit) matched.push(p.id);
   });
   var score = matched.reduce(function(sum, id){
-    var p = MISINFO_PATTERNS.filter(function(x){ return x.id === id; })[0];
+    var p = all.filter(function(x){ return x.id === id; })[0];
     return sum + (p ? p.weight : 0);
   }, 0);
   return {matchedIds: matched, score: Math.min(100, score)};
@@ -636,7 +678,7 @@ state.pendingRecovery = null; // 起動時に見つかった未保存下書き(�
  * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
  * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
  */
-var SCHEMA_VERSION = 8; // v8: 文字起こし(transcript)・関連案件(relatedIds)・添付ファイル(attachments)・コメント(comments)を追加
+var SCHEMA_VERSION = 9; // v9: mediaCheck.sourceType(image/video)を追加(N11: 動画フレーム抽出照合)
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
@@ -715,7 +757,10 @@ function normalizeMediaCheck(m){
     matches: capArray(m.matches, 20),
     aiGenFlags: flags,
     checkedAt: typeof m.checkedAt === 'string' ? m.checkedAt : '',
-    note: capString(m.note, 5000)
+    note: capString(m.note, 5000),
+    // N11(v9): 'video'の場合、thumbDataUrl/hashは動画から抽出した代表フレーム1枚分のもの。
+    // 動画全体・音声までは照合していない(既知の限界)ことを画面表示の根拠として使う。
+    sourceType: (m.sourceType === 'video') ? 'video' : 'image'
   };
 }
 /* H5: 添付ファイル(スクリーンショット等)。I3と同じくマイクロサムネイルのみ
@@ -969,6 +1014,52 @@ function computeDHash(srcDataUrl, callback){
   img.onerror = function(){ callback(null); };
   img.src = srcDataUrl;
 }
+
+/* N11: 動画ファイルの「自動照合」。真のビデオフィンガープリンティング(時間軸全体・音声を
+ * 含めた照合)は本ツールの規模(単一HTML・外部ライブラリ不使用)では実装しない判断とし、
+ * 代わりに「動画から代表フレームを1枚抽出し、既存の画像知覚ハッシュ(dHash)パイプラインに
+ * そのまま乗せる」という限定的だが実際に機能する方式を採用する。
+ * ⚠ 既知の限界: 抽出した1フレームが過去メディアと似ていない場合(該当フレームが誤情報の
+ *   核心部分でない、動画の別の場面が使い回されている等)は検出できない。音声の照合は行わない。
+ *   この限界はUI上の案内文でも必ず明記すること。
+ * jsdom等、<video>の実デコードに対応していない環境ではタイムアウトでnullを返し、
+ * 例外を投げない(I3のIndexedDB非対応時と同じグレースフルデグラデーション方針)。 */
+function extractVideoFrame(videoDataUrl, atSeconds, callback, timeoutMs){
+  try {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function'){ callback(null); return; }
+    var video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    var settled = false;
+    var timeoutId = setTimeout(function(){ finish(null); }, timeoutMs || 8000);
+    function finish(dataUrl){
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      callback(dataUrl);
+    }
+    video.addEventListener('loadedmetadata', function(){
+      var duration = video.duration;
+      var target = (isFinite(duration) && duration > 0) ? Math.min(atSeconds, Math.max(0, duration - 0.1)) : 0;
+      try { video.currentTime = target; } catch (e){ finish(null); }
+    });
+    video.addEventListener('seeked', function(){
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 0;
+        canvas.height = video.videoHeight || 0;
+        if (!canvas.width || !canvas.height){ finish(null); return; }
+        var ctx = canvas.getContext && canvas.getContext('2d');
+        if (!ctx){ finish(null); return; }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL('image/jpeg', 0.75));
+      } catch (e){ finish(null); }
+    });
+    video.addEventListener('error', function(){ finish(null); });
+    video.src = videoDataUrl;
+  } catch (e){ callback(null); }
+}
+
 var REFDB_KEY = 'fcd_refdb_v1';
 function loadReferenceDb(){
   var data = storageGetJSON(REFDB_KEY, null);
@@ -1397,7 +1488,10 @@ function renderTabs(){
   var attn = needsAttentionCount();
   el.innerHTML = TABS.map(function(t){
     var badge = (t.id === 'list' && attn > 0) ? '<span class="tab-badge" title="根拠なしで確定判定になっている案件">' + attn + '</span>' : '';
-    return '<button data-tab="' + t.id + '" class="' + (state.activeTab === t.id ? 'active' : '') + '">' +
+    // J4(Lighthouse): モバイル幅(max-width:640px)では.tab-labelがdisplay:noneになり
+    // アイコンのみのボタンになるが、非表示テキストはアクセシブルネームの算出に含まれない
+    // ため、aria-labelで明示的にラベルを付与する(button-name監査で検出・修正)。
+    return '<button data-tab="' + t.id + '" class="' + (state.activeTab === t.id ? 'active' : '') + '" aria-label="' + esc(t.label) + '">' +
       icon(t.icon, 15) + '<span class="tab-label">' + esc(t.label) + '</span>' + badge + '</button>';
   }).join('');
   el.querySelectorAll('button').forEach(function(btn){
@@ -1952,7 +2046,7 @@ function screeningLevel(score){
 }
 function patternScreenHtml(d){
   var scan = d.patternScreen || {matchedIds: [], score: 0};
-  var matched = MISINFO_PATTERNS.filter(function(p){ return scan.matchedIds.indexOf(p.id) > -1; });
+  var matched = allPatterns().filter(function(p){ return scan.matchedIds.indexOf(p.id) > -1; });
   var lv = screeningLevel(scan.score);
   var html = '<div class="kpis"><div class="kpi">' +
     '<div class="kpi-top"><span class="l">怪しさスコア(パターン検知)</span><span class="trend" style="background:' + lv.bg + ';color:' + lv.color + '">リスク' + esc(lv.label) + '</span></div>' +
@@ -2006,12 +2100,18 @@ function aiGenChecklistHtml(mc){
 }
 function mediaCheckResultHtml(mc){
   if (!mc.thumbDataUrl){
-    return '<div class="helper" style="margin-top:8px">まだ画像が登録されていません。上のボタンから画像を選択してください。</div>';
+    return '<div class="helper" style="margin-top:8px">まだ画像/動画が登録されていません。上のボタンから選択してください。</div>';
   }
+  var isVideo = mc.sourceType === 'video';
   var html = '<div style="display:flex;gap:14px;align-items:flex-start;margin-top:10px;flex-wrap:wrap">';
   html += '<img src="' + mc.thumbDataUrl + '"' + (mc.fullImageKey ? ' data-idb-key="' + esc(mc.fullImageKey) + '"' : '') +
-    ' style="width:130px;height:auto;border-radius:8px;border:1px solid var(--line)" alt="アップロードされた画像のサムネイル(表示中は縮小版。読み込みが完了すると高解像度版に自動で切り替わります)" />';
+    ' style="width:130px;height:auto;border-radius:8px;border:1px solid var(--line)" alt="' +
+    (isVideo ? '動画から抽出した代表フレームのサムネイル' : 'アップロードされた画像のサムネイル') +
+    '(表示中は縮小版。読み込みが完了すると高解像度版に自動で切り替わります)" />';
   html += '<div style="flex:1;min-width:220px">';
+  if (isVideo){
+    html += '<div class="helper">' + icon('info', 12) + ' 動画から抽出した代表フレーム(冒頭付近)1枚だけで照合しています。動画全体・音声は照合していません(N11の既知の限界)。</div>';
+  }
   if (!mc.hash){
     html += '<div class="note-box">' + icon('alert', 15) + '<div>特徴量を計算できませんでした。お使いのブラウザがCanvas APIに対応していない可能性があります。</div></div>';
   } else if (mc.matches && mc.matches.length){
@@ -2032,9 +2132,12 @@ function mediaCheckResultHtml(mc){
 function mediaCheckHtml(d){
   var mc = d.mediaCheck;
   var html = '';
-  html += '<div class="helper">画像をアップロードすると、端末内だけで特徴量(知覚ハッシュ)を計算し、このチームが過去に登録した参照メディアDBと照合します。外部への送信は一切ありません。動画・音声ファイルの自動照合は現時点では未対応です。</div>';
+  html += '<div class="helper">画像をアップロードすると、端末内だけで特徴量(知覚ハッシュ)を計算し、このチームが過去に登録した参照メディアDBと照合します。' +
+    '動画は代表フレーム(冒頭付近)を1枚だけ抽出して同じ方式で照合します(N11)。<b>動画全体・音声までは照合しないため、' +
+    '該当フレームが誤情報の核心部分でない場合や別の場面が使い回されている場合は検出できません。</b>音声ファイル単体の自動照合は現時点では未対応です。' +
+    '外部への送信は一切ありません。</div>';
   html += '<div class="toolbar"><label class="ghost small" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer">' +
-    icon('upload', 14) + ' 画像を選択<input type="file" id="media-file-input" accept="image/*" style="display:none" /></label></div>';
+    icon('upload', 14) + ' 画像/動画を選択<input type="file" id="media-file-input" accept="image/*,video/*" style="display:none" /></label></div>';
   html += '<div id="media-check-result">' + mediaCheckResultHtml(mc) + '</div>';
   html += '<h3>生成AI・合成の疑い(目視チェックリスト)</h3>';
   html += '<div class="helper">生成AIによる捏造の自動検出は行いません。以下は目視確認のためのチェックリストです。</div>';
@@ -2419,32 +2522,49 @@ function bindNewCheckEvents(app){
     mediaFileInput.addEventListener('change', function(e){
       var file = e.target.files && e.target.files[0];
       if (!file) return;
+      var isVideo = typeof file.type === 'string' && file.type.indexOf('video/') === 0;
       var reader = new FileReader();
       reader.onload = function(){
-        // ハッシュ計算・参照DB照合は従来通り480px画像で行う(ロジックは変更しない)
-        downscaleImageToDataUrl(reader.result, 480, 0.6, function(fullThumb){
-          if (!fullThumb){
-            d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.fullImageKey = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
-            refreshMediaResult();
-            toast('画像の読み込みに失敗しました。', {type:'danger'});
-            return;
-          }
-          computeDHash(fullThumb, function(hash){
-            // I3: localStorage圧迫を避けるため、保存するのはマイクロサムネイルのみ。
-            // フル解像度画像はIndexedDBに保存し、表示時に非同期で取得する。
-            downscaleImageToDataUrl(fullThumb, 72, 0.5, function(microThumb){
-              var key = 'media:' + d.id;
-              d.mediaCheck.thumbDataUrl = microThumb || fullThumb; // IndexedDB非対応環境ではfullThumbをそのまま使う保険
-              d.mediaCheck.fullImageKey = key;
-              d.mediaCheck.hash = hash || '';
-              d.mediaCheck.matches = hash ? findReferenceMatches(hash) : [];
-              d.mediaCheck.checkedAt = new Date().toISOString();
-              scheduleDraftAutosave();
+        function proceedWithImageDataUrl(imgDataUrl, sourceType){
+          // ハッシュ計算・参照DB照合は従来通り480px画像で行う(ロジックは変更しない)。
+          // 動画の場合、imgDataUrlは既にextractVideoFrame()で抽出済みの1フレーム画像。
+          downscaleImageToDataUrl(imgDataUrl, 480, 0.6, function(fullThumb){
+            if (!fullThumb){
+              d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.fullImageKey = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = []; d.mediaCheck.sourceType = 'image';
               refreshMediaResult();
-              idbPutImage(key, fullThumb); // 非同期・失敗しても無視(マイクロサムネイルで代替表示される)
+              toast((sourceType === 'video' ? '動画の代表フレーム' : '画像') + 'の読み込みに失敗しました。', {type:'danger'});
+              return;
+            }
+            computeDHash(fullThumb, function(hash){
+              // I3: localStorage圧迫を避けるため、保存するのはマイクロサムネイルのみ。
+              // フル解像度画像はIndexedDBに保存し、表示時に非同期で取得する。
+              downscaleImageToDataUrl(fullThumb, 72, 0.5, function(microThumb){
+                var key = 'media:' + d.id;
+                d.mediaCheck.thumbDataUrl = microThumb || fullThumb; // IndexedDB非対応環境ではfullThumbをそのまま使う保険
+                d.mediaCheck.fullImageKey = key;
+                d.mediaCheck.hash = hash || '';
+                d.mediaCheck.matches = hash ? findReferenceMatches(hash) : [];
+                d.mediaCheck.checkedAt = new Date().toISOString();
+                d.mediaCheck.sourceType = sourceType;
+                scheduleDraftAutosave();
+                refreshMediaResult();
+                idbPutImage(key, fullThumb); // 非同期・失敗しても無視(マイクロサムネイルで代替表示される)
+              });
             });
           });
-        });
+        }
+        if (isVideo){
+          // N11: 動画は代表フレーム(冒頭1秒付近)を1枚抽出してから画像と同じパイプラインに乗せる
+          extractVideoFrame(reader.result, 1, function(frameDataUrl){
+            if (!frameDataUrl){
+              toast('動画からの代表フレーム抽出に失敗しました(お使いの環境が動画のフレームキャプチャに対応していない可能性があります)。', {type:'warning', duration:6000});
+              return;
+            }
+            proceedWithImageDataUrl(frameDataUrl, 'video');
+          });
+        } else {
+          proceedWithImageDataUrl(reader.result, 'image');
+        }
       };
       reader.onerror = function(){ toast('ファイルの読み込みに失敗しました。', {type:'danger'}); };
       reader.readAsDataURL(file);
@@ -2454,7 +2574,7 @@ function bindNewCheckEvents(app){
     var clearBtn = e.target.closest('#media-clear-btn');
     if (clearBtn){
       if (d.mediaCheck.fullImageKey) idbDeleteImage(d.mediaCheck.fullImageKey);
-      d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.fullImageKey = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = [];
+      d.mediaCheck.thumbDataUrl = ''; d.mediaCheck.fullImageKey = ''; d.mediaCheck.hash = ''; d.mediaCheck.matches = []; d.mediaCheck.sourceType = 'image';
       if (mediaFileInput) mediaFileInput.value = '';
       scheduleDraftAutosave();
       refreshMediaResult();
@@ -3261,13 +3381,14 @@ function printCase(it){
   html += '<p><b>出典:</b> ' + esc(it.sourceUrl) + ' / <b>アーカイブ:</b> ' + esc(it.archiveUrl || '(未記録)') + ' / <b>収集日:</b> ' + esc(fmtDate(it.collectedAt)) + '</p>';
   html += '<h3>一次スクリーニング(技術による絞り込み・参考情報)</h3>';
   var accScore = computeAccountScore(it.accountCheck);
-  var matchedPatterns = MISINFO_PATTERNS.filter(function(p){ return it.patternScreen.matchedIds.indexOf(p.id) > -1; });
+  var matchedPatterns = allPatterns().filter(function(p){ return it.patternScreen.matchedIds.indexOf(p.id) > -1; });
   html += '<p>A) 怪しさスコア(パターン検知): ' + it.patternScreen.score + '/100' +
     (matchedPatterns.length ? '(検知: ' + matchedPatterns.map(function(p){ return esc(p.label); }).join('、') + ')' : '(該当パターンなし)') + '</p>';
   html += '<p>B) アカウント信頼性リスクスコア: ' + accScore + '/100' +
     (it.accountCheck.handle ? '(対象: ' + esc(it.accountCheck.handle) + ')' : '') + '</p>';
   html += '<p>C) 過去メディアとの照合: ' + (it.mediaCheck.matches && it.mediaCheck.matches.length
     ? '類似メディア ' + it.mediaCheck.matches.length + '件を検出(使い回しの疑い)' : '一致なし、または未実施') +
+    (it.mediaCheck.sourceType === 'video' ? '(動画の代表フレーム1枚のみで照合。動画全体・音声は対象外)' : '') +
     (it.mediaCheck.aiGenFlags.length ? ' / 生成AI疑いチェック: ' + it.mediaCheck.aiGenFlags.length + '項目に該当' : '') + '</p>';
   html += '<h3>① 情報源の確認</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.officialCheck.result) || '未確認') + ' / 照合先: ' + esc(it.officialCheck.agency) + '<br>' + esc(it.officialCheck.note) + '</p>';
   html += '<h3>② 一次情報との比較</h3><p>結果: ' + esc(labelOf(RESULT_OPTIONS, it.primaryCheck.result) || '未確認') + ' / 種類: ' + esc(it.primaryCheck.sourceType) + '<br>' + esc(it.primaryCheck.note) + '</p>';
@@ -4142,10 +4263,12 @@ function renderGuideTab(app){
   html += '<table class="axis-table"><thead><tr><th>手法</th><th>やっていること</th><th>やっていないこと</th></tr></thead><tbody>';
   html += '<tr><td>A) パターン検知</td><td>権威借用・緊急煽り・匿名情報源等、既知の誤情報の「型」を正規表現で検知しスコア化</td><td>機械学習による継続学習(固定パターン集の静的照合)</td></tr>';
   html += '<tr><td>B) アカウント信頼性チェック</td><td>記録者が目視で確認した観察項目(作成間もない等)からリスクを数値化</td><td>SNS事業者APIへの自動接続・自動取得</td></tr>';
-  html += '<tr><td>C) 過去メディア照合</td><td>画像の知覚ハッシュを自チームの参照DBと比較し、使い回しの可能性を提示</td><td>世界規模の外部データベースへの照会、動画/音声の自動照合</td></tr>';
+  html += '<tr><td>C) 過去メディア照合</td><td>画像の知覚ハッシュを自チームの参照DBと比較し、使い回しの可能性を提示。動画は代表フレーム1枚を抽出して同様に照合(N11、動画全体・音声は対象外)</td><td>世界規模の外部データベースへの照会、音声ファイルの自動照合</td></tr>';
   html += '</tbody></table>';
   html += '<div class="helper" style="margin-top:8px">C)の参照メディアDBは、このブラウザの中でチームが自ら登録・育てていくローカルなデータベースです。件数が少ないうちは「一致しなかった」ことが「本物」を意味しません。</div>';
   html += '</div>';
+
+  html += patternCatalogCardHtml();
 
   html += '<div class="card"><h2>検証手順の考え方</h2>';
   html += '<ol style="line-height:2">';
@@ -4179,6 +4302,99 @@ function renderGuideTab(app){
     '</ul></div>';
 
   app.innerHTML = html;
+  bindPatternCatalogEvents(app);
+}
+
+/* N12: パターンカタログ(組み込み+カスタム)の一覧・追加・削除UI。 */
+function patternCatalogCardHtml(){
+  var custom = loadCustomPatterns();
+  var html = '<div class="card"><h2>誤情報パターンカタログの管理(N12)</h2>';
+  html += '<div class="helper">A)パターン検知が使う「型」の一覧です。組み込みパターンはこのツール自体に含まれています(読み取り専用)。' +
+    'チームで新しい手口を見つけたら、下のフォームからノーコードで追加できます。' +
+    '⚠ カスタムパターンは安全のため正規表現ではなく「キーワードのいずれかを含むか」の単純な部分一致で判定します。</div>';
+  html += '<h3>組み込みパターン(' + MISINFO_PATTERNS.length + '件・読み取り専用)</h3>';
+  html += '<div class="segstats">' + MISINFO_PATTERNS.map(function(p){
+    return '<span title="' + esc(p.tip) + '">' + esc(p.category) + ': ' + esc(p.label) + '(重み' + p.weight + ')</span>';
+  }).join('') + '</div>';
+  html += '<h3 style="margin-top:14px" id="custom-patterns-count">カスタムパターン(' + custom.length + '件)</h3>';
+  html += '<div id="custom-patterns-list">' + customPatternsListHtml(custom) + '</div>';
+  html += '<div class="grid3" style="margin-top:8px">';
+  html += field('パターン名', '<input type="text" id="cp-label" placeholder="例: 偽の当選通知" maxlength="60" />');
+  html += field('カテゴリ(任意)', '<input type="text" id="cp-category" placeholder="例: 金銭誘導" maxlength="30" />');
+  html += field('重み(1-30)', '<input type="number" id="cp-weight" min="1" max="30" value="10" />');
+  html += '</div>';
+  html += field('キーワード(カンマ区切り、いずれかを含めば検知)', '<input type="text" id="cp-keywords" placeholder="例: 当選しました,受取手続き,個人情報を入力" />');
+  html += field('確認時の注意点(任意)', '<textarea id="cp-tip" placeholder="このパターンに一致した場合、確認者が何を確認すべきかのヒント" maxlength="300"></textarea>');
+  html += '<div class="toolbar"><button class="ghost small" id="cp-add">' + icon('edit', 14) + ' カスタムパターンを追加</button></div>';
+  html += '</div>';
+  return html;
+}
+function customPatternsListHtml(custom){
+  if (!custom.length) return '<div class="helper">まだカスタムパターンはありません。</div>';
+  return '<div class="segstats">' + custom.map(function(p){
+    return '<span title="' + esc(p.tip) + '(キーワード: ' + esc(p.keywords.join('、')) + ')">' +
+      esc(p.category) + ': ' + esc(p.label) + '(重み' + p.weight + ')' +
+      ' <button class="danger small" data-remove-pattern="' + esc(p.id) + '" style="margin-left:4px;padding:0 6px">' + icon('trash', 10) + '</button>' +
+      '</span>';
+  }).join('') + '</div>';
+}
+function refreshCustomPatternsUi(custom){
+  var listEl = document.getElementById('custom-patterns-list');
+  var countEl = document.getElementById('custom-patterns-count');
+  if (listEl) listEl.innerHTML = customPatternsListHtml(custom);
+  if (countEl) countEl.textContent = 'カスタムパターン(' + custom.length + '件)';
+  bindPatternCatalogRemoveButtons();
+}
+function bindPatternCatalogEvents(app){
+  var addBtn = document.getElementById('cp-add');
+  if (!addBtn) return;
+  addBtn.addEventListener('click', function(){
+    var label = document.getElementById('cp-label').value.trim();
+    var keywords = document.getElementById('cp-keywords').value.trim();
+    if (!label){ toast('パターン名を入力してください。', {type:'warning'}); return; }
+    if (!keywords){ toast('キーワードを1つ以上入力してください。', {type:'warning'}); return; }
+    var custom = loadCustomPatterns();
+    custom.push(normalizeCustomPattern({
+      label: label,
+      category: document.getElementById('cp-category').value.trim(),
+      weight: document.getElementById('cp-weight').value,
+      keywords: keywords,
+      tip: document.getElementById('cp-tip').value.trim()
+    }));
+    saveCustomPatterns(custom);
+    refreshCustomPatternsUi(custom);
+    document.getElementById('cp-label').value = '';
+    document.getElementById('cp-category').value = '';
+    document.getElementById('cp-weight').value = '10';
+    document.getElementById('cp-keywords').value = '';
+    document.getElementById('cp-tip').value = '';
+    toast('カスタムパターンを追加しました。', {type:'success'});
+  });
+  bindPatternCatalogRemoveButtons();
+}
+function bindPatternCatalogRemoveButtons(){
+  document.querySelectorAll('[data-remove-pattern]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id = btn.getAttribute('data-remove-pattern');
+      var custom = loadCustomPatterns();
+      var removed = custom.filter(function(p){ return p.id === id; })[0];
+      custom = custom.filter(function(p){ return p.id !== id; });
+      saveCustomPatterns(custom);
+      refreshCustomPatternsUi(custom);
+      toast('カスタムパターンを削除しました。', {
+        type: 'warning',
+        actionLabel: '元に戻す',
+        onAction: function(){
+          if (!removed) return;
+          var list = loadCustomPatterns();
+          list.push(removed);
+          saveCustomPatterns(list);
+          refreshCustomPatternsUi(list);
+          toast('削除を取り消しました。', {type:'success'});
+        }
+      });
+    });
+  });
 }
 
 /* ============================= グローバルエラーハンドラ =============================

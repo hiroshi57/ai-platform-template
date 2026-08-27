@@ -21,6 +21,58 @@ let passed = 0;
 let failed = 0;
 const failures = [];
 
+/**
+ * J6: 主要関数の網羅率を計測する簡易カバレッジツール。
+ *
+ * 正直な注記: c8/V8カバレッジは、jsdomが`vm`経由で<script>内容を実行する構造上、
+ * 実測してみたところファイルパスが一致せずカバレッジ0%と誤表示された(試した上で
+ * 採用を見送った)。代わりに、HTMLソースからトップレベルの`function 名前(...)`宣言を
+ * 正規表現で抽出し、各グローバル関数を「何回呼ばれたか」を数える呼び出し回数計測方式を
+ * 採用する。行/分岐カバレッジではなく「関数単位の呼び出し網羅率」である点に注意
+ * (呼ばれてはいるが特定の分岐だけ通っていない、というケースは検出できない)。
+ * さらに、計測用のラップはdom生成(freshDom())の"後"に行うため、`loadState`/`loadReferenceDb`/
+ * `loadDraftBackup`のようにページ初回ブートストラップ時(スクリプト末尾の即時実行コード)
+ * にのみ呼ばれる関数は、実際には呼ばれていても「未呼び出し」として報告される既知の限界がある。
+ * レポートの「一度も呼ばれなかった関数」は、この限界を踏まえた上で目視で要否を判断すること。
+ *
+ * 実行方法: node fact-check-dashboard.test.cjs --func-coverage
+ */
+const FUNC_COVERAGE_ENABLED = process.argv.includes('--func-coverage');
+const FUNC_COVERAGE_COUNTS = new Map();
+const TOP_LEVEL_FUNCTION_NAMES = Array.from(
+  HTML.matchAll(/^function\s+([A-Za-z_$][\w$]*)\s*\(/gm)
+).map((m) => m[1]);
+
+function instrumentFunctionCoverage(win) {
+  TOP_LEVEL_FUNCTION_NAMES.forEach((name) => {
+    const orig = win[name];
+    if (typeof orig !== 'function' || orig.__fcCoverageWrapped) return;
+    const wrapped = function (...args) {
+      FUNC_COVERAGE_COUNTS.set(name, (FUNC_COVERAGE_COUNTS.get(name) || 0) + 1);
+      return orig.apply(this, args);
+    };
+    wrapped.__fcCoverageWrapped = true;
+    try { win[name] = wrapped; } catch (e) { /* 上書き不可なプロパティは無視 */ }
+  });
+}
+
+function printFunctionCoverageReport() {
+  if (!FUNC_COVERAGE_ENABLED) return;
+  const total = TOP_LEVEL_FUNCTION_NAMES.length;
+  const called = TOP_LEVEL_FUNCTION_NAMES.filter((n) => FUNC_COVERAGE_COUNTS.has(n));
+  const uncalled = TOP_LEVEL_FUNCTION_NAMES.filter((n) => !FUNC_COVERAGE_COUNTS.has(n));
+  console.log('');
+  console.log('=== J6: 関数呼び出しカバレッジ(トップレベル関数のみ) ===');
+  console.log('総関数数: ' + total + ' / テストで呼ばれた関数数: ' + called.length +
+    ' (' + Math.round((called.length / total) * 100) + '%)');
+  if (uncalled.length) {
+    console.log('一度も呼ばれなかった関数(' + uncalled.length + '件):');
+    uncalled.forEach((n) => console.log('  - ' + n));
+  } else {
+    console.log('すべてのトップレベル関数が少なくとも1回は呼ばれました。');
+  }
+}
+
 async function test(name, fn) {
   try {
     await fn();
@@ -37,6 +89,7 @@ async function test(name, fn) {
 async function freshDom() {
   const dom = new JSDOM(HTML, { runScripts: 'dangerously', resources: 'usable', url: 'http://localhost/' });
   await new Promise((r) => setTimeout(r, 100));
+  if (FUNC_COVERAGE_ENABLED) instrumentFunctionCoverage(dom.window);
   return dom;
 }
 
@@ -1086,6 +1139,60 @@ async function agreeToConsent(dom) {
     assert.strictEqual(ref.fullImageKey, 'refdb:' + ref.id, 'fullImageKeyがrefdb:<id>の形式で設定されていない: ' + ref.fullImageKey);
   });
 
+  /* ============================= N11: 動画の代表フレーム抽出照合 ============================= */
+
+  await test('normalizeMediaCheck: sourceTypeが image/video 以外は image に正規化される(N11)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(w.normalizeMediaCheck({}).sourceType, 'image', '既定値はimageであるべき');
+    assert.strictEqual(w.normalizeMediaCheck({ sourceType: 'video' }).sourceType, 'video');
+    assert.strictEqual(w.normalizeMediaCheck({ sourceType: 'audio' }).sourceType, 'image', '未知の値はimageにフォールバックするべき');
+  });
+
+  await test('extractVideoFrame: <video>の実デコードに対応していない環境(jsdom)ではタイムアウトで例外を投げずnullを返す(N11)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const result = await new Promise((resolve) => {
+      w.extractVideoFrame('data:video/webm;base64,AAAA', 1, resolve, 200); // テスト用に短いタイムアウト
+    });
+    assert.strictEqual(result, null, 'jsdomでは実デコードされないためnullが返るべき');
+  });
+
+  await test('新規/編集フォーム: 動画/音声ファイルの選択ボタンがimage/video両方を受け付ける(N11)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const input = doc.getElementById('media-file-input');
+    assert.ok(input, 'メディアファイル選択inputが見つからない');
+    assert.strictEqual(input.getAttribute('accept'), 'image/*,video/*', '画像/動画の両方を受け付ける設定になっていない');
+  });
+
+  await test('動画ファイル選択時はextractVideoFrame経由のパスに入り、抽出失敗時は警告トーストを出して例外を投げない(N11)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    // extractVideoFrameをモックして即座にnull(抽出失敗)を返すようにする
+    const originalExtract = w.extractVideoFrame;
+    w.extractVideoFrame = function (dataUrl, atSeconds, cb) { cb(null); };
+
+    const input = doc.getElementById('media-file-input');
+    const fakeFile = new w.File(['dummy-video-bytes'], 'sample.mp4', { type: 'video/mp4' });
+    Object.defineProperty(input, 'files', { value: [fakeFile], configurable: true });
+
+    // FileReaderの実デコードはjsdomでも動作するため、readAsDataURLの結果を待つ
+    await new Promise((resolve) => {
+      const origFileReader = w.FileReader;
+      input.dispatchEvent(new w.Event('change', { bubbles: true }));
+      setTimeout(resolve, 100);
+    });
+
+    const toastEl = doc.querySelector('.toast.warning');
+    assert.ok(toastEl, '抽出失敗時の警告トーストが表示されない');
+    assert.ok(toastEl.textContent.includes('動画'), '警告文言に「動画」への言及が無い: ' + toastEl.textContent);
+    w.extractVideoFrame = originalExtract;
+  });
+
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
    * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
    * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の
@@ -1788,6 +1895,7 @@ async function agreeToConsent(dom) {
     assert.ok(content.includes("default-src 'none'"), 'default-srcが原則拒否になっていない');
     assert.ok(content.includes('connect-src') && content.includes('di-tools-api.vercel.app'), 'connect-srcにサーバー共有APIドメインが含まれていない');
     assert.ok(content.includes('worker-src') && content.includes('blob:'), "worker-srcにblob:が無いとG6のWeb Workerが動作しない");
+    assert.ok(content.includes('media-src') && content.includes('data:'), "media-srcにdata:が無いとN11の<video>フレーム抽出が動作しない(実ブラウザで発覚した回帰)");
     assert.ok(content.includes("object-src 'none'"), 'object-srcが制限されていない');
   });
 
@@ -1811,8 +1919,120 @@ async function agreeToConsent(dom) {
     assert.ok(!html.includes('fc-dash-2026-08-tR4nP8vK2xQ7'), '旧・平文の秘密値がソースに残っている');
   });
 
+  /* ============================= J6で発見したテストの抜け漏れを埋める ============================= */
+  /* J6の関数呼び出しカバレッジ計測で、④AI参照・⑤専用ツール行の描画(aiRowHtml/toolRowHtml)と
+   * ガイドタブ(renderGuideTab)が一度もテストされていないことが判明したため、追加した。 */
+
+  await test('④AI参照・⑤専用ツールの行を追加/削除でき、内容を入力すると軸スコアに反映される(J6で発見した未テスト関数を補完)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+
+    const addAi = doc.querySelector('[data-add="aiChecks"]');
+    assert.ok(addAi, 'AIツール参照の追加ボタンが見つからない');
+    addAi.click();
+    const aiRow = doc.querySelector('.row-item.ai[data-list="aiChecks"]');
+    assert.ok(aiRow, 'AIチェック行が描画されない');
+    const stanceSel = aiRow.querySelector('[data-field="stance"]');
+    stanceSel.value = 'support';
+    stanceSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.strictEqual(dom.window.state.draft.aiChecks[0].stance, 'support');
+
+    const addTool = doc.querySelector('[data-add="toolChecks"]');
+    assert.ok(addTool, 'ツール利用記録の追加ボタンが見つからない');
+    addTool.click();
+    const toolRow = doc.querySelector('.row-item.ai[data-list="toolChecks"]');
+    assert.ok(toolRow, 'ツールチェック行が描画されない');
+    const findingSel = toolRow.querySelector('[data-field="finding"]');
+    findingSel.value = 'supports';
+    findingSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.strictEqual(dom.window.state.draft.toolChecks[0].finding, 'supports');
+
+    // 削除ボタンも機能すること
+    doc.querySelector('[data-remove="aiChecks"]').click();
+    assert.strictEqual(dom.window.state.draft.aiChecks.length, 0);
+    doc.querySelector('[data-remove="toolChecks"]').click();
+    assert.strictEqual(dom.window.state.draft.toolChecks.length, 0);
+  });
+
+  await test('ガイド・参考ツールタブが例外なく描画される(J6で発見した未テスト関数を補完)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.activeTab = 'guide';
+    w.renderAll();
+    const doc = w.document;
+    assert.ok(doc.body.textContent.length > 0, 'ガイドタブの描画結果が空');
+    assert.ok(doc.body.textContent.includes('ガイド') || doc.querySelector('#app'), 'ガイドタブらしき内容が見つからない');
+  });
+
+  /* ============================= N12: パターンカタログのノーコード編集 ============================= */
+
+  await test('normalizeCustomPattern: キーワードのカンマ区切り文字列を配列に正規化し、重みを1-30に丸める', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const p = w.normalizeCustomPattern({ label: 'テストパターン', keywords: '当選,受取手続き, 個人情報', weight: 999, tip: '注意' });
+    assert.strictEqual(Array.isArray(p.keywords), true);
+    assert.strictEqual(p.keywords.length, 3);
+    assert.strictEqual(p.keywords[0], '当選');
+    assert.strictEqual(p.keywords[1], '受取手続き');
+    assert.strictEqual(p.keywords[2], '個人情報');
+    assert.strictEqual(p.weight, 30, '重みは上限30に丸められるべき');
+    assert.strictEqual(p.category, 'カスタム', 'カテゴリ未指定時は既定値になるべき');
+  });
+
+  await test('allPatterns/scanPatterns: カスタムパターンが組み込みパターンとマージされ、キーワード一致でスコアに反映される(N12)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.saveCustomPatterns([w.normalizeCustomPattern({ label: '偽当選通知', keywords: '当選しました,受取手続き', weight: 25 })]);
+    const before = w.allPatterns().length;
+    assert.ok(before > w.MISINFO_PATTERNS.length, 'カスタムパターンが組み込みパターンに加算されているべき');
+
+    const result = w.scanPatterns('おめでとうございます！当選しました。受取手続きはこちらから。');
+    assert.ok(result.matchedIds.some((id) => id.startsWith('custom-')), 'カスタムパターンのIDが一致結果に含まれるべき');
+    assert.ok(result.score >= 25, 'カスタムパターンの重みがスコアに反映されるべき: ' + result.score);
+  });
+
+  await test('ガイドタブ: カスタムパターンをフォームから追加・削除でき、元に戻すも機能する(N12)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.activeTab = 'guide';
+    w.renderAll();
+    const doc = w.document;
+
+    doc.getElementById('cp-label').value = '偽の給付金通知';
+    doc.getElementById('cp-keywords').value = '給付金,至急振込';
+    doc.getElementById('cp-add').click();
+
+    assert.strictEqual(w.loadCustomPatterns().length, 1, 'カスタムパターンが1件保存されるべき');
+    assert.ok(doc.body.textContent.includes('偽の給付金通知'), '追加したパターンが画面に表示されない');
+    assert.strictEqual(doc.getElementById('custom-patterns-count').textContent, 'カスタムパターン(1件)', '追加後に見出しの件数が更新されるべき');
+
+    const removeBtn = doc.querySelector('[data-remove-pattern]');
+    assert.ok(removeBtn, '削除ボタンが見つからない');
+    removeBtn.click();
+    assert.strictEqual(w.loadCustomPatterns().length, 0, '削除後は0件になるべき');
+
+    const toasts = doc.querySelectorAll('.toast.warning');
+    const lastWarningToast = toasts[toasts.length - 1];
+    const undoBtn = lastWarningToast && lastWarningToast.querySelector('button');
+    assert.ok(undoBtn, '元に戻すボタンが見つからない');
+    undoBtn.click();
+    assert.strictEqual(w.loadCustomPatterns().length, 1, '元に戻すで復元されるべき');
+  });
+
+  await test('ガイドタブ: パターン名・キーワード未入力では追加せず警告する(N12)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.activeTab = 'guide';
+    w.renderAll();
+    const doc = w.document;
+    doc.getElementById('cp-add').click();
+    assert.strictEqual(w.loadCustomPatterns().length, 0, '未入力のまま追加しようとしても保存されないべき');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
+  printFunctionCoverageReport();
   if (failed > 0) {
     process.exitCode = 1;
   }

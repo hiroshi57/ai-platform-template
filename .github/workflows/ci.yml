@@ -82,3 +82,15 @@ jobs:
         # 旧構成には package.json が無く、README の
         # `npm install && npm run dev` は実行不可能だった。ビルドを CI で担保する。
         run: npm run build
+      - name: Test (fact-check-dashboard.html)
+        # frontend/fact-check-dashboard.html は単一HTML配布物で、React+Viteアプリとは
+        # 独立してjsdom上でテストする(J1)。
+        run: npm run test:fact-check-dashboard
+      - name: Install Playwright browsers (Chromium/Firefox/WebKit)
+        # J7: クロスブラウザの実ブラウザテスト用。ビジュアルリグレッション(スクリーンショット
+        # 比較、dashboard.visual.spec.js)はOS間のフォントレンダリング差で誤検知しやすいため
+        # あえてCI化していない(詳細はvisual-tests/dashboard.visual.spec.js冒頭のコメント参照)。
+        # ここで実行するのは決定的なアサーションのみで構成されたスモークテスト(dashboard.spec.js)。
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Cross-browser E2E smoke tests (fact-check-dashboard.html)
+        run: npx playwright test visual-tests/dashboard.spec.js

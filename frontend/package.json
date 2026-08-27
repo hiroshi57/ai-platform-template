@@ -8,15 +8,24 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:fact-check-dashboard": "node fact-check-dashboard.test.cjs"
+    "test:fact-check-dashboard": "node fact-check-dashboard.test.cjs",
+    "test:fact-check-dashboard:e2e": "playwright test",
+    "test:fact-check-dashboard:visual": "playwright test visual-tests/dashboard.visual.spec.js",
+    "test:fact-check-dashboard:visual:update": "playwright test visual-tests/dashboard.visual.spec.js --update-snapshots",
+    "test:fact-check-dashboard:html-validate": "html-validate fact-check-dashboard.html",
+    "test:fact-check-dashboard:lighthouse": "node scripts/lighthouse-check.mjs",
+    "test:fact-check-dashboard:coverage": "node fact-check-dashboard.test.cjs --func-coverage"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-react": "^4.3.1",
+    "html-validate": "^11.10.0",
     "jsdom": "^29.1.1",
+    "lighthouse": "^13.4.1",
     "vite": "^5.4.0"
   }
 }
