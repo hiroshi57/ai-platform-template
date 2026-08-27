@@ -85,10 +85,10 @@
 
 - [ ] G1 (P2) チェック件数が多い場合(1000件超)でも一覧描画が固まらないよう仮想スクロールを検討する
 - [ ] G2 (P1) `renderAll`の全体再描画コストを見直し、差分更新できる箇所を増やす
-- [ ] G3 (P2) localStorageの読み書きをrequestIdleCallback等で非同期化し、入力のカクつきを防ぐ
-- [ ] G4 (P2) SVGグラフの再描画をthrottleし、重み変更時のカクつきを防ぐ
-- [ ] G5 (P2) 初回ロード時間を計測し、CSS/JSのインライン化による肥大化が問題ないか確認する
-- [ ] G6 (P2) 大量データ時のCSV/JSONエクスポートをWeb Workerで行い、UIブロッキングを防ぐ
+- [x] G3 (P2) localStorageの読み書きをrequestIdleCallback等で非同期化し、入力のカクつきを防ぐ — 下書き自動保存(`persistDraft`)の実書き込みを`runWhenIdle()`(requestIdleCallback、未対応環境はsetTimeoutフォールバック)まで遅延。600msデバウンスと組み合わせて二重に負荷を軽減。実ブラウザでrequestIdleCallbackが実際に使われることを確認済み
+- [x] G4 (P2) SVGグラフの再描画をthrottleし、重み変更時のカクつきを防ぐ — 汎用`debounce()`を追加し、重み入力(`w-*`)のinputイベントで`persist()+renderDashResults()`を150msデバウンス。値自体(state.weights)は即時反映し取りこぼしなし。実ブラウザで連打してもエラーが出ないことを確認済み
+- [x] G5 (P2) 初回ロード時間を計測し、CSS/JSのインライン化による肥大化が問題ないか確認する — `window.__bootStats`(elapsedMs/approxKB)を起動時に記録しconsole出力。実測: 約206KB、初回描画 数ms〜100ms程度(環境依存)。単一HTMLとして許容範囲内と判断(肥大化の兆候があれば今後この数値で継続監視できる)
+- [x] G6 (P2) 大量データ時のCSV/JSONエクスポートをWeb Workerで行い、UIブロッキングを防ぐ — `runHeavyExport()`で件数閾値(300件)超過時のみWeb Worker化(pureFnをtoString()でWorkerに渡しロジックの重複を回避)。Worker生成失敗・タイムアウト(8秒)・未対応環境では例外を投げず同期フォールバック。実ブラウザで500件のCSVエクスポート時に実際にWorkerが使われることを確認済み
 
 ## H. データモデル・機能拡張 (14)
 
@@ -346,3 +346,26 @@ L1〜L6、M1/M3/M4/M6、N11/N12)のうち、まずC区分(ダッシュボード�
 
 テストは84件→97件に拡充。全機能を実ブラウザ(Playwright)でも確認済み(ゼロエラー)。
 APP_VERSIONを0.9.0→0.10.0に更新。
+
+### 2026-08-27(続き4): G3/G4/G5/G6を実装(パフォーマンス改善)
+
+C区分に続き、G区分(パフォーマンス)の4件を実装した。
+
+- **G3**: 下書き自動保存の実書き込みを`runWhenIdle()`(requestIdleCallback、未対応環境は
+  setTimeoutにフォールバック)まで遅延。既存の600msデバウンスと合わせて二重に負荷を抑える。
+- **G4**: 重み入力に汎用`debounce()`(150ms)を適用し、連打・スピナー操作時の
+  チャート再描画の無駄打ちを防止。値自体(state.weights)は即時反映するため、
+  最終的な入力値の取りこぼしは発生しない設計にした。
+- **G5**: `window.__bootStats`に初回描画時間とファイルサイズ目安(HTML文字数から概算)を
+  記録するようにした。実測値は約206KB・描画数〜数百ms(環境依存)で、単一HTMLとしては
+  現時点で許容範囲内と判断した。今後の肥大化を継続監視するための仕組みとして位置づける。
+- **G6**: CSV/JSONエクスポートの文字列組み立てロジックを、300件超のデータに限り
+  Web Workerへオフロードするようにした。Worker側にもロジックを重複実装しないよう、
+  純粋関数(`buildCsvString`/`buildExportJsonString`)を`toString()`でそのままWorker内へ
+  渡す方式を採用。Worker生成失敗・8秒タイムアウト・未対応環境では自動的に同期処理へ
+  フォールバックする。
+
+テストは97件→105件に拡充。Web Workerの実使用・requestIdleCallbackの実使用・重み入力の
+連打時の無エラー確認は、いずれも実ブラウザ(Playwright)で検証した(jsdomはWeb Worker/
+requestIdleCallbackを実装していないため、この2点は実ブラウザでしか検証できない)。
+APP_VERSIONを0.11.0に更新。

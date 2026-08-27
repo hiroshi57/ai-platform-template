@@ -1501,6 +1501,129 @@ async function agreeToConsent(dom) {
     assert.ok(btns.length >= 3, 'ドーナツ/ヒストグラム/レーダーの最低3つはPNG保存ボタンがあるべき: ' + btns.length);
   });
 
+  /* ============================= G3: localStorage書き込みのアイドル遅延 ============================= */
+
+  await test('runWhenIdle: requestIdleCallback未対応環境(jsdom)でもsetTimeoutにフォールバックしコールバックが実行される(G3)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(typeof w.requestIdleCallback, 'undefined', '前提: jsdomはrequestIdleCallback未実装のはず');
+    let called = false;
+    w.runWhenIdle(() => { called = true; });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.ok(called, 'setTimeoutフォールバックでコールバックが実行されていない');
+  });
+
+  await test('persistDraft: 下書きの実書き込みはアイドル時間まで遅延されるが最終的にlocalStorageへ反映される(G3)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    w.state.draft.claimTitle = 'アイドル書き込みテスト';
+    w.persistDraft();
+    // 遅延中(同期直後)はまだ書き込まれていない可能性がある実装であることを許容しつつ、
+    // 最終的には書き込まれることを確認する
+    await new Promise((r) => setTimeout(r, 50));
+    const saved = w.storageGetJSON(w.DRAFT_KEY, null);
+    assert.ok(saved && saved.draft && saved.draft.claimTitle === 'アイドル書き込みテスト', '遅延後に下書きがlocalStorageへ保存されていない');
+  });
+
+  /* ============================= G4: 重み変更時のチャート再描画デバウンス ============================= */
+
+  await test('debounce: 連続呼び出しでは最後の1回だけ実行される(G4)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    let count = 0;
+    const debounced = w.debounce(() => { count++; }, 30);
+    debounced(); debounced(); debounced();
+    assert.strictEqual(count, 0, 'デバウンス直後はまだ実行されていないべき');
+    await new Promise((r) => setTimeout(r, 80));
+    assert.strictEqual(count, 1, '連続呼び出し後は1回だけ実行されるべき: ' + count);
+  });
+
+  await test('ダッシュボード: 重み入力を連打してもチャート再描画は最後の入力後にまとめて1回だけ行われる(G4)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({
+      id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text',
+      sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true', officialCheck: { result: 'match' }
+    })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    const doc = w.document;
+
+    let renderCount = 0;
+    const originalRenderDashResults = w.renderDashResults;
+    w.renderDashResults = function () { renderCount++; return originalRenderDashResults.apply(this, arguments); };
+
+    const input = doc.getElementById('w-official');
+    for (let i = 0; i < 5; i++) {
+      input.value = String(10 + i);
+      input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    }
+    // state.weights自体は即時反映される(値の取りこぼしを防ぐ設計)が、
+    // 重いチャート再描画(renderDashResults)はデバウンスされ、連打中はまだ呼ばれない
+    assert.strictEqual(w.state.weights.official, 14, '重みの値自体は即時反映されるべき');
+    assert.strictEqual(renderCount, 0, 'デバウンス待ち時間内は再描画されないべき: ' + renderCount);
+    await new Promise((r) => setTimeout(r, 250));
+    assert.strictEqual(renderCount, 1, '連打後は1回だけ再描画されるべき: ' + renderCount);
+  });
+
+  /* ============================= G5: 初回ロード時間の計測 ============================= */
+
+  await test('window.__bootStats: 初回描画の所要時間とファイルサイズ目安が記録される(G5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.ok(w.__bootStats, '__bootStatsが記録されていない');
+    assert.strictEqual(typeof w.__bootStats.elapsedMs, 'number');
+    assert.ok(w.__bootStats.elapsedMs >= 0, 'elapsedMsは0以上であるべき');
+    assert.ok(w.__bootStats.approxKB > 0, 'approxKBは正の値であるべき(HTMLサイズの目安)');
+  });
+
+  /* ============================= G6: 大量データエクスポートのWeb Worker化 ============================= */
+
+  await test('buildCsvString/buildExportJsonString: 純粋関数として正しい文字列を返す(G6)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const csv = w.buildCsvString([['a', 'b"c'], [1, null]]);
+    assert.ok(csv.includes('"a","b""c"'), 'CSVのダブルクォートエスケープが正しくない: ' + csv);
+    assert.ok(csv.includes('"1",""'), 'null値は空文字列としてクォートされるべき: ' + csv);
+
+    const json = w.buildExportJsonString({ schemaVersion: 1, items: [] });
+    assert.strictEqual(JSON.parse(json).schemaVersion, 1);
+  });
+
+  await test('runHeavyExport: Worker未対応環境(jsdom)や閾値以下では同期的にpureFnの結果を返す(G6)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(typeof w.Worker, 'undefined', '前提: jsdomはWeb Workerを実装していないはず');
+    let resultSmall = null;
+    w.runHeavyExport((x) => 'small:' + x, 'data', 1, (r) => { resultSmall = r; });
+    assert.strictEqual(resultSmall, 'small:data', '閾値以下は同期的に結果を返すべき');
+
+    let resultLarge = null;
+    w.runHeavyExport((x) => 'large:' + x, 'data', w.HEAVY_EXPORT_WORKER_THRESHOLD + 1, (r) => { resultLarge = r; });
+    assert.strictEqual(resultLarge, 'large:data', 'Worker未対応環境では閾値超過でも同期フォールバックするべき');
+  });
+
+  await test('CSVエクスポート: 大量データ(閾値超過)でもWorker未対応環境では正しくCSVダウンロードが行われる(G6)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    let captured = null;
+    w.Blob = function (parts) { captured = parts.join(''); };
+    w.URL.createObjectURL = () => 'blob://fake';
+    w.URL.revokeObjectURL = () => {};
+    w.state.items = [];
+    for (let i = 0; i < w.HEAVY_EXPORT_WORKER_THRESHOLD + 5; i++) {
+      w.state.items.push(w.normalizeItem({
+        id: 'x' + i, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        mediaType: 'text', sourceCategory: 'media', claimTitle: 'claim' + i, claimText: 't', verdict: 'true'
+      }));
+    }
+    w.state.activeTab = 'list';
+    w.renderAll();
+    w.document.getElementById('btn-export-csv').click();
+    assert.ok(captured && captured.includes('claim0') && captured.includes('claim' + (w.HEAVY_EXPORT_WORKER_THRESHOLD + 4)), '大量データのCSVが正しく生成されていない');
+  });
+
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
   if (failed > 0) {

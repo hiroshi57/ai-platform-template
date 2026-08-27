@@ -297,6 +297,11 @@
 <script>
 'use strict';
 
+/* G5: 初回ロード時間の計測。単一HTMLファイルへのインライン化(CSS/SVGアイコン/JS全部入り)
+ * が実運用上「重すぎる」状態になっていないかを、開発者コンソール・window.__bootStats経由で
+ * 確認できるようにする(エンドユーザー向けUIには出さない、開発時の自己点検用)。 */
+var _bootStartedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
 /* ============================= アイコン(インラインSVG) =============================
  * 絵文字は環境によって見た目が大きく揺れる(プラットフォームごとのフォント差)ため、
  * プロフェッショナル向けの一貫した見た目にするためインラインSVGアイコンに統一する。
@@ -343,7 +348,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.10.0';
+var APP_VERSION = '0.11.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -998,11 +1003,25 @@ function renderSaveErrorBanner(){
   if (!el) return;
   el.innerHTML = state.saveError ? '<div class="save-error-banner">⚠ ' + esc(state.saveError) + '</div>' : '';
 }
+/* G3: localStorageへの実書き込みはアイドル時間まで遅延させ、入力中のメインスレッドを
+ * 塞がないようにする。requestIdleCallback未対応ブラウザ(Safari等)ではsetTimeoutに
+ * フォールバックする(遅延の有無はあるが、例外は投げない)。 */
+function runWhenIdle(fn, timeout){
+  if (typeof requestIdleCallback === 'function'){
+    requestIdleCallback(fn, {timeout: timeout || 500});
+  } else {
+    setTimeout(fn, 0);
+  }
+}
 function persistDraft(){
   if (!state.draft) return;
   // 下書きの自動保存失敗は致命的ではない(本保存時は別途ガード・トーストがある)ため、
-  // 戻り値(成功/失敗)は無視して良い。
-  storageSetJSON(DRAFT_KEY, {at: new Date().toISOString(), editingId: state.editingId, draft: state.draft});
+  // 戻り値(成功/失敗)は無視して良い。呼び出し元(scheduleDraftAutosave)側で既に600msの
+  // デバウンスをかけているため、ここでの遅延がタイピングの取りこぼしにはつながらない。
+  runWhenIdle(function(){
+    if (!state.draft) return; // アイドル待ちの間にフォームが破棄された場合は書き込まない
+    storageSetJSON(DRAFT_KEY, {at: new Date().toISOString(), editingId: state.editingId, draft: state.draft});
+  });
 }
 function loadDraftBackup(){
   return storageGetJSON(DRAFT_KEY, null);
@@ -2611,8 +2630,11 @@ function renderListTab(app){
     renderListRows();
   });
   document.getElementById('btn-export-json').addEventListener('click', function(){
-    download('fact-check-export-' + Date.now() + '.json', JSON.stringify({schemaVersion: SCHEMA_VERSION, items: state.items, weights: state.weights}, null, 2));
-    toast('JSONファイルをダウンロードしました。', {type:'success'});
+    var payload = {schemaVersion: SCHEMA_VERSION, items: state.items, weights: state.weights};
+    runHeavyExport(buildExportJsonString, payload, state.items.length, function(json){
+      download('fact-check-export-' + Date.now() + '.json', json);
+      toast('JSONファイルをダウンロードしました。', {type:'success'});
+    });
   });
   document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
   document.getElementById('btn-export-md').addEventListener('click', exportMarkdown);
@@ -2955,6 +2977,67 @@ function renderListRows(){
   });
 }
 
+/* G6: CSV文字列組み立て(rowsを受け取るだけの純粋関数)。
+ * Web Worker内でもそのまま(toString()で)実行できるよう、外側のクロージャ変数
+ * (state・esc等)には一切依存させない。 */
+function buildCsvString(rows){
+  return rows.map(function(r){
+    return r.map(function(c){
+      var s = String(c == null ? '' : c).replace(/"/g,'""');
+      return '"' + s + '"';
+    }).join(',');
+  }).join('\r\n');
+}
+/* G6: JSON文字列組み立て(payloadを受け取るだけの純粋関数)。 */
+function buildExportJsonString(payload){
+  return JSON.stringify(payload, null, 2);
+}
+/* G6: 大量データのエクスポート処理(CSV/JSON化)をWeb Workerに逃がし、UIスレッドを
+ * ブロックしないようにする。pureFnは単一引数を受け取り文字列を返す自己完結した
+ * 純粋関数でなければならない(Worker側は別グローバルスコープで実行されるため、
+ * 外側のクロージャ変数は参照できない)。件数が少ない場合はWorker起動コストの方が
+ * 高くつくため同期処理のままとし、Worker生成に失敗する環境(CSPの制約等)や
+ * 未対応ブラウザ、8秒以上応答が無い場合も例外を投げず同期フォールバックする。 */
+var HEAVY_EXPORT_WORKER_THRESHOLD = 300;
+function runHeavyExport(pureFn, data, itemCount, onResult){
+  var useWorker = itemCount > HEAVY_EXPORT_WORKER_THRESHOLD &&
+    typeof Worker !== 'undefined' && typeof Blob !== 'undefined' &&
+    typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
+  if (!useWorker){
+    onResult(pureFn(data));
+    return;
+  }
+  var settled = false;
+  var blobUrl = null;
+  function finishSync(){
+    if (settled) return; settled = true;
+    onResult(pureFn(data));
+  }
+  try {
+    var workerSrc = 'var fn = ' + pureFn.toString() + ';\nself.onmessage = function(e){ self.postMessage(fn(e.data)); };';
+    blobUrl = URL.createObjectURL(new Blob([workerSrc], {type: 'application/javascript'}));
+    var worker = new Worker(blobUrl);
+    var timeoutId = setTimeout(function(){
+      try { worker.terminate(); } catch(_e){}
+      finishSync();
+    }, 8000);
+    worker.onmessage = function(ev){
+      if (settled) return; settled = true;
+      clearTimeout(timeoutId);
+      try { worker.terminate(); } catch(_e){}
+      try { URL.revokeObjectURL(blobUrl); } catch(_e){}
+      onResult(ev.data);
+    };
+    worker.onerror = function(){
+      clearTimeout(timeoutId);
+      try { worker.terminate(); } catch(_e){}
+      finishSync();
+    };
+    worker.postMessage(data);
+  } catch (e){
+    finishSync();
+  }
+}
 function exportCsv(){
   var rows = [['更新日','種別','出所区分','主張タイトル','判定','スコア','根拠軸数(/5)',
     '怪しさスコア(パターン)','アカウント信頼性リスク','過去メディア一致件数','次回レビュー予定日',
@@ -2968,14 +3051,10 @@ function exportCsv(){
       it.sourceUrl, it.archiveUrl
     ]);
   });
-  var csv = rows.map(function(r){
-    return r.map(function(c){
-      var s = String(c == null ? '' : c).replace(/"/g,'""');
-      return '"' + s + '"';
-    }).join(',');
-  }).join('\r\n');
-  download('fact-check-list-' + Date.now() + '.csv', '﻿' + csv);
-  toast('CSVファイルをダウンロードしました。', {type:'success'});
+  runHeavyExport(buildCsvString, rows, rows.length, function(csv){
+    download('fact-check-list-' + Date.now() + '.csv', '﻿' + csv);
+    toast('CSVファイルをダウンロードしました。', {type:'success'});
+  });
 }
 
 /* H14: Markdownレポート出力(Wiki・ドキュメントへの貼り付け用) */
@@ -3100,6 +3179,17 @@ window.addEventListener('afterprint', function(){
   document.getElementById('print-root').innerHTML = '';
 });
 
+/* G4: 汎用デバウンス関数。重み入力のようにドラッグ/連打で連続発火するイベントに対して、
+ * 実際に重いSVG再描画処理を実行するのは入力が落ち着いてからにする(カクつき防止)。 */
+function debounce(fn, wait){
+  var timer = null;
+  return function(){
+    var args = arguments, ctx = this;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function(){ fn.apply(ctx, args); }, wait);
+  };
+}
+
 /* ============================= ダッシュボードタブ ============================= */
 function renderDashboardTab(app){
   var html = '';
@@ -3117,12 +3207,18 @@ function renderDashboardTab(app){
   html += '<div id="dash-results"></div>';
   app.innerHTML = html;
 
+  // G4: 重み入力のたびに重いSVG再描画(折れ線・ドーナツ・ヒートマップ・レーダー等)を
+  // 同期実行するとタイピング/スピナー連打時にカクつくため、150ms分デバウンスする。
+  // state.weights自体は即座に更新するので、値の取りこぼしは発生しない。
+  var scheduleWeightRedraw = debounce(function(){
+    persist();
+    renderDashResults();
+  }, 150);
   Object.keys(state.weights).forEach(function(k){
     var el = document.getElementById('w-' + k);
     el.addEventListener('input', function(){
       state.weights[k] = Number(el.value) || 0;
-      persist();
-      renderDashResults();
+      scheduleWeightRedraw();
     });
   });
 
@@ -3976,6 +4072,18 @@ state.referenceDb = loadReferenceDb(); // 参照メディアDB(このツール�
 if (state.activeTab === 'new' && !state.draft) state.draft = newItem();
 loadFromShareLinkIfPresent();
 renderAll();
+
+/* G5: 初回描画完了までの所要時間とファイルサイズの目安を記録する(開発者向け自己点検)。
+ * outerHTMLの文字数は実ファイルサイズの厳密な値ではないが、「肥大化していないか」を
+ * 継続的に見るための実用上十分な近似値として使う。 */
+(function reportBootStats(){
+  try {
+    var elapsedMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - _bootStartedAt);
+    var approxBytes = document.documentElement.outerHTML.length;
+    window.__bootStats = {elapsedMs: elapsedMs, approxBytes: approxBytes, approxKB: Math.round(approxBytes / 1024)};
+    console.info('[fact-check-dashboard] 初回描画: ' + elapsedMs + 'ms / ファイルサイズ目安: 約' + window.__bootStats.approxKB + 'KB');
+  } catch (e) { /* 計測失敗はアプリの動作に影響しないため無視する */ }
+})();
 </script>
 </body>
 </html>
