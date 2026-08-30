@@ -1193,6 +1193,132 @@ async function agreeToConsent(dom) {
     w.extractVideoFrame = originalExtract;
   });
 
+  /* ============================= L2: 価格ページの「準備中」表示 ============================= */
+
+  await test('pricingLinkHtml: PRICING_PAGE_READYがfalseの間は誤った価格ページへリンクせず「準備中」と表示する(L2)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(w.PRICING_PAGE_READY, false, '専用の価格ページが未確定の間はfalseのままであるべき(trueにする場合はLEGAL_PRICING_URLも専用ページに差し替えること)');
+    const html = w.pricingLinkHtml();
+    assert.ok(html.includes('準備中'), '「準備中」の案内が含まれていない');
+    assert.ok(!html.includes('<a '), 'READY=falseの間はリンク(<a>)を出してはいけない(無関係な料金表への誤誘導を防ぐため)');
+  });
+
+  await test('試用版バナー: 価格ページが未準備の間は「準備中」表示になる(L2)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const doc = w.document;
+    assert.ok(doc.body.textContent.includes('価格・お申し込み: 準備中'), '試用版バナーに価格準備中の案内が表示されない');
+  });
+
+  /* ============================= M1: 初回起動時のオンボーディングツアー ============================= */
+
+  await test('オンボーディングバナー: 同意直後は1ステップ目が表示され、次へ/戻る/スキップ/完了が機能する(M1)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    // 注意: doc.body.textContent は<script>タグの中身(JSソース文字列)も含んでしまうため、
+    // 誤検知を避けるためバナー要素(#onboarding-banner)のtextContentだけを見る。
+    const bannerText = () => doc.getElementById('onboarding-banner').textContent;
+    assert.ok(bannerText().includes('ようこそ'), '同意直後にオンボーディング1ステップ目が表示されない');
+    assert.ok(bannerText().includes('1/4'), 'ステップ数の表示が無い');
+
+    doc.getElementById('onboarding-next').click();
+    assert.ok(bannerText().includes('① まず「新規/編集」タブで記録'), '2ステップ目に進んでいない');
+    assert.ok(doc.getElementById('onboarding-prev'), '2ステップ目以降は「戻る」ボタンが表示されるべき');
+
+    doc.getElementById('onboarding-prev').click();
+    assert.ok(bannerText().includes('ようこそ'), '「戻る」で1ステップ目に戻るべき');
+
+    // 最終ステップまで進めて「完了」を押すと非表示になる
+    doc.getElementById('onboarding-next').click();
+    doc.getElementById('onboarding-next').click();
+    doc.getElementById('onboarding-next').click();
+    assert.ok(bannerText().includes('③ 「ダッシュボード」タブで集計'), '最終ステップの内容が表示されない');
+    doc.getElementById('onboarding-next').click(); // 完了ボタン
+    assert.strictEqual(w.hasCompletedOnboarding(), true, '完了後はオンボーディング完了フラグが立つべき');
+    assert.strictEqual(doc.getElementById('onboarding-banner').innerHTML, '', '完了後はバナーが非表示になるべき');
+  });
+
+  await test('オンボーディングバナー: スキップすると即座に完了扱いになり、再訪しても表示されない(M1)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    doc.getElementById('onboarding-skip').click();
+    assert.strictEqual(dom.window.hasCompletedOnboarding(), true);
+    dom.window.renderAll();
+    assert.strictEqual(doc.getElementById('onboarding-banner').innerHTML, '', 'スキップ後は再表示されないべき');
+  });
+
+  await test('オンボーディングバナー: 同意前は表示されない(M1)', async () => {
+    const dom = await freshDom();
+    const doc = dom.window.document;
+    assert.strictEqual(doc.getElementById('onboarding-banner').innerHTML, '', '同意前にオンボーディングを表示してはいけない');
+  });
+
+  /* ============================= M3: よくあるご質問(FAQ) ============================= */
+
+  await test('ガイドタブ: FAQセクションが表示され、質問項目が折りたたみ可能である(M3)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.activeTab = 'guide';
+    w.renderAll();
+    const doc = w.document;
+    assert.ok(doc.body.textContent.includes('よくある質問'), 'FAQの見出しが見つからない');
+    const details = doc.querySelectorAll('details summary');
+    assert.ok(details.length >= 5, 'FAQ項目が少なすぎる: ' + details.length);
+  });
+
+  /* ============================= M4: サンプルデータの読み込み ============================= */
+
+  await test('サンプルデータ読み込み: 既存データを消さずに追加され、元に戻すも機能する(M4)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const originalConfirm = w.confirm;
+    w.confirm = () => true;
+    w.state.items = [w.normalizeItem({ id: 'existing1', claimTitle: '既存の案件', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const doc = w.document;
+    doc.getElementById('btn-load-sample').click();
+    assert.strictEqual(w.state.items.length, 1 + w.SAMPLE_ITEMS.length, '既存1件+サンプル件数になるべき');
+    assert.ok(w.state.items.some((it) => it.id === 'existing1'), '既存データが失われている');
+    assert.ok(w.state.items.some((it) => it.claimTitle.includes('【サンプル】')), 'サンプルデータに【サンプル】表記が無い');
+
+    const toasts = doc.querySelectorAll('.toast.success');
+    const undoBtn = toasts[toasts.length - 1] && toasts[toasts.length - 1].querySelector('button');
+    assert.ok(undoBtn, '元に戻すボタンが見つからない');
+    undoBtn.click();
+    assert.strictEqual(w.state.items.length, 1, '元に戻すでサンプルデータだけが取り除かれるべき');
+    w.confirm = originalConfirm;
+  });
+
+  await test('normalizeItem経由でサンプルデータが正しく正規化される(M4)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const added = w.loadSampleData();
+    assert.strictEqual(added.length, w.SAMPLE_ITEMS.length);
+    added.forEach((it) => {
+      assert.ok(it.id, 'サンプルデータにidが無い');
+      assert.ok(Array.isArray(it.tags), 'normalizeItemを通していないためtagsが無い');
+    });
+  });
+
+  /* ============================= M6: 動画マニュアルへのリンク(準備中プレースホルダー) ============================= */
+
+  await test('ガイドタブ: 動画マニュアルは未準備の間は無効なリンクを出さず「準備中」と正直に表示する(M6)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    assert.strictEqual(w.VIDEO_MANUAL_URL, '', '動画が実在しない間はURLを空のままにしておくべき(存在しない動画へリンクしない)');
+    w.state.activeTab = 'guide';
+    w.renderAll();
+    const doc = w.document;
+    assert.ok(doc.body.textContent.includes('動画マニュアルは現在準備中です'), '動画マニュアルの準備中案内が表示されない');
+  });
+
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
    * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
    * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の

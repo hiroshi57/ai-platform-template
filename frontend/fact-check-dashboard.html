@@ -294,6 +294,7 @@
   </div>
 
   <div id="save-error-banner"></div>
+  <div id="onboarding-banner" class="noprint"></div>
   <div id="action-bar" class="actionbar noprint"></div>
 
   <nav class="tabs noprint" id="tabs"></nav>
@@ -361,7 +362,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.14.0';
+var APP_VERSION = '0.15.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -656,7 +657,20 @@ function _licSecret(){
 var PROVIDER_NAME = '株式会社デジタルアイデンティティ';
 var LEGAL_TERMS_URL = 'https://di-tools-legal.vercel.app/terms.html';
 var LEGAL_PRIVACY_URL = 'https://di-tools-legal.vercel.app/privacy.html';
+/* L2: 姉妹ツール(standalone.html等)と共通の価格ページを暫定的に指していたが、
+ * ファクトチェック・ダッシュボード専用の価格が確定していないままリンクすると、
+ * 無関係な料金表を見せてしまい誤認を招く。専用ページ/専用の価格セクションが
+ * 用意できるまでは、リンクではなく「準備中」表示にする(L2で許容されている
+ * 2つの選択肢のうち「準備中表示」を採用。専用ページ確定時はPRICING_PAGE_READYを
+ * trueにしてLEGAL_PRICING_URLを差し替えること)。 */
+var PRICING_PAGE_READY = false;
 var LEGAL_PRICING_URL = 'https://di-tools-legal.vercel.app/pricing.html';
+function pricingLinkHtml(){
+  if (PRICING_PAGE_READY){
+    return '<a href="' + esc(LEGAL_PRICING_URL) + '" target="_blank" rel="noopener noreferrer" style="font-size:12.5px;color:var(--warning-600)">価格・お申し込み</a>';
+  }
+  return '<span style="font-size:12.5px;color:var(--n-400)" title="専用の価格ページは現在準備中です。お申し込みについては提供者までお問い合わせください。">価格・お申し込み: 準備中</span>';
+}
 var API = 'https://di-tools-api.vercel.app/api/workspace';
 var DRAFT_KEY = STORAGE_KEY + ':__draft';
 
@@ -669,6 +683,7 @@ state.draft = null;
 state.editingId = null;
 state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:'', tag:'', status:''};
 state.saveError = '';
+state.onboardingStep = 0; // M1: セッション内だけの一時状態(永続化しない)
 state.pendingRecovery = null; // 起動時に見つかった未保存下書き(あれば)。init 末尾で設定する
 
 /* ============================= スキーマバージョニング / 正規化 =============================
@@ -1469,6 +1484,59 @@ function newItem(){
 }
 function cloneItem(it){ return JSON.parse(JSON.stringify(it)); }
 
+/* M4: デモ用サンプルデータ。初見のユーザーが「触って理解できる」ことを目的とし、
+ * 実在の個人・団体・事件を想起させない架空の内容にする。主張タイトルには必ず
+ * 【サンプル】を付け、実データと混同しないようにする。既存データを壊さないよう、
+ * 常に「追加」であり「置き換え」はしない(E4と同じUndo付き危険操作パターンに準じる)。 */
+function daysAgoIso(days){
+  var d = new Date(); d.setDate(d.getDate() - days); return d.toISOString();
+}
+var SAMPLE_ITEMS = [
+  {
+    mediaType: 'text', sourceCategory: 'sns', verdict: 'false',
+    claimTitle: '【サンプル】〇〇市で工場が爆発したとのSNS投稿',
+    claimText: '〇〇市の化学工場で爆発事故が発生し、有毒ガスが拡散しているという投稿がSNSで拡散している。至急周辺住民は避難してほしいと書かれている。',
+    officialCheck: {result:'mismatch', agency:'〇〇市消防局(架空)', note:'公式発表では該当する事故の報告は無いことを確認(サンプル)。', link:''},
+    primaryCheck: {result:'mismatch', sourceType:'現地カメラ映像(架空)', note:'投稿された画像は3年前の別地域の火災映像と一致(サンプル)。', link:''},
+    crossChecks: [{result:'mismatch', outlet:'地元紙(架空)', note:'該当する報道無し(サンプル)。', link:''}],
+    tags: ['サンプル', '緊急煽り'], assignee: '', status: 'done',
+    createdAt: daysAgoIso(35), updatedAt: daysAgoIso(2)
+  },
+  {
+    mediaType: 'image', sourceCategory: 'ai_generated', verdict: 'mixed',
+    claimTitle: '【サンプル】著名人が新製品を絶賛しているとされる画像',
+    claimText: 'ある著名人(架空)が新製品を手に持って絶賛しているとされる画像がSNSで拡散している。',
+    officialCheck: {result:'', agency:'', note:'', link:''},
+    primaryCheck: {result:'partial', sourceType:'公式SNSアカウント(架空)', note:'本人の公式アカウントには該当する投稿が無い(サンプル)。', link:''},
+    aiChecks: [{tool:'chatgpt', stance:'inconclusive', note:'画像単体からは生成AIかどうか断定できないとの回答(サンプル)。'}],
+    tags: ['サンプル', '生成AI疑い'], assignee: '', status: 'in_progress',
+    createdAt: daysAgoIso(10), updatedAt: daysAgoIso(1)
+  },
+  {
+    mediaType: 'text', sourceCategory: 'government', verdict: 'true',
+    claimTitle: '【サンプル】〇〇省が新制度を発表',
+    claimText: '〇〇省(架空)が来年度から新しい支援制度を開始すると発表した。',
+    officialCheck: {result:'match', agency:'〇〇省(架空)公式サイト', note:'公式発表と内容が一致することを確認(サンプル)。', link:''},
+    primaryCheck: {result:'match', sourceType:'公式プレスリリース(架空)', note:'一次情報のプレスリリースと一致(サンプル)。', link:''},
+    tags: ['サンプル'], assignee: '', status: 'done',
+    createdAt: daysAgoIso(60), updatedAt: daysAgoIso(55)
+  },
+  {
+    mediaType: 'text', sourceCategory: 'blog', verdict: '',
+    claimTitle: '【サンプル】個人ブログの健康情報(未着手の案件例)',
+    claimText: '特定の食品が万病に効くと紹介する個人ブログの記事。まだ確認作業に着手していない案件のサンプルです。',
+    tags: ['サンプル'], assignee: '', status: 'todo',
+    createdAt: daysAgoIso(3), updatedAt: daysAgoIso(3)
+  }
+];
+function loadSampleData(){
+  var added = SAMPLE_ITEMS.map(function(raw){
+    return normalizeItem(Object.assign({id: uid()}, raw));
+  });
+  state.items = state.items.concat(added);
+  return added;
+}
+
 /* ============================= レンダリング: 共通 ============================= */
 var TABS = [
   {id:'new', label:'新規/編集', icon:'edit'},
@@ -1564,7 +1632,7 @@ function renderLicenseBar(){
     '<span style="display:inline-flex;align-items:center;gap:6px">' + icon('unlock', 15) + '<b>試用版でご利用中です。</b>すべての機能をお試しいただけますが、印刷・PDFに「試用版」の表示が入り、サーバー共有はご利用いただけません。</span>' +
     '<span style="flex:1"></span>' +
     '<button class="ghost small" id="lic-toggle">ライセンスキーを入力</button>' +
-    '<a href="' + esc(LEGAL_PRICING_URL) + '" target="_blank" rel="noopener noreferrer" style="font-size:12.5px;color:var(--warning-600)">価格・お申し込み</a>' +
+    pricingLinkHtml() +
     '</div>' +
     '<div id="lic-form" style="display:none" class="lic-form">' +
     '<input type="text" id="lic-company" aria-label="会社名" placeholder="会社名" style="width:210px" />' +
@@ -1683,6 +1751,7 @@ function renderAll(){
   renderLicenseBar();
   renderActionBar();
   renderSaveErrorBanner();
+  renderOnboardingBanner();
   renderPrintStamp();
   renderFooter();
   var app = document.getElementById('app');
@@ -1700,6 +1769,49 @@ function renderAll(){
   }
   _lastRenderedTab = state.activeTab;
   bindScrollTracking();
+}
+
+/* M1: 初回起動時のオンボーディングツアー。同意済み・まだ一度も完了/スキップしていない
+ * 場合のみ、主要4タブを軽く紹介する短いステップ列を表示する。モーダルオーバーレイでは
+ * なく1枚のカードで、他タブへの遷移やフォーム入力を妨げない(F6と同じ非モーダル方針)。 */
+var ONBOARDING_DONE_KEY = 'fcd_onboarding_v1_done';
+var ONBOARDING_STEPS = [
+  {title: 'ようこそ', body: 'このツールは、テキスト・画像・音声・映像の主張について、情報源の確認から一次情報比較・クロスチェックまでの検証手順を記録・集計するための道具です。使い方を4ステップで簡単にご紹介します。'},
+  {title: '① まず「新規/編集」タブで記録', body: '確認したい主張のタイトル・本文を入力し、①〜⑤の根拠(情報源の確認、一次情報比較等)を確認しながら記録していきます。テンプレートも選べます。'},
+  {title: '② 「チェック一覧」タブで管理', body: '記録した案件の検索・絞り込み・エクスポート・複数人でのサーバー共有ができます。自動バックアップからの復元もここから行えます。'},
+  {title: '③ 「ダッシュボード」タブで集計', body: '判定内訳・時系列トレンド・軸別スコア等、複数の切り口で集計結果を確認できます。KPIカードはドラッグで並び替えられます。'}
+];
+function hasCompletedOnboarding(){ return !!storageGetJSON(ONBOARDING_DONE_KEY, false); }
+function markOnboardingDone(){ storageSetJSON(ONBOARDING_DONE_KEY, true); }
+function renderOnboardingBanner(){
+  var el = document.getElementById('onboarding-banner');
+  if (!el) return;
+  if (!hasConsent() || hasCompletedOnboarding()){ el.innerHTML = ''; return; }
+  var idx = Math.max(0, Math.min(ONBOARDING_STEPS.length - 1, state.onboardingStep || 0));
+  var step = ONBOARDING_STEPS[idx];
+  var isLast = idx === ONBOARDING_STEPS.length - 1;
+  el.innerHTML =
+    '<div class="draft-recover" role="region" aria-label="はじめてご利用の方向けガイド" style="align-items:flex-start;flex-direction:column;gap:8px">' +
+    '<div style="display:flex;justify-content:space-between;width:100%;align-items:flex-start;gap:10px">' +
+    '<div><b>' + esc(step.title) + '</b>' +
+    ' <span class="helper" style="display:inline">(' + (idx + 1) + '/' + ONBOARDING_STEPS.length + ')</span>' +
+    '<div style="margin-top:4px">' + esc(step.body) + '</div></div>' +
+    '<button class="ghost small" id="onboarding-skip" aria-label="ガイドをスキップ">' + icon('info', 12) + ' スキップ</button>' +
+    '</div>' +
+    '<div class="toolbar" style="margin:0">' +
+    (idx > 0 ? '<button class="ghost small" id="onboarding-prev">戻る</button>' : '') +
+    '<button class="primary small" id="onboarding-next">' + (isLast ? '完了' : '次へ') + '</button>' +
+    '</div></div>';
+  var skipBtn = document.getElementById('onboarding-skip');
+  if (skipBtn) skipBtn.addEventListener('click', function(){ markOnboardingDone(); renderOnboardingBanner(); });
+  var prevBtn = document.getElementById('onboarding-prev');
+  if (prevBtn) prevBtn.addEventListener('click', function(){ state.onboardingStep = Math.max(0, idx - 1); renderOnboardingBanner(); });
+  var nextBtn = document.getElementById('onboarding-next');
+  if (nextBtn) nextBtn.addEventListener('click', function(){
+    if (isLast){ markOnboardingDone(); renderOnboardingBanner(); return; }
+    state.onboardingStep = idx + 1;
+    renderOnboardingBanner();
+  });
 }
 
 /* ============================= 新規/編集タブ ============================= */
@@ -2789,6 +2901,7 @@ function renderListTab(app){
   html += '<button class="ghost small" id="btn-export-csv">' + icon('download', 14) + ' CSVエクスポート</button>';
   html += '<button class="ghost small" id="btn-export-md">' + icon('download', 14) + ' Markdownエクスポート</button>';
   html += '<label class="ghost small" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;cursor:pointer">' + icon('upload', 14) + ' JSONインポート<input type="file" id="file-import" accept="application/json" style="display:none" /></label>';
+  html += '<button class="ghost small" id="btn-load-sample">' + icon('inbox', 14) + ' サンプルデータを読み込む</button>';
   html += '<button class="danger small" id="btn-clear-all">' + icon('trash', 14) + ' 全件削除</button>';
   html += '</div>';
   html += '<div id="list-table-wrap"></div>';
@@ -2859,6 +2972,23 @@ function renderListTab(app){
     };
     reader.readAsText(f);
     e.target.value = '';
+  });
+  document.getElementById('btn-load-sample').addEventListener('click', function(){
+    if (!confirm('デモ用のサンプルデータ(' + SAMPLE_ITEMS.length + '件、主張タイトルに【サンプル】と付きます)を読み込みます。既存の' + state.items.length + '件には追加され、置き換えではありません。よろしいですか？')) return;
+    var added = loadSampleData();
+    persist();
+    renderListRows();
+    toast(added.length + '件のサンプルデータを読み込みました。', {
+      type: 'success',
+      actionLabel: '元に戻す',
+      onAction: function(){
+        var addedIds = added.map(function(it){ return it.id; });
+        state.items = state.items.filter(function(it){ return addedIds.indexOf(it.id) === -1; });
+        persist();
+        renderListRows();
+        toast('サンプルデータの読み込みを取り消しました。', {type:'success'});
+      }
+    });
   });
   document.getElementById('btn-clear-all').addEventListener('click', function(){
     if (!state.items.length) return;
@@ -3044,7 +3174,7 @@ function renderSharePanel(){
   var el = document.getElementById('share-panel');
   if (!el) return;
   if (!licValid()){
-    el.innerHTML = '<div class="helper">サーバー共有は正規版のみご利用いただけます。上部の「ライセンスキーを入力」からご登録ください(価格・お申し込みリンクあり)。</div>';
+    el.innerHTML = '<div class="helper">サーバー共有は正規版のみご利用いただけます。上部の「ライセンスキーを入力」からご登録ください(価格・お申し込みについての案内も上部にあります)。</div>';
     return;
   }
   var info = getShareInfo();
@@ -4301,8 +4431,58 @@ function renderGuideTab(app){
     '<li>算出されるスコア・判定はあくまで記録内容に基づく参考情報であり、ライセンスの有無にかかわらず公的な認証を意味しません。</li>' +
     '</ul></div>';
 
+  html += faqCardHtml();
+  html += videoManualCardHtml();
+
   app.innerHTML = html;
   bindPatternCatalogEvents(app);
+}
+
+/* M3: よくある質問。実際に想定される疑問(データの保存場所・スコアの意味・
+ * 複数端末での扱い・バックアップ等)を中心に構成する。 */
+var FAQ_ITEMS = [
+  {q:'入力したデータはどこに保存されますか？他の人に見られませんか？',
+   a:'既定では、お使いの端末のブラウザ内(localStorage)にのみ保存されます。「サーバー共有」機能を能動的に使わない限り、外部に送信されることはありません。'},
+  {q:'スコアが低い/「誤り」判定になった主張は、そのまま公表してよいですか？',
+   a:'いいえ。算出されるスコア・判定は記録内容に基づく参考情報であり、公的な認証や真偽の証明ではありません。公表の可否・最終的な真偽判断は必ず人が行ってください。'},
+  {q:'別のパソコン/スマートフォンでも同じデータを見られますか？',
+   a:'既定では端末ごとに独立したデータ(localStorage)のため、他の端末には自動的に反映されません。複数端末・複数人で共有したい場合は「チェック一覧」タブの「サーバー共有」機能(正規版限定)をご利用ください。'},
+  {q:'誤ってデータを削除してしまいました。復元できますか？',
+   a:'「全件削除」等の危険操作の直後であれば、トースト通知の「元に戻す」で復元できます。それ以外の場合も、「チェック一覧」タブの「自動バックアップ」から過去のスナップショット(直近5世代、約30分間隔)に復元できることがあります(I5)。定期的なJSONエクスポートによる手動バックアップも推奨します。'},
+  {q:'「怪しさスコア」「アカウント信頼性リスク」と、①〜⑤の検証スコアは何が違いますか？',
+   a:'前者(A/B/C)は詳細検証に入る前の「一次スクリーニング」で、パターン検知・目視チェック・過去メディア照合という技術的な当たりづけです。後者(①〜⑤)は記録者が実際に確認した根拠に基づくスコアです。両者は意図的に別集計にしており、混同しないよう画面上でも見出しレベルで分離しています。'},
+  {q:'AIツール(ChatGPT等)の回答をそのまま根拠にしてよいですか？',
+   a:'いいえ。AIツールの回答は「④AI参照」として参考情報の扱いです。必ず一次情報・公的発表等、他の軸でも裏付けを取ってください。'},
+  {q:'画像や動画が「過去メディアと一致」と表示されました。これは断定できますか？',
+   a:'いいえ。知覚ハッシュによる類似度判定であり、参照メディアDBの件数が少ないうちは「一致なし」も「一致あり」も断定材料にはなりません。あくまで確認の当たりをつけるための参考情報です。'},
+  {q:'ライセンスキーを紛失しました。再発行できますか？',
+   a:'ライセンスキーは「会社名+本ツール識別子」から決定的に算出されるため、同じ会社名を再入力すれば同じキーになります。提供者にお問い合わせください。'}
+];
+function faqCardHtml(){
+  var html = '<div class="card"><h2>よくある質問(FAQ)</h2>';
+  html += '<div style="display:flex;flex-direction:column;gap:10px">' + FAQ_ITEMS.map(function(item){
+    return '<details style="border:1px solid var(--line);border-radius:var(--radius-md);padding:8px 12px">' +
+      '<summary style="cursor:pointer;font-weight:700">' + esc(item.q) + '</summary>' +
+      '<div style="margin-top:6px;font-size:var(--fs-sm);color:var(--sub);line-height:1.8">' + esc(item.a) + '</div>' +
+      '</details>';
+  }).join('') + '</div></div>';
+  return html;
+}
+
+/* M6: 動画マニュアル/スクリーンキャストへのリンク。
+ * ⚠ AIエージェントは実際の動画コンテンツを制作できないため、ここでは「準備中」の
+ * 案内と、動画が用意でき次第URLを差し替えるための場所(VIDEO_MANUAL_URL)だけを
+ * 用意する(存在しない動画があるかのように振る舞わないため、リンクは無効化しておく)。 */
+var VIDEO_MANUAL_URL = ''; // 動画が用意でき次第、URLを設定してください(空文字の間は「準備中」表示になります)
+function videoManualCardHtml(){
+  var html = '<div class="card"><h2>動画マニュアル・スクリーンキャスト</h2>';
+  if (VIDEO_MANUAL_URL){
+    html += '<div class="toolgrid"><div class="toolcard"><a href="' + esc(VIDEO_MANUAL_URL) + '" target="_blank" rel="noopener noreferrer">操作解説動画を見る</a></div></div>';
+  } else {
+    html += '<div class="helper">動画マニュアルは現在準備中です。用意でき次第、このカードにリンクを掲載します。それまでは本タブの文章によるガイドをご参照ください。</div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 /* N12: パターンカタログ(組み込み+カスタム)の一覧・追加・削除UI。 */
