@@ -40,7 +40,12 @@
     --blue:var(--accent-500); --blue-dark:var(--accent-700);
     --green:var(--success-600); --amber:var(--warning-500); --red:var(--danger-600); --gray:var(--n-400);
     /* タイポグラフィスケール */
-    --fs-2xs:10.5px; --fs-xs:11.5px; --fs-sm:12.5px; --fs-base:13.5px; --fs-md:15px; --fs-lg:18px; --fs-xl:22px;
+    /* F7: 以前はpx固定だったため、ブラウザの「文字サイズだけ拡大」機能(rem基準の
+       アクセシビリティ機能。フルズームとは別)を使っても本文の文字が一切拡大されない
+       という実バグがあった(実ブラウザでdocument.documentElement.style.fontSizeを
+       変更して検証し発見)。remに変更することで、この機能でも正しく拡大されるようにした。
+       html要素にfont-size指定が無い(既定16px)ことを前提に、px値をpx/16で換算している。 */
+    --fs-2xs:0.65625rem; --fs-xs:0.71875rem; --fs-sm:0.78125rem; --fs-base:0.84375rem; --fs-md:0.9375rem; --fs-lg:1.125rem; --fs-xl:1.375rem;
     /* スペーシングスケール(4px基準) */
     --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
     /* 角丸・影 */
@@ -72,7 +77,7 @@
   nav.tabs button:hover{background:var(--n-50);color:var(--n-700)}
   nav.tabs button.active{background:var(--accent-500);color:#fff;box-shadow:var(--shadow-sm)}
   nav.tabs button .tab-badge{background:var(--danger-500);color:#fff;border-radius:var(--radius-full);
-    font-size:10px;font-weight:700;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+    font-size:0.625rem;font-weight:700;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
   nav.tabs button.active .tab-badge{background:rgba(255,255,255,.35)}
 
   /* ===== カード ===== */
@@ -103,11 +108,11 @@
     border-radius:var(--radius-sm);padding:6px 8px;background:var(--n-0)}
   .tag-input-wrap:focus-within{border-color:var(--accent-500);box-shadow:var(--focus-ring)}
   .tag-chip{background:var(--accent-50);color:var(--accent-700);border-radius:var(--radius-full);
-    padding:2px 6px 2px 10px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+    padding:2px 6px 2px 10px;font-size:0.75rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   .tag-chip button{background:none;padding:0;width:15px;height:15px;display:flex;align-items:center;
     justify-content:center;color:inherit;border-radius:50%}
   .tag-chip button:hover{background:rgba(67,56,202,.15)}
-  #tag-input{border:0;flex:1;min-width:120px;padding:3px 2px;font-size:13px;background:transparent}
+  #tag-input{border:0;flex:1;min-width:120px;padding:3px 2px;font-size:0.8125rem;background:transparent}
   #tag-input:focus{outline:none;box-shadow:none}
   .tag-chip.readonly{background:var(--n-100);color:var(--n-600)}
   .char-counter.near-limit{color:var(--warning-500)}
@@ -153,7 +158,7 @@
   .kpi{flex:1;min-width:150px;background:var(--n-25);border:1px solid var(--line);border-radius:var(--radius-md);
     padding:var(--sp-3) var(--sp-3);text-align:left;display:flex;flex-direction:column;gap:2px}
   .kpi .kpi-top{display:flex;align-items:center;justify-content:space-between}
-  .kpi .v{font-size:24px;font-weight:800;color:var(--n-900);letter-spacing:-.02em;line-height:1.1}
+  .kpi .v{font-size:1.5rem;font-weight:800;color:var(--n-900);letter-spacing:-.02em;line-height:1.1}
   .kpi .l{font-size:var(--fs-2xs);color:var(--n-400);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
   .kpi .trend{font-size:var(--fs-2xs);font-weight:700;border-radius:var(--radius-full);padding:1px 7px;display:inline-flex;align-items:center;gap:2px}
   .kpi .trend.good{color:var(--success-600);background:var(--success-50)}
@@ -201,7 +206,7 @@
   footer.refs{font-size:var(--fs-xs);color:var(--sub);line-height:1.9;margin-top:var(--sp-6)}
   /* J4(Lighthouse target-size監査): リンク1件ごとにpaddingを足し、タップ領域を広げる */
   footer.refs a{color:var(--accent-600);display:inline-block;padding:3px 0}
-  .svg-chart text{font-size:10px;fill:var(--n-400)}
+  .svg-chart text{font-size:0.625rem;fill:var(--n-400)}
   .printonly{display:none}
   .trialmark{display:none}
 
@@ -362,7 +367,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.15.0';
+var APP_VERSION = '0.16.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -667,9 +672,9 @@ var PRICING_PAGE_READY = false;
 var LEGAL_PRICING_URL = 'https://di-tools-legal.vercel.app/pricing.html';
 function pricingLinkHtml(){
   if (PRICING_PAGE_READY){
-    return '<a href="' + esc(LEGAL_PRICING_URL) + '" target="_blank" rel="noopener noreferrer" style="font-size:12.5px;color:var(--warning-600)">価格・お申し込み</a>';
+    return '<a href="' + esc(LEGAL_PRICING_URL) + '" target="_blank" rel="noopener noreferrer" style="font-size:0.78125rem;color:var(--warning-600)">価格・お申し込み</a>';
   }
-  return '<span style="font-size:12.5px;color:var(--n-400)" title="専用の価格ページは現在準備中です。お申し込みについては提供者までお問い合わせください。">価格・お申し込み: 準備中</span>';
+  return '<span style="font-size:0.78125rem;color:var(--n-400)" title="専用の価格ページは現在準備中です。お申し込みについては提供者までお問い合わせください。">価格・お申し込み: 準備中</span>';
 }
 var API = 'https://di-tools-api.vercel.app/api/workspace';
 var DRAFT_KEY = STORAGE_KEY + ':__draft';
@@ -1275,7 +1280,7 @@ function recordConsent(){
 }
 function termsHtml(){
   return TOOL_SPECIFIC_TERMS.map(function(t){
-    return '<div style="margin-bottom:10px"><b>' + esc(t.title) + '</b><div style="font-size:12.5px;line-height:1.8;color:#445">' + esc(t.body) + '</div></div>';
+    return '<div style="margin-bottom:10px"><b>' + esc(t.title) + '</b><div style="font-size:0.78125rem;line-height:1.8;color:#445">' + esc(t.body) + '</div></div>';
   }).join('');
 }
 
@@ -1682,10 +1687,10 @@ function renderPrintStamp(){
   var lic = licLoad();
   var ok = !!(lic && licVerify(lic.company, STORE, lic.key));
   if (ok){
-    el.innerHTML = '<div style="font-size:10.5px;color:#666;margin-top:6px">ライセンス：' + esc(lic.company) + ' 様 / 印刷日: ' + new Date().toLocaleDateString('ja-JP') + '</div>';
+    el.innerHTML = '<div style="font-size:0.65625rem;color:#666;margin-top:6px">ライセンス：' + esc(lic.company) + ' 様 / 印刷日: ' + new Date().toLocaleDateString('ja-JP') + '</div>';
   } else {
     el.innerHTML =
-      '<div style="font-size:12px;color:#c0392b;margin-top:6px;font-weight:bold;border:1px solid #c0392b;border-radius:6px;padding:6px 10px;text-align:center">試用版で出力したものです。業務・社外提出にはご利用いただけません。</div>' +
+      '<div style="font-size:0.75rem;color:#c0392b;margin-top:6px;font-weight:bold;border:1px solid #c0392b;border-radius:6px;padding:6px 10px;text-align:center">試用版で出力したものです。業務・社外提出にはご利用いただけません。</div>' +
       '<div class="trialmark">試用版</div>';
   }
 }
@@ -1745,6 +1750,17 @@ function bindScrollTracking(){
     });
   }, {passive: true});
 }
+/* G2: アクティブなタブの中身だけを再描画する(タブ切替・ライセンス状態・件数バッジ等の
+ * 「画面全体のクロム(chrome)」に影響しない操作向け)。renderAll()の内部実装としても
+ * 共有することで、タブの振り分けロジックを1箇所にまとめている(DRY)。 */
+function renderActiveTabOnly(){
+  var app = document.getElementById('app');
+  if (state.activeTab === 'new') app.innerHTML = '', renderNewCheckTab(app);
+  else if (state.activeTab === 'list') app.innerHTML = '', renderListTab(app);
+  else if (state.activeTab === 'dashboard') app.innerHTML = '', renderDashboardTab(app);
+  else if (state.activeTab === 'refdb') app.innerHTML = '', renderRefDbTab(app);
+  else if (state.activeTab === 'guide') app.innerHTML = '', renderGuideTab(app);
+}
 function renderAll(){
   var tabChanged = _lastRenderedTab !== null && _lastRenderedTab !== state.activeTab;
   renderTabs();
@@ -1754,12 +1770,7 @@ function renderAll(){
   renderOnboardingBanner();
   renderPrintStamp();
   renderFooter();
-  var app = document.getElementById('app');
-  if (state.activeTab === 'new') app.innerHTML = '', renderNewCheckTab(app);
-  else if (state.activeTab === 'list') app.innerHTML = '', renderListTab(app);
-  else if (state.activeTab === 'dashboard') app.innerHTML = '', renderDashboardTab(app);
-  else if (state.activeTab === 'refdb') app.innerHTML = '', renderRefDbTab(app);
-  else if (state.activeTab === 'guide') app.innerHTML = '', renderGuideTab(app);
+  renderActiveTabOnly();
   if (tabChanged && typeof window !== 'undefined' && window.scrollTo){
     window.scrollTo(0, state.scrollPositions[state.activeTab] || 0);
     // F3/F4: キーボード/スクリーンリーダー利用者向けに、タブ切替後は現在アクティブな
@@ -1819,7 +1830,7 @@ function renderConsentGate(app){
   var html = '<div class="card" role="region" aria-label="利用条件への同意">';
   html += '<h2>' + icon('alert', 17) + ' ご利用前に必ずお読みください(本ツール固有の注意事項)</h2>';
   html += termsHtml();
-  html += '<div style="margin-top:10px"><label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#223"><input type="checkbox" id="consent-checkbox" style="width:auto;margin-top:3px" /> 上記の内容を理解し、同意します。</label></div>';
+  html += '<div style="margin-top:10px"><label style="display:flex;gap:8px;align-items:flex-start;font-size:0.8125rem;color:#223"><input type="checkbox" id="consent-checkbox" style="width:auto;margin-top:3px" /> 上記の内容を理解し、同意します。</label></div>';
   html += '<div class="toolbar"><button class="primary" id="consent-agree" disabled>同意して利用を開始</button></div>';
   html += '</div>';
   app.innerHTML = html;
@@ -1921,7 +1932,7 @@ function renderNewCheckTab(app){
 
   html += '</div>';
 
-  html += '<div style="display:flex;align-items:center;gap:8px;margin:18px 4px 4px;color:var(--n-500);font-weight:700;font-size:13px">' +
+  html += '<div style="display:flex;align-items:center;gap:8px;margin:18px 4px 4px;color:var(--n-500);font-weight:700;font-size:0.8125rem">' +
     icon('checkCircle', 16) + ' 詳細検証(ここからは人が確認します)</div>';
 
   // 事実/意見/推測 切り分け
@@ -2175,7 +2186,7 @@ function patternScreenHtml(d){
 function accountSignalsListHtml(ac){
   return ACCOUNT_SIGNALS.map(function(s){
     var checked = ac.signals.indexOf(s.id) > -1;
-    return '<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13px;cursor:pointer">' +
+    return '<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:0.8125rem;cursor:pointer">' +
       '<input type="checkbox" data-signal="' + s.id + '"' + (checked ? ' checked' : '') + ' style="width:auto;margin-top:3px" />' +
       '<span>' + esc(s.label) + '</span></label>';
   }).join('');
@@ -2205,7 +2216,7 @@ function accountCheckHtml(d){
 function aiGenChecklistHtml(mc){
   return AI_GEN_CHECKLIST.map(function(f){
     var checked = mc.aiGenFlags.indexOf(f.id) > -1;
-    return '<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13px;cursor:pointer">' +
+    return '<label style="display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:0.8125rem;cursor:pointer">' +
       '<input type="checkbox" data-aigen="' + f.id + '"' + (checked ? ' checked' : '') + ' style="width:auto;margin-top:3px" />' +
       '<span>' + esc(f.label) + '</span></label>';
   }).join('');
@@ -2268,7 +2279,7 @@ function attachmentsListHtml(attachments){
     return '<div class="toolcard">' +
       (a.thumbDataUrl ? '<img src="' + esc(a.thumbDataUrl) + '"' + (a.fullImageKey ? ' data-idb-key="' + esc(a.fullImageKey) + '"' : '') +
         ' alt="' + esc(a.name || '添付ファイル') + '" style="width:100%;height:100px;object-fit:cover;border-radius:8px;margin-bottom:6px" />' : '') +
-      '<div style="font-size:12px;word-break:break-all">' + esc(a.name || '(無題)') + '</div>' +
+      '<div style="font-size:0.75rem;word-break:break-all">' + esc(a.name || '(無題)') + '</div>' +
       '<div class="note">' + esc(fmtDate(a.addedAt)) + '</div>' +
       '<button class="danger small" data-remove-attachment="' + esc(a.id) + '" style="margin-top:6px">' + icon('trash', 12) + ' 削除</button>' +
       '</div>';
@@ -2310,7 +2321,7 @@ function commentsListHtml(comments){
   return '<div class="row-list">' + comments.slice().sort(function(a, b){ return new Date(a.at) - new Date(b.at); }).map(function(c){
     return '<div class="row-item" style="grid-template-columns:1fr auto" data-comment-id="' + esc(c.id) + '">' +
       '<div><b>' + esc(c.author || '匿名') + '</b> <span class="helper">' + esc(fmtDateTime(c.at)) + '</span><div style="margin-top:2px;white-space:pre-wrap">' + esc(c.text) + '</div></div>' +
-      '<button class="danger small" data-remove-comment="' + esc(c.id) + '">' + icon('trash', 12) + '</button>' +
+      '<button class="danger small" data-remove-comment="' + esc(c.id) + '" aria-label="' + esc(c.author || '匿名') + 'のコメントを削除">' + icon('trash', 12) + '</button>' +
       '</div>';
   }).join('') + '</div>';
 }
@@ -2841,7 +2852,9 @@ function bindNewCheckEvents(app){
     state.draft = newItem();
     state.editingId = null;
     state.pendingRecovery = null;
-    renderAll();
+    // G2: フォームクリアはactiveTab('new')・タブバッジ・ライセンス表示等に影響しないため、
+    // ページ全体(タブナビ・ライセンスバー・フッター等)は再描画せず、タブ中身だけ更新する。
+    renderActiveTabOnly();
   });
 
   function refreshSegStats(){
@@ -3276,62 +3289,55 @@ function filteredItems(){
   }).sort(function(a,b){ return new Date(b.updatedAt) - new Date(a.updatedAt); });
 }
 
-function renderListRows(){
-  var wrap = document.getElementById('list-table-wrap');
-  var items = filteredItems();
-  if (!items.length){
-    wrap.innerHTML = '<div class="empty">' + icon('inbox', 34) + '<div class="empty-title">該当するチェック記録がありません</div><div>「新規/編集」タブから登録してください。</div></div>';
-    return;
-  }
-  var html = '<table><thead><tr>' +
-    '<th>更新日</th><th>種別</th><th>出所区分</th><th class="center" style="min-width:220px">主張</th>' +
-    '<th class="center">判定</th><th class="center">スコア(根拠)</th><th class="center">担当/状況</th>' +
-    '<th class="center">次回レビュー</th><th class="center">操作</th>' +
-    '</tr></thead><tbody>';
-  items.forEach(function(it){
-    var overall = computeOverall(it, state.weights);
-    var n = evidenceCount(it);
-    var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)', symbol:'—'};
-    // H13: 再確認期限が過ぎている行は背景をうっすら強調してハイライトする(色以外に
-    // 「次回レビュー」列のテキストラベルも併記済みのためF8の方針にも反しない)
-    var rowStyle = reviewDueStatus(it) === 'overdue' ? ' style="background:var(--danger-50)"' : '';
-    html += '<tr' + rowStyle + '>';
-    html += '<td>' + esc(fmtDate(it.updatedAt)) + '</td>';
-    html += '<td>' + (function(){
-      var mt = findOf(MEDIA_TYPES, it.mediaType);
-      return mt ? '<span style="display:inline-flex;align-items:center;gap:5px;color:var(--n-500)">' + icon(mt.icon, 14) + '<span>' + esc(mt.label) + '</span></span>' : esc(it.mediaType);
-    })() + '</td>';
-    html += '<td>' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</td>';
-    html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) +
-      (it.tags && it.tags.length ? '<div style="margin-top:4px">' + tagChipsHtml(it.tags, false) + '</div>' : '') + '</td>';
-    html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.symbol) + ' ' + esc(v.label) + '</span></td>';
-    html += '<td class="center">' + (overall == null ? '—' : overall) + '<span class="evidence-badge">' + n + '/5</span></td>';
-    html += '<td class="center">' + (function(){
-      var s = findOf(STATUS_OPTIONS, it.status) || STATUS_OPTIONS[0];
-      var assigneeLine = it.assignee ? '<div style="font-size:11.5px;color:var(--n-500);margin-top:2px">' + esc(it.assignee) + '</div>' : '';
-      return '<span class="evidence-badge" style="color:' + s.color + '">' + esc(s.symbol) + ' ' + esc(s.label) + '</span>' + assigneeLine;
-    })() + '</td>';
-    html += '<td class="center">' + (function(){
-      var st = reviewDueStatus(it);
-      if (st === 'none') return '<span class="helper">—</span>';
-      var map = {overdue:{label:'期限超過', bg:'var(--danger-50)', fg:'var(--danger-600)'},
-        soon:{label:'まもなく', bg:'var(--warning-50)', fg:'var(--warning-600)'},
-        ok:{label:'予定', bg:'var(--n-100)', fg:'var(--n-600)'}};
-      var m = map[st];
-      return '<span class="evidence-badge" style="background:' + m.bg + ';color:' + m.fg + '">' + esc(m.label) + ' ' + esc(fmtDate(it.reviewDueDate)) + '</span>';
-    })() + '</td>';
-    html += '<td class="center">' +
-      '<button class="ghost small" data-edit="' + it.id + '">編集</button> ' +
-      '<button class="ghost small" data-dup="' + it.id + '">複製</button> ' +
-      '<button class="ghost small" data-print="' + it.id + '">印刷</button> ' +
-      '<button class="danger small" data-del="' + it.id + '">削除</button>' +
-      '</td>';
-    html += '</tr>';
-  });
-  html += '</tbody></table>';
-  wrap.innerHTML = html;
-
-  wrap.querySelectorAll('[data-edit]').forEach(function(b){
+/* G1: 1件分の<tr>を組み立てる(通常表示・仮想スクロール表示の両方から再利用する)。 */
+function listRowHtml(it){
+  var overall = computeOverall(it, state.weights);
+  var n = evidenceCount(it);
+  var v = findOf(VERDICTS, it.verdict) || {label:'未判定', color:'var(--gray)', symbol:'—'};
+  // H13: 再確認期限が過ぎている行は背景をうっすら強調してハイライトする(色以外に
+  // 「次回レビュー」列のテキストラベルも併記済みのためF8の方針にも反しない)
+  var rowStyle = reviewDueStatus(it) === 'overdue' ? ' style="background:var(--danger-50)"' : '';
+  var html = '<tr' + rowStyle + '>';
+  html += '<td>' + esc(fmtDate(it.updatedAt)) + '</td>';
+  html += '<td>' + (function(){
+    var mt = findOf(MEDIA_TYPES, it.mediaType);
+    return mt ? '<span style="display:inline-flex;align-items:center;gap:5px;color:var(--n-500)">' + icon(mt.icon, 14) + '<span>' + esc(mt.label) + '</span></span>' : esc(it.mediaType);
+  })() + '</td>';
+  html += '<td>' + esc(labelOf(SOURCE_CATEGORIES, it.sourceCategory)) + '</td>';
+  html += '<td>' + esc(it.claimTitle || it.claimText.slice(0,60)) +
+    (it.tags && it.tags.length ? '<div style="margin-top:4px">' + tagChipsHtml(it.tags, false) + '</div>' : '') + '</td>';
+  html += '<td class="center"><span class="badge" style="background:' + v.color + '">' + esc(v.symbol) + ' ' + esc(v.label) + '</span></td>';
+  html += '<td class="center">' + (overall == null ? '—' : overall) + '<span class="evidence-badge">' + n + '/5</span></td>';
+  html += '<td class="center">' + (function(){
+    var s = findOf(STATUS_OPTIONS, it.status) || STATUS_OPTIONS[0];
+    var assigneeLine = it.assignee ? '<div style="font-size:0.71875rem;color:var(--n-500);margin-top:2px">' + esc(it.assignee) + '</div>' : '';
+    return '<span class="evidence-badge" style="color:' + s.color + '">' + esc(s.symbol) + ' ' + esc(s.label) + '</span>' + assigneeLine;
+  })() + '</td>';
+  html += '<td class="center">' + (function(){
+    var st = reviewDueStatus(it);
+    if (st === 'none') return '<span class="helper">—</span>';
+    var map = {overdue:{label:'期限超過', bg:'var(--danger-50)', fg:'var(--danger-600)'},
+      soon:{label:'まもなく', bg:'var(--warning-50)', fg:'var(--warning-600)'},
+      ok:{label:'予定', bg:'var(--n-100)', fg:'var(--n-600)'}};
+    var m = map[st];
+    return '<span class="evidence-badge" style="background:' + m.bg + ';color:' + m.fg + '">' + esc(m.label) + ' ' + esc(fmtDate(it.reviewDueDate)) + '</span>';
+  })() + '</td>';
+  html += '<td class="center">' +
+    '<button class="ghost small" data-edit="' + it.id + '">編集</button> ' +
+    '<button class="ghost small" data-dup="' + it.id + '">複製</button> ' +
+    '<button class="ghost small" data-print="' + it.id + '">印刷</button> ' +
+    '<button class="danger small" data-del="' + it.id + '">削除</button>' +
+    '</td>';
+  html += '</tr>';
+  return html;
+}
+var LIST_TABLE_HEAD_HTML = '<tr>' +
+  '<th>更新日</th><th>種別</th><th>出所区分</th><th class="center" style="min-width:220px">主張</th>' +
+  '<th class="center">判定</th><th class="center">スコア(根拠)</th><th class="center">担当/状況</th>' +
+  '<th class="center">次回レビュー</th><th class="center">操作</th>' +
+  '</tr>';
+function bindListRowButtons(container){
+  container.querySelectorAll('[data-edit]').forEach(function(b){
     b.addEventListener('click', function(){
       var it = state.items.filter(function(x){ return x.id === b.dataset.edit; })[0];
       state.draft = cloneItem(it);
@@ -3340,7 +3346,7 @@ function renderListRows(){
       renderAll();
     });
   });
-  wrap.querySelectorAll('[data-dup]').forEach(function(b){
+  container.querySelectorAll('[data-dup]').forEach(function(b){
     b.addEventListener('click', function(){
       var it = state.items.filter(function(x){ return x.id === b.dataset.dup; })[0];
       var copy = cloneItem(it);
@@ -3353,7 +3359,7 @@ function renderListRows(){
       renderListRows();
     });
   });
-  wrap.querySelectorAll('[data-del]').forEach(function(b){
+  container.querySelectorAll('[data-del]').forEach(function(b){
     b.addEventListener('click', function(){
       if (!confirm('このチェック記録を削除します。よろしいですか？')) return;
       state.items = state.items.filter(function(x){ return x.id !== b.dataset.del; });
@@ -3361,12 +3367,72 @@ function renderListRows(){
       renderListRows();
     });
   });
-  wrap.querySelectorAll('[data-print]').forEach(function(b){
+  container.querySelectorAll('[data-print]').forEach(function(b){
     b.addEventListener('click', function(){
       var it = state.items.filter(function(x){ return x.id === b.dataset.print; })[0];
       printCase(it);
     });
   });
+}
+
+/* G1: 件数が多い場合(既定1000件超も実用上快適な閾値として300件超)は、
+ * 画面内に見えている分だけ<tr>を実際に描画する簡易仮想スクロールに切り替える。
+ * 行の高さは概算値(VIRTUAL_ROW_HEIGHT)で扱う。ピクセル単位で完全に一致しなくても、
+ * スクロールバーの位置とサイズが概ね実件数に対応していれば実用上は十分機能する。
+ * jsdom等、レイアウトエンジンが無くclientHeightが常に0になる環境では、閾値を
+ * 超えていても安全に全件描画にフォールバックする(グレースフルデグラデーション)。 */
+var VIRTUAL_SCROLL_THRESHOLD = 300;
+var VIRTUAL_ROW_HEIGHT = 56;
+var VIRTUAL_VIEWPORT_HEIGHT = 640;
+var VIRTUAL_BUFFER_ROWS = 8;
+function renderListRows(){
+  var wrap = document.getElementById('list-table-wrap');
+  var items = filteredItems();
+  if (!items.length){
+    wrap.innerHTML = '<div class="empty">' + icon('inbox', 34) + '<div class="empty-title">該当するチェック記録がありません</div><div>「新規/編集」タブから登録してください。</div></div>';
+    return;
+  }
+  if (items.length > VIRTUAL_SCROLL_THRESHOLD){
+    renderVirtualizedListRows(wrap, items);
+    return;
+  }
+  wrap.innerHTML = '<table><thead>' + LIST_TABLE_HEAD_HTML + '</thead><tbody>' +
+    items.map(listRowHtml).join('') + '</tbody></table>';
+  bindListRowButtons(wrap);
+}
+function renderVirtualizedListRows(wrap, items){
+  wrap.innerHTML =
+    '<div class="helper">' + icon('info', 12) + ' ' + items.length + '件と多いため、表示中の範囲だけを描画しています(スクロールで続きが表示されます)。</div>' +
+    '<div id="virtual-scroll-viewport" style="max-height:' + VIRTUAL_VIEWPORT_HEIGHT + 'px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-md)">' +
+    '<table><thead>' + LIST_TABLE_HEAD_HTML + '</thead><tbody id="virtual-scroll-tbody"></tbody></table>' +
+    '</div>';
+  var viewport = document.getElementById('virtual-scroll-viewport');
+  function renderVisibleSlice(){
+    var clientHeight = viewport.clientHeight;
+    var tbody = document.getElementById('virtual-scroll-tbody');
+    if (!tbody) return;
+    if (!clientHeight){
+      // jsdom等、実レイアウトが無い環境では全件描画にフォールバックする
+      tbody.innerHTML = items.map(listRowHtml).join('');
+      bindListRowButtons(tbody);
+      return;
+    }
+    var scrollTop = viewport.scrollTop;
+    var startIdx = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_BUFFER_ROWS);
+    var visibleCount = Math.ceil(clientHeight / VIRTUAL_ROW_HEIGHT) + VIRTUAL_BUFFER_ROWS * 2;
+    var endIdx = Math.min(items.length, startIdx + visibleCount);
+    var topSpacerHeight = startIdx * VIRTUAL_ROW_HEIGHT;
+    var bottomSpacerHeight = (items.length - endIdx) * VIRTUAL_ROW_HEIGHT;
+    var html = '';
+    if (topSpacerHeight > 0) html += '<tr aria-hidden="true"><td colspan="9" style="padding:0;border:none;height:' + topSpacerHeight + 'px"></td></tr>';
+    html += items.slice(startIdx, endIdx).map(listRowHtml).join('');
+    if (bottomSpacerHeight > 0) html += '<tr aria-hidden="true"><td colspan="9" style="padding:0;border:none;height:' + bottomSpacerHeight + 'px"></td></tr>';
+    tbody.innerHTML = html;
+    bindListRowButtons(tbody);
+  }
+  // scrollイベントはthrottleし、スクロール中の過剰な再描画を防ぐ(G4と同じ考え方)
+  viewport.addEventListener('scroll', debounce(renderVisibleSlice, 50));
+  renderVisibleSlice();
 }
 
 /* G6: CSV文字列組み立て(rowsを受け取るだけの純粋関数)。
@@ -3498,7 +3564,7 @@ function printCase(it){
   var lic = licLoad();
   var licOk = !!(lic && licVerify(lic.company, STORE, lic.key));
   var html = '<div class="card">';
-  html += '<div style="border:2px solid #c0392b;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#c0392b">' +
+  html += '<div style="border:2px solid #c0392b;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.78125rem;color:#c0392b">' +
     '<b>本レポートの位置づけ</b>：本レポートは記録者(' + esc(it.reviewer || '確認者未記入') + ')が独自の手順で作成した' +
     '<b>ワーキングドキュメント</b>であり、IFCN加盟団体等による<b>公式な認証・証明ではありません</b>。' +
     '算出スコア・判定は記録された根拠(' + n + '/5軸)に基づく参考情報であり、内容の真偽を保証するものではありません。' +
@@ -3556,7 +3622,7 @@ function printCase(it){
       return '<li>' + esc(fmtDateTime(h.at)) + ' ' + esc(labelOf(VERDICTS, h.from) || '(未判定)') + ' → ' + esc(labelOf(VERDICTS, h.to) || '(未判定)') + '</li>';
     }).join('') + '</ul>';
   }
-  html += '<div style="margin-top:16px;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:8px">' +
+  html += '<div style="margin-top:16px;font-size:0.6875rem;color:#888;border-top:1px solid #ddd;padding-top:8px">' +
     '提供: ' + esc(PROVIDER_NAME) + ' / 印刷日: ' + new Date().toLocaleString('ja-JP') +
     (licOk ? (' / ライセンス: ' + esc(lic.company) + ' 様') : ' / 試用版で出力') +
     '</div>';
@@ -4301,7 +4367,7 @@ function renderRefDbTab(app){
       return '<div class="toolcard">' +
         (ref.thumbDataUrl ? '<img src="' + ref.thumbDataUrl + '"' + (ref.fullImageKey ? ' data-idb-key="' + esc(ref.fullImageKey) + '"' : '') +
           ' alt="' + esc(ref.label) + '" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px" />' : '') +
-        '<div style="font-weight:700;font-size:13px">' + esc(ref.label) + '</div>' +
+        '<div style="font-weight:700;font-size:0.8125rem">' + esc(ref.label) + '</div>' +
         '<div class="note">' + esc(ref.eventDate || '日付不明') + ' / 登録日: ' + esc(fmtDate(ref.registeredAt)) + '</div>' +
         '<div class="toolbar" style="margin-top:6px"><button class="danger small" data-refdb-del="' + esc(ref.id) + '">' + icon('trash', 13) + ' 削除</button></div>' +
         '</div>';
@@ -4349,7 +4415,9 @@ function renderRefDbTab(app){
         state.referenceDb = state.referenceDb.concat(entries);
         persistReferenceDb();
         toast('参照メディアDBを' + entries.length + '件インポートしました。(高解像度画像は別端末のIndexedDBには無いため、縮小版のみ表示されます)', {type:'success', duration:6000});
-        renderAll();
+        // G2: 参照メディアDBの更新はrefdbタブ内で完結し、タブナビ・ライセンス表示等の
+        // ページ全体クロムには影響しないため、タブ中身だけ再描画する。
+        renderActiveTabOnly();
       }catch(err){
         toast('インポートに失敗しました: ' + err.message, {type:'danger'});
       }
@@ -4368,10 +4436,10 @@ function renderRefDbTab(app){
       toast('参照メディアを削除しました。', {
         type: 'warning', actionLabel: '元に戻す',
         onAction: function(){
-          if (removed){ state.referenceDb.push(removed); persistReferenceDb(); renderAll(); }
+          if (removed){ state.referenceDb.push(removed); persistReferenceDb(); renderActiveTabOnly(); }
         }
       });
-      renderAll();
+      renderActiveTabOnly();
     });
   });
 }
@@ -4514,7 +4582,7 @@ function customPatternsListHtml(custom){
   return '<div class="segstats">' + custom.map(function(p){
     return '<span title="' + esc(p.tip) + '(キーワード: ' + esc(p.keywords.join('、')) + ')">' +
       esc(p.category) + ': ' + esc(p.label) + '(重み' + p.weight + ')' +
-      ' <button class="danger small" data-remove-pattern="' + esc(p.id) + '" style="margin-left:4px;padding:0 6px">' + icon('trash', 10) + '</button>' +
+      ' <button class="danger small" data-remove-pattern="' + esc(p.id) + '" aria-label="カスタムパターン「' + esc(p.label) + '」を削除" style="margin-left:4px;padding:0 6px">' + icon('trash', 10) + '</button>' +
       '</span>';
   }).join('') + '</div>';
 }

@@ -1319,6 +1319,126 @@ async function agreeToConsent(dom) {
     assert.ok(doc.body.textContent.includes('動画マニュアルは現在準備中です'), '動画マニュアルの準備中案内が表示されない');
   });
 
+  /* ============================= G1: 大量データ時の仮想スクロール ============================= */
+
+  await test('一覧タブ: 閾値以下の件数では通常通り全件を<table>に描画する(G1)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: '通常件数', claimText: 't' })];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const doc = w.document;
+    assert.strictEqual(doc.querySelectorAll('#list-table-wrap tbody tr').length, 1);
+    assert.strictEqual(doc.getElementById('virtual-scroll-viewport'), null, '閾値以下では仮想スクロール用のviewportを作らないべき');
+  });
+
+  await test('一覧タブ: 閾値超過(300件超)では仮想スクロール表示に切り替わり、jsdom(clientHeight=0)では全件フォールバック描画する(G1)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const items = [];
+    for (let i = 0; i < w.VIRTUAL_SCROLL_THRESHOLD + 10; i++) {
+      items.push(w.normalizeItem({ id: 'g1-' + i, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: '件名' + i, claimText: 't' }));
+    }
+    w.state.items = items;
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const doc = w.document;
+    const viewport = doc.getElementById('virtual-scroll-viewport');
+    assert.ok(viewport, '閾値超過時は仮想スクロールのviewportが作られるべき');
+    // jsdomはレイアウトエンジンが無くclientHeightが常に0のため、安全側(全件描画)にフォールバックする
+    assert.strictEqual(doc.querySelectorAll('#virtual-scroll-tbody tr').length, items.length, 'jsdomでは全件フォールバック描画になるべき');
+  });
+
+  await test('listRowHtml: 単体で呼び出しても例外を投げず<tr>を返す(G1のリファクタで抽出した関数)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const it = w.normalizeItem({ id: 'x', claimTitle: 'テスト', claimText: 't', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const html = w.listRowHtml(it);
+    assert.ok(html.startsWith('<tr'));
+    assert.ok(html.includes('テスト'));
+  });
+
+  /* ============================= G2: 差分更新(タブ中身だけの再描画) ============================= */
+
+  await test('renderActiveTabOnly: タブナビ・ライセンスバー・フッターは再描画せずタブ中身だけ更新する(G2)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    w.state.activeTab = 'list';
+    w.renderAll();
+
+    let tabsCalled = 0, footerCalled = 0;
+    const originalRenderTabs = w.renderTabs;
+    const originalRenderFooter = w.renderFooter;
+    w.renderTabs = function () { tabsCalled++; return originalRenderTabs.apply(this, arguments); };
+    w.renderFooter = function () { footerCalled++; return originalRenderFooter.apply(this, arguments); };
+
+    w.renderActiveTabOnly();
+    assert.strictEqual(tabsCalled, 0, 'renderActiveTabOnly()はrenderTabs()を呼ばないべき');
+    assert.strictEqual(footerCalled, 0, 'renderActiveTabOnly()はrenderFooter()を呼ばないべき');
+    assert.ok(doc.getElementById('list-table-wrap'), 'タブ中身自体は正しく再描画されるべき');
+
+    w.renderTabs = originalRenderTabs;
+    w.renderFooter = originalRenderFooter;
+  });
+
+  await test('フォームクリア(btn-reset)はrenderActiveTabOnly経由でタブ中身のみ更新する(G2)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    w.confirm = () => true;
+    w.state.draft.claimTitle = '消えるはずのタイトル';
+
+    let tabsCalled = 0;
+    const originalRenderTabs = w.renderTabs;
+    w.renderTabs = function () { tabsCalled++; return originalRenderTabs.apply(this, arguments); };
+
+    doc.getElementById('btn-reset').click();
+    assert.strictEqual(tabsCalled, 0, 'フォームクリアはrenderTabs()を再実行しないべき(G2の差分更新)');
+    assert.strictEqual(w.state.draft.claimTitle, '', 'フォームは実際にクリアされるべき');
+    w.renderTabs = originalRenderTabs;
+  });
+
+  /* ============================= F5: アイコンのみのボタンにアクセシブルネームを付与 ============================= */
+
+  await test('コメント削除・カスタムパターン削除の各ボタンはアイコンのみでもaria-labelで意味が伝わる(F5)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    w.state.draft.comments.push(w.normalizeComment({ author: '山田', text: 'コメント本文' }));
+    w.state.activeTab = 'new';
+    w.renderAll();
+    doc.getElementById('comment-author').value = '鈴木';
+    doc.getElementById('comment-text').value = 'アクセシビリティ確認用';
+    doc.getElementById('comment-add-btn').click();
+    const removeCommentBtn = doc.querySelector('[data-remove-comment]');
+    assert.ok(removeCommentBtn, 'コメント削除ボタンが見つからない');
+    assert.ok(removeCommentBtn.getAttribute('aria-label'), 'コメント削除ボタンにaria-labelが無い(アイコンのみでは読み上げられない)');
+
+    w.state.activeTab = 'guide';
+    w.renderAll();
+    doc.getElementById('cp-label').value = 'F5確認用パターン';
+    doc.getElementById('cp-keywords').value = 'テストキーワード';
+    doc.getElementById('cp-add').click();
+    const removePatternBtn = doc.querySelector('[data-remove-pattern]');
+    assert.ok(removePatternBtn, 'カスタムパターン削除ボタンが見つからない');
+    assert.ok(removePatternBtn.getAttribute('aria-label'), 'カスタムパターン削除ボタンにaria-labelが無い');
+  });
+
+  /* ============================= F7: 文字サイズ変更への耐性 ============================= */
+
+  await test('タイポグラフィスケールはpx固定ではなくrem単位になっている(F7、ブラウザの文字サイズ拡大機能に対応するため)', async () => {
+    const dom = await freshDom();
+    const styleText = Array.from(dom.window.document.querySelectorAll('style')).map((s) => s.textContent).join('\n');
+    const m = styleText.match(/--fs-base:\s*([^;]+);/);
+    assert.ok(m, '--fs-baseの定義が見つからない');
+    assert.ok(m[1].trim().endsWith('rem'), '--fs-baseがrem単位になっていない(px固定だと、実ブラウザでdocument.documentElement.style.fontSizeを' +
+      '変更するアクセシビリティ機能を使っても文字が拡大されないバグが実測で見つかった): ' + m[1]);
+  });
+
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
    * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
    * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の
