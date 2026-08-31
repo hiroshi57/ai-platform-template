@@ -433,7 +433,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.20.0';
+var APP_VERSION = '0.21.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -760,6 +760,7 @@ state.saveError = '';
 state.onboardingStep = 0; // M1: セッション内だけの一時状態(永続化しない)
 state.formWizardMode = false; // D5: 既定OFF(1ページ表示のまま)。セッション内だけの一時状態
 state.formWizardStep = 0;
+state.draftDirty = false; // D6: 「新規/編集」タブで未保存の変更があるかどうか。セッション内だけの一時状態
 state.pendingRecovery = null; // 起動時に見つかった未保存下書き(あれば)。init 末尾で設定する
 
 /* ============================= スキーマバージョニング / 正規化 =============================
@@ -1651,11 +1652,27 @@ function renderTabs(){
   }).join('');
   el.querySelectorAll('button').forEach(function(btn){
     btn.addEventListener('click', function(){
+      if (btn.dataset.tab === state.activeTab) return; // 同じタブへのクリックは何もしない
+      if (!confirmLeaveDraftIfDirty()) return; // D6
       state.activeTab = btn.dataset.tab;
       if (state.activeTab === 'new' && !state.draft){ state.draft = newItem(); state.editingId = null; }
       renderAll();
     });
   });
+}
+/* D6: 「新規/編集」タブで未保存の変更(state.draftDirty)がある状態で他のタブへ
+ * 移動しようとした場合、確認ダイアログを出す。既にこのツールには下書き自動保存
+ * (600msデバウンス)とクラッシュ復旧バナーがあるため「データが完全に失われる」
+ * わけではないが、「意図せず今の編集内容から離れてしまう」ことへの気づきを与える
+ * ためのものである(その旨をダイアログ文言にも明記する)。
+ * 戻り値: true = 移動してよい(dirtyでない、またはユーザーが確認した)、false = 移動を中止する。 */
+function confirmLeaveDraftIfDirty(){
+  if (state.activeTab !== 'new' || !state.draftDirty) return true;
+  return confirm(
+    'まだ保存していない変更があります。このまま他の画面に移動すると、入力内容は' +
+    '自動下書き保存(数秒ごと)には残りますが、正式な保存は行われません。\n\n' +
+    '移動してよろしいですか？(「保存」ボタンを押してから移動することをおすすめします)'
+  );
 }
 /* B7: URLハッシュとタブ状態の相互変換。無効な値(未知のタブID)は無視して
  * null を返す(存在しないタブへ切り替わってしまうことを防ぐ)。 */
@@ -1692,6 +1709,7 @@ function renderFooter(){
   var link = document.getElementById('footer-terms-link');
   if (link) link.addEventListener('click', function(e){
     e.preventDefault();
+    if (!confirmLeaveDraftIfDirty()) return; // D6
     state.activeTab = 'guide';
     renderAll();
   });
@@ -1971,6 +1989,10 @@ function renderNewCheckTab(app){
   if (!state.draft){ state.draft = newItem(); state.editingId = null; }
   var d = state.draft;
   var isEdit = !!state.editingId;
+  // D6: このタブが(再)描画されるタイミングで「未保存の変更」フラグをリセットする。
+  // 通常のフィールド入力・行追加削除はここを再実行させない(全体再描画をしない設計の
+  // ため)ので、この関数が呼ばれるのは「新しい下書きに切り替わった時」に限られる。
+  state.draftDirty = false;
 
   var html = '';
   html += '<div class="card">';
@@ -2549,6 +2571,11 @@ function bindNewCheckEvents(app){
 
   var draftSaveTimer = null;
   function scheduleDraftAutosave(){
+    // D6: このフォーム内のあらゆるデータ変更操作(フィールド入力・行追加削除・
+    // タグ/コメント/添付ファイルの追加削除等)は最終的に必ずこの関数を呼ぶため、
+    // ここを「変更があった」ことを検知する一元的なフックとして使う
+    // (個々のイベントハンドラすべてに変更検知コードを書き足す必要が無い)。
+    state.draftDirty = true;
     if (draftSaveTimer) clearTimeout(draftSaveTimer);
     draftSaveTimer = setTimeout(function(){ persistDraft(); }, 600);
   }
@@ -5073,12 +5100,18 @@ document.addEventListener('keydown', function(e){
   if (isTyping || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'n'){
     e.preventDefault();
+    if (state.activeTab === 'new') return; // 既に新規/編集タブなら何もしない
+    if (!confirmLeaveDraftIfDirty()) return; // D6
     state.activeTab = 'new';
     if (!state.draft){ state.draft = newItem(); state.editingId = null; }
     renderAll();
   } else if (e.key === '/'){
     e.preventDefault();
-    if (state.activeTab !== 'list'){ state.activeTab = 'list'; renderAll(); }
+    if (state.activeTab !== 'list'){
+      if (!confirmLeaveDraftIfDirty()) return; // D6
+      state.activeTab = 'list';
+      renderAll();
+    }
     runAfterNextPaint(function(){
       var q = document.getElementById('filter-q');
       if (q) q.focus();
@@ -5146,6 +5179,9 @@ function renderCommandPaletteResults(query){
     btn.addEventListener('click', function(){
       var type = btn.getAttribute('data-cmdk-type');
       var id = btn.getAttribute('data-cmdk-id');
+      // D6: コマンドパレットは「新規/編集」タブを開いたままでもCtrl/Cmd+Kで呼び出せるため、
+      // タブ遷移・別案件への切替のいずれもここでガードする必要がある。
+      if (!confirmLeaveDraftIfDirty()) return;
       closeCommandPalette();
       if (type === 'tab'){
         state.activeTab = id;

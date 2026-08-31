@@ -1881,6 +1881,81 @@ async function agreeToConsent(dom) {
     assert.strictEqual(doc.getElementById('verdict-score-value').textContent, '100', '根拠を追加すると最終的な数値が反映されるべき');
   });
 
+  /* ============================= D6: フォーム離脱時の確認ダイアログ ============================= */
+
+  await test('新規/編集フォーム: 変更が無ければタブ切替時に確認ダイアログを出さない(D6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    let confirmCalled = false;
+    w.confirm = () => { confirmCalled = true; return true; };
+    doc.querySelector('button[data-tab="list"]').click();
+    assert.strictEqual(confirmCalled, false, '変更が無い状態では確認ダイアログを出すべきではない');
+    assert.strictEqual(w.state.activeTab, 'list');
+  });
+
+  await test('新規/編集フォーム: 未保存の変更がある状態でタブ切替すると確認ダイアログを出し、キャンセルすると移動しない(D6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.getElementById('f-claimText').value = '未保存の変更';
+    doc.getElementById('f-claimText').dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.strictEqual(w.state.draftDirty, true, '入力するとdraftDirtyがtrueになるべき');
+
+    let confirmMessage = '';
+    w.confirm = (msg) => { confirmMessage = msg; return false; }; // キャンセルする
+    doc.querySelector('button[data-tab="list"]').click();
+    assert.ok(confirmMessage.includes('保存していない変更'), '確認ダイアログの文言が適切でない: ' + confirmMessage);
+    assert.strictEqual(w.state.activeTab, 'new', 'キャンセルした場合はタブ移動しないべき');
+  });
+
+  await test('新規/編集フォーム: 確認ダイアログで承諾すればタブ移動する(D6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.getElementById('f-claimText').value = '未保存の変更';
+    doc.getElementById('f-claimText').dispatchEvent(new w.Event('input', { bubbles: true }));
+    w.confirm = () => true; // 承諾する
+    doc.querySelector('button[data-tab="list"]').click();
+    assert.strictEqual(w.state.activeTab, 'list', '承諾した場合はタブ移動するべき');
+  });
+
+  await test('新規/編集フォーム: 保存すると未保存フラグがリセットされ、以後は確認無しでタブ移動できる(D6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.getElementById('f-claimText').value = '保存するテスト';
+    doc.getElementById('f-claimText').dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.strictEqual(w.state.draftDirty, true);
+    doc.getElementById('btn-save').click(); // 保存後は一覧タブに遷移する
+
+    // 保存後、再度「新規/編集」タブを開いても未保存フラグは立っていないはず
+    let confirmCalled = false;
+    w.confirm = () => { confirmCalled = true; return true; };
+    doc.querySelector('button[data-tab="new"]').click();
+    doc.querySelector('button[data-tab="list"]').click();
+    assert.strictEqual(confirmCalled, false, '保存直後は未保存の変更が無いはずなので確認ダイアログを出すべきではない');
+  });
+
+  await test('コマンドパレット: 未保存の変更がある状態でタブジャンプしようとすると確認ダイアログを出す(D6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.getElementById('f-claimText').value = '未保存の変更';
+    doc.getElementById('f-claimText').dispatchEvent(new w.Event('input', { bubbles: true }));
+    let confirmCalled = false;
+    w.confirm = () => { confirmCalled = true; return false; };
+    w.openCommandPalette();
+    doc.querySelector('[data-cmdk-type="tab"][data-cmdk-id="dashboard"]').click();
+    assert.strictEqual(confirmCalled, true, 'コマンドパレット経由のタブジャンプでも確認ダイアログを出すべき');
+    assert.strictEqual(w.state.activeTab, 'new', 'キャンセルした場合は移動しないべき');
+  });
+
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
    * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
    * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の
