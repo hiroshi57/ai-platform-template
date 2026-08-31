@@ -141,10 +141,19 @@
   .helper{font-size:var(--fs-xs);color:var(--sub);margin-top:3px}
   .row-list{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--sp-2);margin-top:6px;background:var(--n-25)}
   .row-item{border:1px solid var(--line);border-radius:var(--radius-sm);padding:var(--sp-2) 10px;margin-bottom:var(--sp-2);
-    background:var(--n-0);display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:var(--sp-2);align-items:start}
+    background:var(--n-0);display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:var(--sp-2);align-items:start;
+    animation:row-fade-in .22s ease}
   .row-item.seg{grid-template-columns:2fr 1fr auto}
   .row-item.ai{grid-template-columns:1fr 1fr 2fr auto}
   @media(max-width:760px){.row-item,.row-item.seg,.row-item.ai{grid-template-columns:1fr}}
+  /* E3: 行の追加/削除にフェードイン/アウトを付ける。
+   * fade-inは新規挿入されたDOM要素に自動的に発火する(要素がドキュメントに追加された
+   * タイミングでCSSアニメーションが開始する挙動を利用しており、JS側の追加コードは不要)。
+   * fade-outはrow-leavingクラスを付与してから一定時間後に実際の要素を除去するため、
+   * JS側で遅延処理が必要になる。 */
+  @keyframes row-fade-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+  .row-item.row-leaving{animation:row-fade-out .18s ease forwards;pointer-events:none}
+  @keyframes row-fade-out{to{opacity:0;transform:scale(.97)}}
 
   /* ===== ボタン ===== */
   button{border:0;border-radius:var(--radius-sm);cursor:pointer;font-size:var(--fs-sm);
@@ -277,6 +286,9 @@
   .toast button:hover{background:rgba(255,255,255,.28)}
   .toast.leaving{animation:toast-out .18s ease-in forwards}
   @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  /* E2: 保存成功等のトーストに付くチェックマークのポップインアニメーション */
+  .toast-icon-pop{display:inline-flex;flex-shrink:0;animation:toast-icon-pop .35s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes toast-icon-pop{0%{transform:scale(0)}70%{transform:scale(1.25)}100%{transform:scale(1)}}
   @keyframes toast-out{to{opacity:0;transform:translateY(8px)}}
 
   /* ===== B6: グローバル検索(コマンドパレット) =====
@@ -421,7 +433,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.19.0';
+var APP_VERSION = '0.20.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -1405,6 +1417,15 @@ function toast(message, opts){
   if (!root) { return { dismiss: function(){} }; }
   var el = document.createElement('div');
   el.className = 'toast' + (opts.type ? ' ' + opts.type : '');
+  // E2: opts.iconを指定すると、アイコン(既定でチェックマーク系)がポップインする
+  // マイクロアニメーション付きで表示される(保存成功等の視覚的フィードバック用)。
+  if (opts.icon){
+    var iconWrap = document.createElement('span');
+    iconWrap.className = 'toast-icon-pop';
+    iconWrap.innerHTML = icon(opts.icon, 15);
+    iconWrap.setAttribute('aria-hidden', 'true');
+    el.appendChild(iconWrap);
+  }
   var msgSpan = document.createElement('span');
   msgSpan.className = 'toast-msg';
   msgSpan.textContent = message;
@@ -2163,7 +2184,7 @@ function verdictBlockHtml(d){
   var n = evidenceCount(d);
   var html = '';
   html += '<div class="kpis">';
-  html += kpi(overall == null ? '—' : overall, '算出スコア(0-100)');
+  html += kpi(overall == null ? '—' : overall, '算出スコア(0-100)', null, null, 'verdict-score-value');
   html += kpi(labelOf(VERDICTS, suggested), '推奨判定(参考)');
   html += kpi(n + '/5', '根拠が記録された軸の数');
   html += '</div>';
@@ -2241,18 +2262,43 @@ function colorSelectHtml(domId, list, current, allowEmpty){
     selectHtml(domId, list, current, allowEmpty) +
     '</div>';
 }
-function kpi(value, label, trend, dragKey){
+function kpi(value, label, trend, dragKey, valueId){
   // trend: {arrow:'up'|'down'|'flat', sentiment:'good'|'bad'|'neutral', text:'...'} で前月比等を表示する(A8)。
   // arrow は実際の増減方向、sentiment はその増減が「良いことか悪いことか」を指標ごとに判断して渡す
   // (例: スコアの上昇はgood、誤り件数の上昇はbad)。
   // dragKey を渡すとC7のドラッグ並び替え対象になる(ダッシュボードのKPIカードのみ想定)。
+  // valueId を渡すと、E5のカウントアップアニメーション対象として数値要素を特定できる。
   var trendHtml = '';
   if (trend){
     var arrowChar = trend.arrow === 'up' ? '▲' : trend.arrow === 'down' ? '▼' : '―';
     trendHtml = '<span class="trend ' + esc(trend.sentiment || 'neutral') + '">' + arrowChar + ' ' + esc(trend.text) + '</span>';
   }
   var dragAttrs = dragKey ? ' draggable="true" data-kpi-key="' + esc(dragKey) + '" tabindex="0" aria-label="' + esc(label) + '(ドラッグして並び替え可能)"' : '';
-  return '<div class="kpi"' + dragAttrs + '><div class="kpi-top"><div class="v">' + esc(value) + '</div>' + trendHtml + '</div><div class="l">' + esc(label) + '</div></div>';
+  return '<div class="kpi"' + dragAttrs + '><div class="kpi-top"><div class="v"' + (valueId ? ' id="' + esc(valueId) + '"' : '') + '>' + esc(value) + '</div>' + trendHtml + '</div><div class="l">' + esc(label) + '</div></div>';
+}
+
+/* E5: KPI等の数値がスコア変化時にカウントアップ/ダウンして見えるようにする。
+ * requestAnimationFrame未対応環境やprefers-reduced-motion設定時は、アニメーションせず
+ * 最終値を即座に表示する(グレースフルデグラデーション、他の機能と同じ方針)。 */
+function animateNumberTo(el, fromValue, toValue, duration){
+  if (!el) return;
+  var to = Number(toValue);
+  var from = Number(fromValue);
+  var prefersReducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (isNaN(to) || isNaN(from) || from === to || prefersReducedMotion || typeof requestAnimationFrame !== 'function'){
+    el.textContent = isNaN(to) ? toValue : to;
+    return;
+  }
+  var startTime = null;
+  duration = duration || 400;
+  function step(ts){
+    if (startTime === null) startTime = ts;
+    var progress = Math.min(1, (ts - startTime) / duration);
+    el.textContent = Math.round(from + (to - from) * progress);
+    if (progress < 1) requestAnimationFrame(step);
+    else el.textContent = to;
+  }
+  requestAnimationFrame(step);
 }
 
 function segRowHtml(row){
@@ -2986,11 +3032,15 @@ function bindNewCheckEvents(app){
       var listName = rm.dataset.remove;
       var rowEl = rm.closest('[data-rid]');
       var rid = rowEl.dataset.rid;
+      // データ自体(d[listName])は即座に更新する(保存・自動保存の整合性を保つため)。
+      // 実際のDOM要素の除去だけをE3のフェードアウト分(数百ms未満)だけ遅らせる。
       d[listName] = d[listName].filter(function(r){ return r.rid !== rid; });
-      rowEl.remove();
       scheduleDraftAutosave();
       if (listName === 'segments') refreshSegStats();
       else refreshVerdictBlock();
+      var prefersReducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      rowEl.classList.add('row-leaving');
+      setTimeout(function(){ if (rowEl.parentNode) rowEl.remove(); }, prefersReducedMotion ? 0 : 180);
     }
   });
   app.addEventListener('input', function(e){
@@ -3063,7 +3113,12 @@ function bindNewCheckEvents(app){
     state.pendingRecovery = null;
     state.activeTab = 'list';
     renderAll();
-    toast(wasEdit ? '変更を保存しました。' : '新しいチェックを保存しました。', {type:'success'});
+    // E2: 保存成功時はチェックマーク付きのトースト(マイクロアニメーション付き)で通知する。
+    // 保存ボタン自体はタブ遷移で即座にDOMから消えてしまうため、ボタン上でアニメーションを
+    // 付けても実際には視認できない(タブ遷移を遅らせるとテストのタイミング前提を壊す
+    // リスクがあるため採用しなかった)。遷移後も一定時間表示され続けるトースト側に
+    // チェックマークのポップインアニメーションを持たせることで、確実に視認できるようにした。
+    toast(wasEdit ? '変更を保存しました。' : '新しいチェックを保存しました。', {type:'success', icon:'checkCircle'});
   });
 
   var cancelBtn = document.getElementById('btn-cancel');
@@ -3091,7 +3146,12 @@ function bindNewCheckEvents(app){
   }
   function refreshVerdictBlock(){
     var block = document.getElementById('verdict-block');
-    if (block) block.innerHTML = verdictBlockHtml(d);
+    if (!block) return;
+    // E5: 再描画前のスコア値を控えておき、新しい値との差分をカウントアップ/ダウンで見せる
+    var prevScoreEl = document.getElementById('verdict-score-value');
+    var prevScore = prevScoreEl ? prevScoreEl.textContent : null;
+    block.innerHTML = verdictBlockHtml(d);
+    animateNumberTo(document.getElementById('verdict-score-value'), prevScore, computeOverall(d, state.weights), 400);
   }
 }
 

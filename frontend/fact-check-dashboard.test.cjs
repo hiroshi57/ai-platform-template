@@ -146,6 +146,9 @@ async function agreeToConsent(dom) {
     addCross.click();
     assert.strictEqual(doc.querySelectorAll('#cross-list [data-rid]').length, 2);
     doc.querySelector('#cross-list [data-remove="crossChecks"]').click();
+    // E3: 削除時は即座にDOMから消えず、フェードアウト分(180ms未満)だけ遅れて除去される
+    // (データ自体は即時更新されるため、保存・自動保存への影響は無い)。
+    await new Promise((r) => setTimeout(r, 250));
     assert.strictEqual(doc.querySelectorAll('#cross-list [data-rid]').length, 1);
   });
 
@@ -1800,6 +1803,82 @@ async function agreeToConsent(dom) {
     const w = dom.window;
     const it = w.normalizeItem({ id: 'x', claimTimestamp: 'a'.repeat(50) });
     assert.strictEqual(it.claimTimestamp.length, 30);
+  });
+
+  /* ============================= E2: 保存成功のチェックマークアニメーション ============================= */
+
+  await test('保存成功トーストにチェックマークアイコンがポップインアニメーション付きで表示される(E2)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.getElementById('f-claimText').value = 'E2確認用';
+    doc.getElementById('f-claimText').dispatchEvent(new w.Event('input', { bubbles: true }));
+    doc.getElementById('btn-save').click();
+    const toastEl = doc.querySelector('.toast.success');
+    assert.ok(toastEl, '保存成功トーストが表示されない');
+    const iconEl = toastEl.querySelector('.toast-icon-pop');
+    assert.ok(iconEl, 'チェックマークアイコンが見つからない');
+  });
+
+  /* ============================= E3: 行の追加/削除のフェード ============================= */
+
+  await test('行の追加/削除にフェードイン/アウトのCSSアニメーションが定義されている(E3)', async () => {
+    const dom = await freshDom();
+    const styleText = Array.from(dom.window.document.querySelectorAll('style')).map((s) => s.textContent).join('\n');
+    assert.ok(/\.row-item\{[^}]*animation:row-fade-in/.test(styleText), '.row-itemにfade-inアニメーションが定義されていない');
+    assert.ok(styleText.includes('.row-item.row-leaving'), 'row-leavingのfade-outクラスが定義されていない');
+  });
+
+  await test('新規/編集フォーム: 行を削除するとrow-leavingクラスが付き、少し遅れてDOMから除去される(E3)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.querySelector('[data-add="crossChecks"]').click();
+    const row = doc.querySelector('#cross-list [data-rid]');
+    assert.ok(row);
+    doc.querySelector('#cross-list [data-remove="crossChecks"]').click();
+    assert.ok(row.classList.contains('row-leaving'), '削除直後はrow-leavingクラスが付与されるべき(即座にDOMから消えない)');
+    assert.strictEqual(w.state.draft.crossChecks.length, 0, 'データ自体は即座に更新されるべき(保存の整合性のため)');
+    await new Promise((r) => setTimeout(r, 250));
+    assert.strictEqual(doc.querySelectorAll('#cross-list [data-rid]').length, 0, '一定時間後にDOMからも除去されるべき');
+  });
+
+  /* ============================= E5: スコアのカウントアップアニメーション ============================= */
+
+  await test('animateNumberTo: requestAnimationFrame未対応環境(jsdom)では即座に最終値を表示する(E5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const doc = w.document;
+    const div = doc.createElement('div');
+    w.animateNumberTo(div, 0, 85, 400);
+    assert.strictEqual(div.textContent, '85', 'requestAnimationFrame未対応環境では即座に最終値になるべき');
+  });
+
+  await test('animateNumberTo: 数値でない場合や未対応環境でも例外を投げない(E5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const doc = w.document;
+    const div = doc.createElement('div');
+    assert.doesNotThrow(() => w.animateNumberTo(div, null, 50, 400));
+    assert.strictEqual(div.textContent, '50');
+    assert.doesNotThrow(() => w.animateNumberTo(null, 0, 50, 400), 'DOM要素が無くても例外を投げないべき');
+  });
+
+  await test('新規/編集フォーム: 根拠を追加してスコアが変化すると、算出スコアの数値要素が更新される(E5)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    const scoreEl = doc.getElementById('verdict-score-value');
+    assert.ok(scoreEl, '算出スコアの数値要素(verdict-score-value)が見つからない');
+    assert.strictEqual(scoreEl.textContent, '—', '根拠が無い状態では—と表示されるべき');
+
+    const officialSel = doc.getElementById('f-officialCheck.result');
+    officialSel.value = 'match';
+    officialSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    assert.strictEqual(doc.getElementById('verdict-score-value').textContent, '100', '根拠を追加すると最終的な数値が反映されるべき');
   });
 
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
