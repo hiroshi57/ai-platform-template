@@ -166,6 +166,12 @@
   button.ghost.is-loading::after{border-color:rgba(51,65,85,.25);border-top-color:var(--n-600)}
   @keyframes btn-spin{to{transform:rotate(360deg)}}
 
+  /* D8: 判定・ステータスselectの色ドット表示 */
+  .color-select-wrap{position:relative}
+  .color-select-wrap select{padding-left:28px}
+  .color-select-dot{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+    width:10px;height:10px;border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+
   /* A13: コンテンツ領域全体のローディングスケルトン(大量データの集計待ち等) */
   .skeleton-line{height:12px;border-radius:var(--radius-sm);margin:10px 0;
     background:linear-gradient(90deg,var(--n-100) 25%,var(--n-50) 37%,var(--n-100) 63%);
@@ -415,7 +421,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.18.0';
+var APP_VERSION = '0.19.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -737,6 +743,8 @@ state.editingId = null;
 state.filter = {mediaType:'', sourceCategory:'', verdict:'', q:'', tag:'', status:''};
 state.saveError = '';
 state.onboardingStep = 0; // M1: セッション内だけの一時状態(永続化しない)
+state.formWizardMode = false; // D5: 既定OFF(1ページ表示のまま)。セッション内だけの一時状態
+state.formWizardStep = 0;
 state.pendingRecovery = null; // 起動時に見つかった未保存下書き(あれば)。init 末尾で設定する
 
 /* ============================= スキーマバージョニング / 正規化 =============================
@@ -746,7 +754,7 @@ state.pendingRecovery = null; // 起動時に見つかった未保存下書き(�
  * normalizeItem() を通し、欠けているフィールドを安全な既定値で補う。
  * これにより、古いデータを読み込んでも history.length 等で例外にならないことを保証する。
  */
-var SCHEMA_VERSION = 9; // v9: mediaCheck.sourceType(image/video)を追加(N11: 動画フレーム抽出照合)
+var SCHEMA_VERSION = 10; // v10: claimTimestamp(音声・映像の発言時刻)を追加(D9)
 function pickEnum(list, value, fallback){
   return list.some(function(o){ return o.id === value; }) ? value : fallback;
 }
@@ -871,6 +879,7 @@ function normalizeItem(raw){
     archiveUrl: capString(raw.archiveUrl, 2000),
     collectedAt: typeof raw.collectedAt === 'string' ? raw.collectedAt : '',
     transcript: capString(raw.transcript, 20000),
+    claimTimestamp: capString(raw.claimTimestamp, 30), // D9(v10): 音声・映像内で発言があった時刻(例: 00:12:34)
     relatedIds: capArray(raw.relatedIds, 50).filter(function(id){ return typeof id === 'string' && id; }),
     attachments: capArray(raw.attachments, 30).map(normalizeAttachment),
     comments: capArray(raw.comments, 200).map(normalizeComment),
@@ -1513,6 +1522,7 @@ function newItem(){
     archiveUrl: '',
     collectedAt: '',
     transcript: '',
+    claimTimestamp: '',
     relatedIds: [],
     attachments: [],
     comments: [],
@@ -1945,6 +1955,11 @@ function renderNewCheckTab(app){
     '新規/編集' + (isEdit ? ' <span aria-hidden="true">›</span> 編集中: <b>' + esc(d.claimTitle || '(無題の案件)') + '</b>' : ' <span aria-hidden="true">›</span> 新しいチェックの記録') +
     '</div>';
   html += '<h2>' + icon('edit', 17) + (isEdit ? ' チェックを編集' : ' 新規チェックを記録') + '</h2>';
+  // D5: 長いフォームをステップ(ウィザード)形式に分割して表示できるオプション。
+  // 既定はOFF(これまで通りの1ページ表示)で、既存の利用者・テストへの影響が無いようにする。
+  html += '<label class="helper noprint" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">' +
+    '<input type="checkbox" id="form-wizard-toggle" style="width:auto"' + (state.formWizardMode ? ' checked' : '') + ' /> ' +
+    'フォームをステップ表示にする(長い場合に分割表示、任意)</label>';
   if (!isEdit){
     html += field('テンプレートから開始(任意、H8)', '<select id="case-template-picker"><option value="">選択してください(種別・出所区分・タグの初期値を設定します)</option>' +
       CASE_TEMPLATES.map(function(t){ return '<option value="' + esc(t.id) + '">' + esc(t.label) + '</option>'; }).join('') + '</select>');
@@ -1957,20 +1972,26 @@ function renderNewCheckTab(app){
   html += '</div>';
   html += field('主張の要約(タイトル)', '<input type="text" id="f-claimTitle" value="' + esc(d.claimTitle) + '" placeholder="例: 〇〇氏「△△の予算は前年比2倍になった」と発言" />', 'wrap-claimTitle');
   html += field('主張の本文・書き起こし', '<textarea id="f-claimText" maxlength="4000" placeholder="検証対象の発言・投稿・記事本文などをできるだけそのまま記録">' + esc(d.claimText) + '</textarea>', 'wrap-claimText',
-    '<div class="char-counter" id="claimText-counter">' + d.claimText.length + ' / 4000</div>');
+    '<div class="char-counter" id="claimText-counter">' + d.claimText.length + ' / 4000</div>' + exampleInputToggleHtml() +
+    '<div class="toolbar" style="margin-top:6px"><button type="button" class="ghost small" id="btn-add-segment-from-selection">' +
+    icon('edit', 12) + ' 選択範囲を①のタグ付けに追加</button>' +
+    '<span class="helper" style="display:inline">本文中の一文をドラッグ選択してからクリックすると、下の「①事実・意見・推測の切り分け」に自動でコピーされます(分類はご自身で選んでください)。</span></div>');
   html += '<div id="wrap-transcript" style="display:' + ((d.mediaType === 'audio' || d.mediaType === 'video') ? 'block' : 'none') + '">' +
     field('文字起こし(音声・映像用、任意)', '<textarea id="f-transcript" maxlength="20000" placeholder="音声・映像の発言内容をできるだけ正確に書き起こしてください">' + esc(d.transcript) + '</textarea>') +
-    '<div class="helper" style="margin-top:-6px">主張本文が要約の場合、こちらに全文の書き起こしを残しておくと後で見返す際に有用です。</div></div>';
+    '<div class="helper" style="margin-top:-6px">主張本文が要約の場合、こちらに全文の書き起こしを残しておくと後で見返す際に有用です。</div>' +
+    field('発言のタイムスタンプ(任意、D9)', '<input type="text" id="f-claimTimestamp" value="' + esc(d.claimTimestamp) + '" placeholder="例: 00:12:34" maxlength="30" />', null,
+      '<div class="helper" style="margin-top:-6px">音声・映像内で該当の発言が始まる時刻を記録しておくと、後で見返す際に該当箇所へすぐアクセスできます。</div>') +
+    '</div>';
   html += '<div class="grid2">';
-  html += field('出典URL', '<input type="url" id="f-sourceUrl" value="' + esc(d.sourceUrl) + '" placeholder="https://..." />');
+  html += field('出典URL', '<input type="url" id="f-sourceUrl" value="' + esc(d.sourceUrl) + '" placeholder="https://..." />', 'wrap-sourceUrl');
   html += field('収集日', '<input type="date" id="f-collectedAt" value="' + esc(d.collectedAt) + '" />');
   html += '</div>';
-  html += field('アーカイブ(魚拓)URL', '<input type="url" id="f-archiveUrl" value="' + esc(d.archiveUrl) + '" placeholder="https://web.archive.org/... または https://archive.today/..." />');
+  html += field('アーカイブ(魚拓)URL', '<input type="url" id="f-archiveUrl" value="' + esc(d.archiveUrl) + '" placeholder="https://web.archive.org/... または https://archive.today/..." />', 'wrap-archiveUrl');
   html += '<div class="helper">SNS投稿等は後から削除・編集されることがあります。Web魚拓(archive.today)やWayback Machineで保存したURLを記録してください。</div>';
   html += tagsFieldHtml(d);
   html += '<div class="grid2">';
   html += field('担当者(任意)', '<input type="text" id="f-assignee" value="' + esc(d.assignee) + '" placeholder="例: 山田" />');
-  html += field('ステータス', selectHtml('f-status', STATUS_OPTIONS, d.status));
+  html += field('ステータス', colorSelectHtml('f-status', STATUS_OPTIONS, d.status));
   html += '</div>';
   html += '<h3>' + icon('link', 13) + ' 関連する案件(H4)</h3>';
   html += '<div id="related-cases-block">' + relatedCasesHtml(d) + '</div>';
@@ -2060,7 +2081,7 @@ function renderNewCheckTab(app){
   html += '<h2>総合判定</h2>';
   html += '<div id="verdict-block">' + verdictBlockHtml(d) + '</div>';
   html += '<div class="verdict-hint">「①情報源の確認」「②一次情報比較」「③クロスチェック」「④AI参照」「⑤専用ツール」のうち、記録済みの軸だけで重み付き平均を計算します(未記録の軸は自動的に除外)。<b>本ツールの判定はIFCN認定機関による公式な認証ではなく、記録者による独自のワーキング分類です。</b>最終判定は必ず人が選択してください。</div>';
-  html += field('最終判定(人による確定)', selectHtml('f-verdict', VERDICTS, d.verdict, true));
+  html += field('最終判定(人による確定)', colorSelectHtml('f-verdict', VERDICTS, d.verdict, true));
   html += field('総評(なぜその判定に至ったか)', '<textarea id="f-summary" placeholder="根拠を要約して記載">' + esc(d.summary) + '</textarea>');
   html += field('確認者', '<input type="text" id="f-reviewer" value="' + esc(d.reviewer) + '" />');
   html += field('次回レビュー予定日(任意)', '<input type="date" id="f-reviewDueDate" value="' + esc(d.reviewDueDate) + '" />',
@@ -2085,6 +2106,55 @@ function renderNewCheckTab(app){
   bindNewCheckEvents(app);
   renderDraftRecoverBanner(app);
   upgradeImagesFromIndexedDb(app); // I3: 編集時、既存のフル解像度画像があれば非同期で差し替える
+  applyFormWizardMode(app);
+}
+
+/* D5: 長いフォームをステップ(ウィザード)形式に分割するオプション(既定OFF)。
+ * HTML文字列の組み立て自体は変更せず、描画後に#app直下の.card要素をDOM順で
+ * N分割し、現在のステップ以外を非表示にするだけの後処理として実装する
+ * (フォーム全体の構造を書き換えるより影響範囲が小さいと判断)。
+ * 非表示中のフィールドも値はDOM上に保持されたままのため、保存・下書き自動保存・
+ * 既存のバリデーション(いずれもDOM表示状態ではなくdraftオブジェクトを見る)には
+ * 影響しない。 */
+var FORM_WIZARD_STEP_COUNT = 4;
+function applyFormWizardMode(app){
+  var existingNav = document.getElementById('form-wizard-nav');
+  if (existingNav) existingNav.remove();
+  if (!state.formWizardMode) return;
+  var cards = Array.prototype.filter.call(app.children, function(el){
+    return el.classList && el.classList.contains('card');
+  });
+  if (cards.length < 2) return; // 分割するほどの量が無ければ何もしない
+  var perStep = Math.max(1, Math.ceil(cards.length / FORM_WIZARD_STEP_COUNT));
+  var totalSteps = Math.ceil(cards.length / perStep);
+  var current = Math.max(0, Math.min(totalSteps - 1, state.formWizardStep || 0));
+  cards.forEach(function(card, i){
+    var stepIdx = Math.floor(i / perStep);
+    card.style.display = (stepIdx === current) ? '' : 'none';
+  });
+  var nav = document.createElement('div');
+  nav.className = 'card noprint';
+  nav.id = 'form-wizard-nav';
+  nav.innerHTML = '<div class="helper">ステップ ' + (current + 1) + ' / ' + totalSteps + '</div>' +
+    '<div class="toolbar">' +
+    (current > 0 ? '<button type="button" class="ghost small" id="wizard-prev-step">戻る</button>' : '') +
+    (current < totalSteps - 1
+      ? '<button type="button" class="primary small" id="wizard-next-step">次へ</button>'
+      : '<span class="helper">最後のステップです。下部の保存ボタンから保存できます。</span>') +
+    '</div>';
+  app.insertBefore(nav, cards[0]);
+  var prevBtn = document.getElementById('wizard-prev-step');
+  if (prevBtn) prevBtn.addEventListener('click', function(){
+    state.formWizardStep = current - 1;
+    applyFormWizardMode(app);
+    nav.scrollIntoView({block: 'start'});
+  });
+  var nextBtn = document.getElementById('wizard-next-step');
+  if (nextBtn) nextBtn.addEventListener('click', function(){
+    state.formWizardStep = current + 1;
+    applyFormWizardMode(app);
+    nav.scrollIntoView({block: 'start'});
+  });
 }
 
 function verdictBlockHtml(d){
@@ -2119,6 +2189,17 @@ function field(label, inner, wrapperId, extra){
   var forAttr = idMatch ? ' for="' + esc(idMatch[1]) + '"' : '';
   return '<div' + (wrapperId ? ' id="' + wrapperId + '"' : '') + '><label' + forAttr + '>' + esc(label) + '</label>' + inner + (extra || '') + '</div>';
 }
+/* D7: 「実例を見る」トグル。プレースホルダーだけでは分かりにくい場合に、実際の
+ * 入力例(タイトル+本文のセット)を折りたたみ表示で参照できるようにする。
+ * 誤って実データを上書きしないよう、フィールドへの自動入力はしない(参照表示のみ)。 */
+function exampleInputToggleHtml(){
+  return '<details style="margin-top:6px">' +
+    '<summary style="cursor:pointer;color:var(--accent-600);font-size:var(--fs-xs)">実例を見る(入力の参考)</summary>' +
+    '<div class="helper" style="margin-top:4px">' +
+    '<b>タイトル例:</b> 〇〇市長「来年度予算は前年比2倍に増額」と発言<br>' +
+    '<b>本文例:</b> 〇月〇日の定例記者会見で、〇〇市長は「来年度の教育予算を前年比2倍に増額する」と発言した。この発言についてSNS上で真偽の確認を求める声がある。' +
+    '</div></details>';
+}
 /* フィールド単位のインラインバリデーション表示。wrapperId は field() の第3引数に対応する。 */
 function setFieldError(wrapperId, message){
   var wrap = document.getElementById(wrapperId);
@@ -2145,6 +2226,20 @@ function selectHtml(domId, list, current, allowEmpty){
   return '<select id="' + domId + '">' + opts.map(function(o){
     return '<option value="' + esc(o.id) + '"' + (o.id === current ? ' selected' : '') + '>' + esc(o.label) + '</option>';
   }).join('') + '</select>';
+}
+/* D8: 判定・ステータスのように各選択肢に意味付けの色がある場合、選択中の色を示す
+ * 小さな丸(ドット)を添えた見た目に強化する。完全な自作ドロップダウンにすると
+ * キーボード操作・スクリーンリーダー対応を作り直す必要がありF3/F4のa11y方針との
+ * 両立が難しくなるため、あえてネイティブ<select>はそのまま残し、隣に色を表示する
+ * 方式にした(視認性向上とアクセシビリティ維持の両立)。 */
+function colorSelectHtml(domId, list, current, allowEmpty){
+  var colorMap = {};
+  list.forEach(function(o){ if (o.color) colorMap[o.id] = o.color; });
+  var initialColor = colorMap[current] || 'var(--n-300)';
+  return '<div class="color-select-wrap" data-color-map="' + esc(JSON.stringify(colorMap)) + '">' +
+    '<span class="color-select-dot" aria-hidden="true" style="background:' + esc(initialColor) + '"></span>' +
+    selectHtml(domId, list, current, allowEmpty) +
+    '</div>';
 }
 function kpi(value, label, trend, dragKey){
   // trend: {arrow:'up'|'down'|'flat', sentiment:'good'|'bad'|'neutral', text:'...'} で前月比等を表示する(A8)。
@@ -2443,6 +2538,16 @@ function bindNewCheckEvents(app){
     el.addEventListener(evt, function(){
       setPath(d, path, el.value);
       scheduleDraftAutosave();
+      // D8: 色ドット付きselect(colorSelectHtml)の場合、選択中の色を反映する
+      if (el.tagName === 'SELECT' && el.parentElement && el.parentElement.classList.contains('color-select-wrap')){
+        var dot = el.parentElement.querySelector('.color-select-dot');
+        if (dot){
+          try {
+            var colorMap = JSON.parse(el.parentElement.getAttribute('data-color-map') || '{}');
+            dot.style.background = colorMap[el.value] || 'var(--n-300)';
+          } catch (e){ /* 万一パースに失敗しても表示上の問題に留める */ }
+        }
+      }
       // 情報源確認/一次情報比較/最終判定が変わったら、判定スコア表示ブロックだけ更新する
       if (path.indexOf('officialCheck') === 0 || path.indexOf('primaryCheck') === 0 || path === 'verdict') {
         refreshVerdictBlock();
@@ -2473,8 +2578,21 @@ function bindNewCheckEvents(app){
         var transcriptWrap = document.getElementById('wrap-transcript');
         if (transcriptWrap) transcriptWrap.style.display = (el.value === 'audio' || el.value === 'video') ? 'block' : 'none';
       }
+      // D4: 出典URL/アーカイブURLが入力されている場合、http(s)以外は簡易的に警告する
+      // (厳密なURLバリデーションではなく、明らかな入力ミス・貼り間違いに気づくための
+      // 補助であり、保存自体はブロックしない)。
+      if (path === 'sourceUrl') validateUrlField('wrap-sourceUrl', el.value);
+      if (path === 'archiveUrl') validateUrlField('wrap-archiveUrl', el.value);
     });
   });
+  function validateUrlField(wrapperId, value){
+    var v = String(value || '').trim();
+    if (!v || /^https?:\/\//i.test(v)){
+      clearFieldError(wrapperId);
+    } else {
+      setFieldError(wrapperId, 'http:// または https:// から始まるURLではないようです。入力内容を確認してください。');
+    }
+  }
 
   function refreshPatternScreen(){
     var scan = scanPatterns(d.claimText);
@@ -2813,6 +2931,39 @@ function bindNewCheckEvents(app){
       });
     }
   });
+
+  // D3: 主張本文で選択したテキスト範囲を、①の事実/意見/推測タグ付け行としてそのまま追加する。
+  // 注意: あくまで「選択したテキストのコピー」を自動化するだけであり、事実/意見/推測の
+  // 分類自体はAIによる自動判定ではなく、既定値(fact)のまま追加し利用者に選んでもらう
+  // (このツール全体の「技術は絞り込み、最終判断は人」という方針に合わせている)。
+  // D5: ステップ表示トグル
+  var wizardToggle = document.getElementById('form-wizard-toggle');
+  if (wizardToggle){
+    wizardToggle.addEventListener('change', function(){
+      state.formWizardMode = wizardToggle.checked;
+      state.formWizardStep = 0;
+      applyFormWizardMode(app);
+    });
+  }
+
+  var addFromSelectionBtn = document.getElementById('btn-add-segment-from-selection');
+  if (addFromSelectionBtn){
+    addFromSelectionBtn.addEventListener('click', function(){
+      var textarea = document.getElementById('f-claimText');
+      var selected = textarea ? textarea.value.slice(textarea.selectionStart, textarea.selectionEnd) : '';
+      if (!selected || !selected.trim()){
+        toast('本文中の追加したい範囲を選択してからクリックしてください。', {type:'warning'});
+        return;
+      }
+      var row = {rid: uid(), text: selected.trim(), tag: 'fact'};
+      d.segments.push(row);
+      var container = document.getElementById('segments-list');
+      if (container) container.insertAdjacentHTML('beforeend', segRowHtml(row));
+      scheduleDraftAutosave();
+      refreshSegStats();
+      toast('選択範囲を①のタグ付けに追加しました。分類(事実/意見/推測)をご確認ください。', {type:'success'});
+    });
+  }
 
   // 行の追加
   app.querySelectorAll('[data-add]').forEach(function(btn){

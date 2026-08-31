@@ -1658,6 +1658,150 @@ async function agreeToConsent(dom) {
     assert.strictEqual(w.readTabFromHash(), 'refdb');
   });
 
+  /* ============================= D3: 選択範囲からのタグ付け行追加 ============================= */
+
+  await test('新規/編集フォーム: 本文の選択範囲を①のタグ付け行に追加できる(D3)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    const textarea = doc.getElementById('f-claimText');
+    textarea.value = 'これは事実の記述です。これは意見です。';
+    textarea.dispatchEvent(new w.Event('input', { bubbles: true }));
+    textarea.selectionStart = 0;
+    textarea.selectionEnd = 11; // 「これは事実の記述です。」
+    doc.getElementById('btn-add-segment-from-selection').click();
+    assert.strictEqual(w.state.draft.segments.length, 1);
+    assert.strictEqual(w.state.draft.segments[0].text, 'これは事実の記述です。');
+    assert.strictEqual(w.state.draft.segments[0].tag, 'fact', '既定の分類はfactのままで、自動分類はしないべき');
+    assert.ok(doc.querySelector('#segments-list [data-rid]'), 'DOMにも行が追加されるべき');
+  });
+
+  await test('新規/編集フォーム: 範囲を選択せずにクリックすると警告し、行を追加しない(D3)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.getElementById('btn-add-segment-from-selection').click();
+    assert.strictEqual(w.state.draft.segments.length, 0);
+    assert.ok(doc.querySelector('.toast.warning'), '警告トーストが表示されるべき');
+  });
+
+  /* ============================= D4: URL欄の簡易フォーマット検証 ============================= */
+
+  await test('新規/編集フォーム: http(s)以外のURLを入力すると警告表示になる(D4)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    const input = doc.getElementById('f-sourceUrl');
+    input.value = 'ftp://example.com/file';
+    input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.ok(doc.getElementById('wrap-sourceUrl').classList.contains('field-error'), 'http(s)以外はエラー表示になるべき');
+
+    input.value = 'https://example.com/page';
+    input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.ok(!doc.getElementById('wrap-sourceUrl').classList.contains('field-error'), '正しいURLに直すとエラーが消えるべき');
+  });
+
+  await test('新規/編集フォーム: URL欄が空の場合はエラー表示にしない(D4、必須ではないため)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    const input = doc.getElementById('f-archiveUrl');
+    input.value = '';
+    input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.ok(!doc.getElementById('wrap-archiveUrl').classList.contains('field-error'));
+  });
+
+  /* ============================= D5: フォームのステップ表示オプション ============================= */
+
+  await test('新規/編集フォーム: 既定ではステップ表示ではなく全カードが表示される(D5、既定OFF)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    assert.strictEqual(doc.getElementById('form-wizard-nav'), null, '既定ではステップナビが表示されないべき');
+    const hiddenCards = Array.from(doc.querySelectorAll('#app > .card')).filter((c) => c.style.display === 'none');
+    assert.strictEqual(hiddenCards.length, 0, '既定では全カードが表示されているべき');
+  });
+
+  await test('新規/編集フォーム: トグルをONにするとステップ表示になり、次へ/戻るでカードが切り替わる(D5)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.getElementById('form-wizard-toggle').click();
+    assert.ok(doc.getElementById('form-wizard-nav'), 'ステップナビが表示されるべき');
+    const totalCards = doc.querySelectorAll('#app > .card').length;
+    const visibleCardsStep1 = Array.from(doc.querySelectorAll('#app > .card')).filter((c) => c.style.display !== 'none');
+    assert.ok(visibleCardsStep1.length < totalCards, '一部のカードだけが表示されるべき');
+
+    const nextBtn = doc.getElementById('wizard-next-step');
+    assert.ok(nextBtn, '次へボタンが表示されるべき');
+    nextBtn.click();
+    assert.ok(doc.getElementById('wizard-prev-step'), '2ステップ目以降は戻るボタンが表示されるべき');
+
+    // 非表示のステップの値も保持されている(データ自体は消えない)ことを確認
+    w.state.draft.claimTitle = '値の保持確認';
+    assert.strictEqual(w.state.draft.claimTitle, '値の保持確認');
+  });
+
+  /* ============================= D7: 実例トグル ============================= */
+
+  await test('新規/編集フォーム: 「実例を見る」の折りたたみが表示され、実際の入力欄は上書きしない(D7)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    const details = doc.querySelector('#wrap-claimText details');
+    assert.ok(details, '実例トグルが見つからない');
+    assert.ok(details.textContent.includes('タイトル例'));
+    assert.strictEqual(doc.getElementById('f-claimText').value, '', '実例を表示しても実際の入力欄には反映されないべき');
+  });
+
+  /* ============================= D8: 色付きドロップダウン ============================= */
+
+  await test('新規/編集フォーム: 判定・ステータスのselectには選択中の色を示すドットが表示され、変更に追従する(D8)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    const statusWrap = doc.getElementById('f-status').parentElement;
+    assert.ok(statusWrap.classList.contains('color-select-wrap'));
+    const dot = statusWrap.querySelector('.color-select-dot');
+    assert.ok(dot, '色ドットが見つからない');
+    const initialColor = dot.style.background;
+
+    const select = doc.getElementById('f-status');
+    select.value = 'done';
+    select.dispatchEvent(new w.Event('change', { bubbles: true }));
+    assert.notStrictEqual(dot.style.background, initialColor, 'ステータス変更にあわせてドットの色が変わるべき');
+  });
+
+  /* ============================= D9: 発言タイムスタンプ ============================= */
+
+  await test('新規/編集フォーム: 音声/映像のときだけ発言タイムスタンプ欄が有効で、値が保持される(D9)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    const mediaTypeSelect = doc.getElementById('f-mediaType');
+    mediaTypeSelect.value = 'video';
+    mediaTypeSelect.dispatchEvent(new w.Event('change', { bubbles: true }));
+    const timestampInput = doc.getElementById('f-claimTimestamp');
+    assert.ok(timestampInput, 'タイムスタンプ欄が見つからない');
+    timestampInput.value = '00:12:34';
+    timestampInput.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.strictEqual(w.state.draft.claimTimestamp, '00:12:34');
+  });
+
+  await test('normalizeItem: claimTimestampが上限文字数で切り詰められる(D9)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const it = w.normalizeItem({ id: 'x', claimTimestamp: 'a'.repeat(50) });
+    assert.strictEqual(it.claimTimestamp.length, 30);
+  });
+
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
    * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
    * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の
