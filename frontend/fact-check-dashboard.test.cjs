@@ -1494,6 +1494,170 @@ async function agreeToConsent(dom) {
     assert.ok(w.document.body.textContent.includes('全体サマリー'), '最終的に集計結果が描画されるべき');
   });
 
+  /* ============================= B2: パンくず(現在地表示) ============================= */
+
+  await test('新規/編集フォーム: 編集中は主張タイトルがパンくずに表示され、入力に合わせてライブ更新される(B2)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    w.state.items = [w.normalizeItem({ id: 'x1', claimTitle: '元のタイトル', claimText: 't', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })];
+    w.state.draft = w.cloneItem(w.state.items[0]);
+    w.state.editingId = 'x1';
+    w.state.activeTab = 'new';
+    w.renderAll();
+    assert.ok(doc.getElementById('edit-breadcrumb').textContent.includes('元のタイトル'), 'パンくずに編集中のタイトルが表示されない');
+
+    const titleInput = doc.getElementById('f-claimTitle');
+    titleInput.value = '更新後のタイトル';
+    titleInput.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.ok(doc.getElementById('edit-breadcrumb').textContent.includes('更新後のタイトル'), 'パンくずがライブ更新されない');
+  });
+
+  await test('新規/編集フォーム: 新規作成時のパンくずは「編集中」ではなく新規作成である旨を表示する(B2)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const doc = dom.window.document;
+    assert.ok(doc.getElementById('edit-breadcrumb').textContent.includes('新しいチェックの記録'));
+  });
+
+  /* ============================= B4: キーボードショートカット ============================= */
+
+  await test('「n」キーで新規/編集タブに切り替わる(入力中でない場合のみ)(B4)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    w.state.activeTab = 'list';
+    w.renderAll();
+    doc.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+    assert.strictEqual(w.state.activeTab, 'new', '「n」キーで新規/編集タブに切り替わるべき');
+  });
+
+  await test('テキスト入力中は「n」キーのショートカットが発火しない(B4)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    const titleInput = doc.getElementById('f-claimTitle');
+    titleInput.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+    assert.strictEqual(w.state.activeTab, 'new', 'もともとnewタブのままで変化していないことを確認(副作用が起きていないこと)');
+  });
+
+  await test('「/」キーで一覧タブに切り替わり検索欄にフォーカスする(B4)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    assert.strictEqual(w.state.activeTab, 'list', '「/」キーで一覧タブに切り替わるべき');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(doc.activeElement, doc.getElementById('filter-q'), 'キーワード検索欄にフォーカスが移るべき');
+  });
+
+  /* ============================= B5: 直近開いたケースへのクイックアクセス ============================= */
+
+  await test('案件を編集で開くと「最近開いた項目」に記録され、そこからも再度開ける(B5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [
+      w.normalizeItem({ id: 'r1', claimTitle: '最近項目1', claimText: 't', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    ];
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const doc = w.document;
+    doc.querySelector('[data-edit="r1"]').click();
+    const recentIds = w.loadRecentItemIds();
+    assert.strictEqual(recentIds.length, 1);
+    assert.strictEqual(recentIds[0], 'r1');
+
+    w.state.activeTab = 'list';
+    w.renderAll();
+    const recentBtn = doc.querySelector('[data-open-recent="r1"]');
+    assert.ok(recentBtn, '「最近開いた項目」に案件が表示されない');
+    assert.ok(recentBtn.textContent.includes('最近項目1'));
+    recentBtn.click();
+    assert.strictEqual(w.state.activeTab, 'new');
+    assert.strictEqual(w.state.editingId, 'r1');
+  });
+
+  await test('最近開いた項目は上限件数を超えると古いものから外れ、重複は先頭に上げる(B5)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    for (let i = 0; i < w.RECENT_ITEMS_MAX + 2; i++) w.pushRecentItemId('id' + i);
+    let recent = w.loadRecentItemIds();
+    assert.strictEqual(recent.length, w.RECENT_ITEMS_MAX, '上限件数を超えないべき');
+    assert.strictEqual(recent[0], 'id' + (w.RECENT_ITEMS_MAX + 1), '最後に開いたものが先頭になるべき');
+
+    w.pushRecentItemId('id0'); // 上限から漏れていた古いIDを再度開く
+    recent = w.loadRecentItemIds();
+    assert.strictEqual(recent[0], 'id0', '再度開いた項目は先頭に上がるべき');
+  });
+
+  /* ============================= B6: グローバル検索(コマンドパレット) ============================= */
+
+  await test('Ctrl/Cmd+Kでコマンドパレットが開き、Escで閉じる(B6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    doc.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    assert.strictEqual(w.isCommandPaletteOpen(), true, 'Ctrl+Kでパレットが開くべき');
+    assert.ok(doc.getElementById('cmdk-input'), '検索入力欄が描画されるべき');
+
+    doc.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.strictEqual(w.isCommandPaletteOpen(), false, 'Escでパレットが閉じるべき');
+  });
+
+  await test('コマンドパレット: 案件名で検索でき、選択すると編集画面に遷移する(B6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    w.state.items = [w.normalizeItem({ id: 'cp1', claimTitle: 'コマンドパレット確認用案件', claimText: 't', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })];
+
+    w.openCommandPalette();
+    const input = doc.getElementById('cmdk-input');
+    input.value = 'コマンドパレット確認用';
+    input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    const resultBtn = doc.querySelector('[data-cmdk-type="item"][data-cmdk-id="cp1"]');
+    assert.ok(resultBtn, '案件が検索結果に表示されない');
+    resultBtn.click();
+    assert.strictEqual(w.isCommandPaletteOpen(), false, '選択後はパレットが閉じるべき');
+    assert.strictEqual(w.state.activeTab, 'new');
+    assert.strictEqual(w.state.editingId, 'cp1');
+  });
+
+  await test('コマンドパレット: 空クエリではタブ一覧が表示され、選択するとタブ遷移する(B6)', async () => {
+    const dom = await freshDom();
+    await agreeToConsent(dom);
+    const w = dom.window;
+    const doc = w.document;
+    w.openCommandPalette();
+    const dashboardResult = doc.querySelector('[data-cmdk-type="tab"][data-cmdk-id="dashboard"]');
+    assert.ok(dashboardResult, '空クエリでタブ候補が表示されない');
+    dashboardResult.click();
+    assert.strictEqual(w.state.activeTab, 'dashboard');
+  });
+
+  /* ============================= B7: URLハッシュによるタブのディープリンク ============================= */
+
+  await test('タブを切り替えるとURLハッシュが追従し、再読み込み相当(freshDom)でも同じタブが復元される(B7)', async () => {
+    const dom1 = await freshDom();
+    dom1.window.state.activeTab = 'dashboard';
+    dom1.window.renderAll();
+    assert.strictEqual(dom1.window.location.hash, '#dashboard', 'タブ切替でURLハッシュが更新されるべき');
+  });
+
+  await test('readTabFromHash: 未知のハッシュ値は無視しnullを返す(B7)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.history.replaceState(null, '', '#not-a-real-tab');
+    assert.strictEqual(w.readTabFromHash(), null, '未知のタブIDはnullを返すべき');
+    w.history.replaceState(null, '', '#refdb');
+    assert.strictEqual(w.readTabFromHash(), 'refdb');
+  });
+
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
    * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
    * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の
