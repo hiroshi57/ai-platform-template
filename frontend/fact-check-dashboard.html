@@ -55,6 +55,28 @@
     --shadow-lg:0 12px 32px rgba(15,23,42,.12);
     --focus-ring:0 0 0 3px rgba(79,70,229,.28);
   }
+  /* A9: ダークモード対応の設計(トークンの用意のみ・切替UIは未実装)。
+   * このツールのコンポーネントCSSはほぼ全て--n-*(ニュートラル)スケールと
+   * --accent-* や --success-* 等の意味的トークン経由で色を参照しているため、
+   * 同じ変数名を[data-theme="dark"]スコープで上書きするだけで、個々のコンポーネント
+   * CSSを一切変更せずに配色を反転できる設計になっている。現時点では
+   * data-theme="dark"をhtml/body等に設定する仕組み(トグルボタン等)は無いため、
+   * 既定の見た目には一切影響しない(ゼロリスクな準備段階)。
+   * 将来トグルを実装する場合は、`document.documentElement.dataset.theme = 'dark'`
+   * のように設定するだけで、この配色に切り替わるはずである(未検証・要QA)。 */
+  [data-theme="dark"]{
+    --n-0:#0f172a; --n-25:#111827; --n-50:#1e293b; --n-100:#334155; --n-200:#475569;
+    --n-300:#64748b; --n-400:#94a3b8; --n-500:#cbd5e1; --n-600:#e2e8f0; --n-700:#f1f5f9; --n-900:#f8fafc;
+    --accent-50:#1e1b4b; --accent-100:#312e81; --accent-400:#818cf8; --accent-500:#6366f1;
+    --accent-600:#818cf8; --accent-700:#a5b4fc;
+    --success-50:#052e1f; --success-500:#34d399; --success-600:#6ee7b7;
+    --warning-50:#3f2d05; --warning-500:#fbbf24; --warning-600:#fcd34d;
+    --danger-50:#450a0a; --danger-500:#f87171; --danger-600:#fca5a5;
+    --neutral-info-50:#1e293b; --neutral-info-500:#94a3b8;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-md:0 4px 14px rgba(0,0,0,.5);
+    --shadow-lg:0 12px 32px rgba(0,0,0,.6);
+  }
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
     background:var(--bg);margin:0;padding:var(--sp-5);color:var(--ink);line-height:1.5;
@@ -143,6 +165,12 @@
     border-radius:50%;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;animation:btn-spin .6s linear infinite}
   button.ghost.is-loading::after{border-color:rgba(51,65,85,.25);border-top-color:var(--n-600)}
   @keyframes btn-spin{to{transform:rotate(360deg)}}
+
+  /* A13: コンテンツ領域全体のローディングスケルトン(大量データの集計待ち等) */
+  .skeleton-line{height:12px;border-radius:var(--radius-sm);margin:10px 0;
+    background:linear-gradient(90deg,var(--n-100) 25%,var(--n-50) 37%,var(--n-100) 63%);
+    background-size:400% 100%;animation:skeleton-shimmer 1.4s ease infinite}
+  @keyframes skeleton-shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
 
   /* ===== テーブル ===== */
   table{border-collapse:collapse;width:100%;font-size:var(--fs-sm)}
@@ -367,7 +395,7 @@ function icon(name, size, extraClass){
  * リリースのたびに APP_VERSION を上げ、CHANGELOG.md に変更内容を記録する運用とする。
  * (このツールは単一HTMLファイルの配布物であり、自動更新の仕組みは持たない。
  *  「最新版を配って回る」実務上のループは、この番号を目印にして手動で行う。) */
-var APP_VERSION = '0.16.0';
+var APP_VERSION = '0.17.0';
 var APP_RELEASED_AT = '2026-08-27';
 
 var STORAGE_KEY = 'fc_dashboard_v1';
@@ -3681,10 +3709,43 @@ function renderDashboardTab(app){
     });
   });
 
-  renderDashResults();
+  // A13: 件数が多い場合、集計処理(同期JS)に体感できる時間がかかることがあるため、
+  // 先にスケルトン(読み込み中のプレースホルダー)を描画してから、次の描画フレームで
+  // 実際の集計・SVG生成を行う。rAF+setTimeout(0)を挟むことで、スケルトンが実際に
+  // 一度画面に描画される猶予を作る(挟まないと同期処理がブロックし続け、スケルトンが
+  // 一切見えないまま最終結果に置き換わってしまう)。
+  if (state.items.length > CONTENT_SKELETON_THRESHOLD){
+    document.getElementById('dash-results').innerHTML = skeletonCardsHtml(4);
+    runAfterNextPaint(function(){ setTimeout(renderDashResults, 0); });
+  } else {
+    renderDashResults();
+  }
+}
+/* A13: requestAnimationFrameが無い環境(jsdom等)でも例外を投げずsetTimeoutにフォールバックする。
+ * G3のrunWhenIdle()と同じグレースフルデグラデーション方針。 */
+function runAfterNextPaint(fn){
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(fn);
+  else setTimeout(fn, 16);
 }
 function weightInput(key, label){
   return '<div><label for="w-' + key + '">' + esc(label) + '</label><input type="number" min="0" max="100" id="w-' + key + '" value="' + state.weights[key] + '" /></div>';
+}
+
+/* A13: ローディング/処理中状態のスケルトン表示。ボタン単位のスピナー(is-loading、
+ * E6で実装済み)とは別に、コンテンツ領域全体が未確定であることを示すために使う。
+ * prefers-reduced-motionの既存グローバルルール(*{animation-duration:.001ms!important})
+ * により、アニメーションを好まない設定では自動的にほぼ静止表示になる。 */
+var CONTENT_SKELETON_THRESHOLD = 300;
+function skeletonCardsHtml(n){
+  n = n || 3;
+  var card = '<div class="card skeleton-card" aria-hidden="true">' +
+    '<div class="skeleton-line" style="width:40%;height:18px"></div>' +
+    '<div class="skeleton-line" style="width:92%"></div>' +
+    '<div class="skeleton-line" style="width:78%"></div>' +
+    '</div>';
+  var html = '';
+  for (var i = 0; i < n; i++) html += card;
+  return html;
 }
 
 function renderDashResults(){

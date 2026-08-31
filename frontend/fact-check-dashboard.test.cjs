@@ -1439,6 +1439,61 @@ async function agreeToConsent(dom) {
       '変更するアクセシビリティ機能を使っても文字が拡大されないバグが実測で見つかった): ' + m[1]);
   });
 
+  /* ============================= A9: ダークモード対応の設計(トークンのみ) ============================= */
+
+  await test('[data-theme="dark"]のCSSルールが正しくパースされ、ニュートラルスケールを反転する値を持つ(A9)', async () => {
+    const dom = await freshDom();
+    const doc = dom.window.document;
+    const sheet = doc.styleSheets[0];
+    let darkRule = null;
+    for (const rule of sheet.cssRules) {
+      if (rule.selectorText === '[data-theme="dark"]') { darkRule = rule; break; }
+    }
+    assert.ok(darkRule, '[data-theme="dark"]のCSSルールが見つからない(コメント内に偶然"*/"が紛れ込みコメントが' +
+      '途中で閉じてしまうと、このルールごと壊れることを実際に経験したため、CSSOM経由でパースできることを検証する)');
+    assert.strictEqual(darkRule.style.getPropertyValue('--n-0').trim(), '#0f172a', 'ダークモードでは--n-0が暗い色に反転しているべき');
+    assert.strictEqual(darkRule.style.getPropertyValue('--n-900').trim(), '#f8fafc', 'ダークモードでは--n-900が明るい色に反転しているべき');
+  });
+
+  await test('data-theme属性を設定しない既定状態では、ライトモードの配色が一切変化しない(A9、ゼロリスクな準備段階であることの確認)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const doc = w.document;
+    assert.strictEqual(doc.documentElement.getAttribute('data-theme'), null, '既定ではdata-theme属性が付いていないべき');
+    const bg = w.getComputedStyle(doc.documentElement).getPropertyValue('--n-0').trim();
+    assert.strictEqual(bg, '#ffffff', '既定(ライトモード)の--n-0は白のままであるべき');
+  });
+
+  /* ============================= A13: コンテンツ領域のローディングスケルトン ============================= */
+
+  await test('件数が閾値以下ならスケルトンを挟まず即座に集計結果を描画する(A13)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    w.state.items = [w.normalizeItem({ id: 'a', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't', claimText: 't', verdict: 'true' })];
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    assert.strictEqual(w.document.querySelector('.skeleton-card'), null, '閾値以下ではスケルトンを表示しないべき');
+    assert.ok(w.document.body.textContent.includes('全体サマリー'), '集計結果が即座に描画されるべき');
+  });
+
+  await test('件数が閾値超過ならまずスケルトンを描画し、次のフレームで実際の集計結果に置き換える(A13)', async () => {
+    const dom = await freshDom();
+    const w = dom.window;
+    const items = [];
+    for (let i = 0; i < w.CONTENT_SKELETON_THRESHOLD + 5; i++) {
+      items.push(w.normalizeItem({ id: 's' + i, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), mediaType: 'text', sourceCategory: 'media', claimTitle: 't' + i, claimText: 't', verdict: 'true' }));
+    }
+    w.state.items = items;
+    w.state.activeTab = 'dashboard';
+    w.renderAll();
+    // rAF+setTimeout(0)の前(同期直後)はスケルトンが表示されているべき
+    assert.ok(w.document.querySelector('.skeleton-card'), '閾値超過時は最初にスケルトンを表示するべき');
+    // 次のフレーム以降で実際の集計結果に置き換わる
+    await new Promise((r) => setTimeout(r, 100));
+    assert.strictEqual(w.document.querySelector('.skeleton-card'), null, 'スケルトンは最終的に実際の集計結果に置き換わるべき');
+    assert.ok(w.document.body.textContent.includes('全体サマリー'), '最終的に集計結果が描画されるべき');
+  });
+
   /* ============================= 回帰防止: #appの委譲イベントリスナー重複バグ =============================
    * I3の実装時、「新規/編集」タブに2回目以降訪れると、#app要素自体が使い回される
    * (innerHTML更新のみで作り直されない)ため bindNewCheckEvents() 内の
