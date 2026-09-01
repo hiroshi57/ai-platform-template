@@ -9,7 +9,6 @@ import json
 import logging
 import sys
 import uuid
-from typing import Optional
 
 # リクエスト単位で伝播する相関ID
 _request_id: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
@@ -61,7 +60,9 @@ def configure_logging(level: str = "INFO", json_format: bool = True) -> None:
         # ハンドラを外すだけだとファイル/ソケットが開いたままリークする
         try:
             h.close()
-        except Exception:  # noqa: BLE001 - クローズ失敗でアプリを落とさない
+        except Exception:  # noqa: BLE001, S110 - ロガー再構成中で、失敗を記録しようにも
+            # ここでログを出すと再帰的にハンドラを触ることになりかねないため、
+            # クローズ失敗はあえて黙って握りつぶす(アプリを落とさないことを優先)。
             pass
     handler = logging.StreamHandler(sys.stdout)
     if json_format:

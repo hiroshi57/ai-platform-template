@@ -1,3 +1,15 @@
 node_modules/
 dist/
 .vite/
+
+# Playwright(J3/J7): テスト実行時の一時出力。ビジュアルリグレッションのベースライン画像
+# (visual-tests/*-snapshots/)はWindows(win32)環境で生成したものであり、実行環境固有の
+# ため意図的にコミットしない(誰でもローカルで`npm run test:fact-check-dashboard:visual:update`
+# を実行してその場で生成する運用とする)。
+test-results/
+playwright-report/
+blob-report/
+visual-tests/*-snapshots/
+
+# J4: Lighthouseの実行結果レポート(実行のたびに生成される一時ファイル)
+.lighthouse/
