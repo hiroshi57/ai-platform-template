@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from core import (
     APIKeyStore,
@@ -171,8 +172,12 @@ def create_app():
 
     @app.get("/v1/budget")
     def budget(budget_usd: float = Query(..., gt=0),
-               day_of_month: int | None = Query(None, ge=1, le=31),
-               days_in_month: int | None = Query(None, ge=28, le=31),
+               # 注意: FastAPI はこのシグネチャを `typing.get_type_hints()` で実行時に
+               # 解決する(`from __future__ import annotations` があっても遅延評価では
+               # 済まない)。Python 3.9 は PEP604(`X | None`)を実行時評価できないため、
+               # ここだけは `Optional[int]` のままにする(ruffのUP007自動修正対象外)。
+               day_of_month: Optional[int] = Query(None, ge=1, le=31),  # noqa: UP007
+               days_in_month: Optional[int] = Query(None, ge=28, le=31),  # noqa: UP007
                t: str = Depends(current_tenant)):
         # 旧実装は全期間の合計を「今月の消費」として扱い、day_of_month の既定が
         # 15 固定だった(実日付と無関係な数字で予算アラートを出していた)。
