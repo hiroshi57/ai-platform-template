@@ -10,8 +10,8 @@ metadata:
 
 diff 形式・根拠リンク付き。5提案すべて **2026-09-11 承認・repo 反映済み**:
 保存ルール明文化 / 組織化の目的化を戒める / 逐語vs蒸留 / ツールセットを retro 第一級レバーに / 成長前提の健全性チェック。
-反映先は `.claude/rules/memory-curation.md`（1・2・3）と `.claude/rules/harness-retro.md`（4・5）。
-残作業は提案4のグローバル CLAUDE.md セクション7 本文追記のみ（保護対象・本 repo 外）。
+全5提案は1スキル `.claude/skills/memory-curation/SKILL.md` に統合済み（2026-09-14 完全スキル化・旧 rules 2ファイルは削除）。
+提案4はグローバル CLAUDE.md セクション7「改善提案のルール」本文にも 2026-09-14 追記済み（全提案・残作業なし）。
 
 **How to apply**: メモリ運用ルールの改善や harness-retro を扱うとき参照。
 運用ルール本体は [[memory-curation-rules]]。グローバル CLAUDE.md セクション7 の提案フォーマット規約に準拠。

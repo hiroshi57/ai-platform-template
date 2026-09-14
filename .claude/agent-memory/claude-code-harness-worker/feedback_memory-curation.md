@@ -26,9 +26,10 @@ curate するときの運用ルール。5点。
 
 **How to apply**: メモリ・skills・harness-logs を編集/再編成/整理する作業の前に本ルールを適用する。
 特に「整理してきれいにしたい」衝動が出たら 2 を思い出し、3レバー（能力/形式/ツール）を先に検討する。
-全5ルールが本 repo に反映済み（2026-09-11 承認）:
-`.claude/rules/memory-curation.md`（保存ルール＝1・整理の投資判断＝2・記憶の提供形式＝3）と
-`.claude/rules/harness-retro.md`（ツールセットのレバー＝4・ストア健全性チェック＝5）。
-メモリ/skills/log を扱う作業前にこの2ファイルを参照する。詳細と経緯は [[harness-proposals-filesystem-memory]]。
-残作業は提案4のグローバル CLAUDE.md セクション7 本文追記のみ（保護対象・本 repo 外・人間が別途適用）。
+全5ルールは1つのスキル `.claude/skills/memory-curation/SKILL.md` に統合済み（2026-09-14 完全スキル化）:
+保存ルール＝1・整理の投資判断＝2・記憶の提供形式＝3・ツールセットのレバー＝4・ストア健全性チェック＝5。
+メモリ/skills/log を編集・再編成する時、または harness-retro を回す時に memory-curation スキルを呼び出す
+（description が発動条件）。旧 `.claude/rules/memory-curation.md`・`harness-retro.md` は削除済み。
+詳細と経緯は [[harness-proposals-filesystem-memory]]。
+提案4はグローバル CLAUDE.md セクション7「改善提案のルール」本文にも 2026-09-14 追記済み（残作業なし）。
 グローバル CLAUDE.md セクション7「Self-Tuning Harness Loop（要約せず生ログ蓄積）」と整合する。
