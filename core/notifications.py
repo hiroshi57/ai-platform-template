@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable
 from urllib.parse import urlencode, urlparse
 
 logger = logging.getLogger("ai_platform.notifications")
@@ -42,8 +42,8 @@ class NotificationResult:
     channel: str
     ok: bool
     skipped: bool = False
-    status_code: Optional[int] = None
-    error: Optional[str] = None
+    status_code: int | None = None
+    error: str | None = None
 
     def as_dict(self) -> dict:
         return dict(self.__dict__)
@@ -58,8 +58,8 @@ def _http_post(url: str, data: bytes, headers: dict, timeout: float = DEFAULT_TI
     scheme = urlparse(url).scheme.lower()
     if scheme not in ("http", "https"):
         raise ValueError(f"unsupported url scheme {scheme!r}; only http/https allowed")
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:   # noqa: S310 - スキーム検証済み
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # noqa: S310 - スキーム検証済み
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - スキーム検証済み
         return int(getattr(resp, "status", 0) or resp.getcode())
 
 
@@ -68,7 +68,7 @@ class Notifier(ABC):
 
     channel: str = "base"
 
-    def __init__(self, sender: Optional[Sender] = None):
+    def __init__(self, sender: Sender | None = None):
         self._sender = sender or _http_post
 
     @abstractmethod
@@ -99,7 +99,7 @@ class TeamsNotifier(Notifier):
 
     channel = "teams"
 
-    def __init__(self, webhook_url: str, sender: Optional[Sender] = None):
+    def __init__(self, webhook_url: str, sender: Sender | None = None):
         super().__init__(sender)
         self.webhook_url = webhook_url
 
@@ -114,7 +114,7 @@ class ChatworkNotifier(Notifier):
 
     channel = "chatwork"
 
-    def __init__(self, api_token: str, room_id: str, sender: Optional[Sender] = None):
+    def __init__(self, api_token: str, room_id: str, sender: Sender | None = None):
         super().__init__(sender)
         self.api_token = api_token
         self.room_id = str(room_id)
@@ -132,15 +132,15 @@ class ChatworkNotifier(Notifier):
 class MultiNotifier:
     """複数チャネルへ同報する. 各チャネルの送信を隔離し、部分失敗を許容する."""
 
-    def __init__(self, notifiers: List[Notifier]):
+    def __init__(self, notifiers: list[Notifier]):
         self._notifiers = list(notifiers)
 
     @property
-    def channels(self) -> List[str]:
+    def channels(self) -> list[str]:
         return [n.channel for n in self._notifiers]
 
-    def send(self, message: str) -> List[NotificationResult]:
-        results: List[NotificationResult] = []
+    def send(self, message: str) -> list[NotificationResult]:
+        results: list[NotificationResult] = []
         for n in self._notifiers:
             try:
                 results.append(n.send(message))
@@ -153,13 +153,13 @@ class MultiNotifier:
         return results
 
     @staticmethod
-    def all_delivered(results: List[NotificationResult]) -> bool:
+    def all_delivered(results: list[NotificationResult]) -> bool:
         """設定済みチャネルが 1 つ以上あり、その全てが配信成功したか."""
         actionable = [r for r in results if not r.skipped]
         return bool(actionable) and all(r.ok for r in actionable)
 
 
-def build_default_notifier(sender: Optional[Sender] = None) -> MultiNotifier:
+def build_default_notifier(sender: Sender | None = None) -> MultiNotifier:
     """env から設定済みチャネルだけを組み立てる(未設定チャネルは含めない).
 
     参照する環境変数:
@@ -167,7 +167,7 @@ def build_default_notifier(sender: Optional[Sender] = None) -> MultiNotifier:
       - CHATWORK_API_TOKEN      … Chatwork API トークン
       - CHATWORK_ROOM_ID        … 投稿先ルーム ID(token と両方揃って初めて有効)
     """
-    notifiers: List[Notifier] = []
+    notifiers: list[Notifier] = []
 
     teams_url = (os.getenv("TEAMS_WEBHOOK_URL") or "").strip()
     if teams_url:

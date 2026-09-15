@@ -109,7 +109,7 @@ def effective_strategy(tenant: str, requested: RoutingStrategy) -> RoutingStrate
     return BudgetGuard(SETTINGS.monthly_budget_usd).choose_strategy(spent, None, requested)
 
 
-def create_app(notifier: Optional[MultiNotifier] = None):
+def create_app(notifier: MultiNotifier | None = None):
     from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse
