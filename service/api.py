@@ -14,9 +14,10 @@ import logging
 from typing import Optional
 
 from core import (
-    APIKeyStore, BudgetGuard, LLMRouter, NoProviderAvailable, RoutingStrategy, Settings,
-    build_providers, configure_logging, detect_cost_anomaly, get_request_id, new_request_id,
-    provider_mode, set_request_id, unverified_providers, RateLimiter,
+    APIKeyStore, BudgetGuard, LLMRouter, MultiNotifier, NoProviderAvailable, RoutingStrategy,
+    Settings, build_default_notifier, build_providers, configure_logging, detect_cost_anomaly,
+    get_request_id, new_request_id, provider_mode, set_request_id, unverified_providers,
+    RateLimiter,
 )
 
 from .db import ServiceDB
@@ -34,8 +35,12 @@ ROUTER = LLMRouter(providers=build_providers(SETTINGS.enabled_providers))
 API_KEYS = APIKeyStore.from_env()
 RATE_LIMITER = RateLimiter(capacity=SETTINGS.rate_capacity,
                            refill_per_sec=SETTINGS.rate_refill_per_sec)
+# スケジュール通達の同報先。env(TEAMS_WEBHOOK_URL / CHATWORK_API_TOKEN / CHATWORK_ROOM_ID)
+# から設定済みチャネルだけを構築する。未設定なら no-op(チャネルゼロ)。
+NOTIFIER = build_default_notifier()
 
 MAX_PROMPT_CHARS = 32_000
+MAX_NOTIFY_CHARS = 8_000
 
 # --- リクエストモデル -----------------------------------------------------------
 # 重要: Pydantic モデルは **モジュールスコープ** に置く必要がある。
@@ -45,14 +50,27 @@ MAX_PROMPT_CHARS = 32_000
 # FastAPI はボディではなく **クエリパラメータ** とみなして必ず 422 を返す。
 # (旧 app_template/main.py はこの形だったため /v1/chat が常に 422 だった)
 try:
-    from pydantic import BaseModel, Field
+    from pydantic import BaseModel, Field, field_validator
 
     class ChatIn(BaseModel):
         prompt: str = Field(..., min_length=1, max_length=MAX_PROMPT_CHARS)
         strategy: str = "balanced"
         max_output_tokens: int = Field(256, gt=0, le=8192)
+
+    class NotificationIn(BaseModel):
+        message: str = Field(..., min_length=1, max_length=MAX_NOTIFY_CHARS)
+
+        @field_validator("message")
+        @classmethod
+        def _not_blank(cls, v: str) -> str:
+            # min_length=1 は空白のみ("   ")を通してしまう。通達本文が空だと
+            # 各チャネルに無意味な空メッセージが飛ぶため、明示的に弾く。
+            if not v.strip():
+                raise ValueError("message must not be blank")
+            return v
 except ImportError:  # pragma: no cover - pydantic 未インストール環境
     ChatIn = None  # type: ignore[assignment]
+    NotificationIn = None  # type: ignore[assignment]
 
 
 def chat(tenant: str, prompt: str, strategy: RoutingStrategy,
@@ -91,10 +109,14 @@ def effective_strategy(tenant: str, requested: RoutingStrategy) -> RoutingStrate
     return BudgetGuard(SETTINGS.monthly_budget_usd).choose_strategy(spent, None, requested)
 
 
-def create_app():
+def create_app(notifier: MultiNotifier | None = None):
     from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse
+
+    # 既定はモジュールスコープの NOTIFIER。テストはフェイクを注入して
+    # ネットワーク無しで配信経路を検証する。
+    app_notifier = notifier if notifier is not None else NOTIFIER
 
     app = FastAPI(title="AI Platform Template", version="1.1.0")
 
@@ -178,6 +200,35 @@ def create_app():
         modes = {name: provider_mode(name) for name in SETTINGS.enabled_providers}
         return build_html_report(DB.summary(t), modes, tenant=t,
                                  unverified=unverified_providers())
+
+    @app.post("/v1/notify/scheduled")
+    def notify_scheduled(body: NotificationIn, t: str = Depends(current_tenant)):
+        """スケジュール通達を Teams / Chatwork へ同報する.
+
+        外部スケジューラ(Cloud Scheduler / cron 等)が定期的に叩く想定。
+        Cloud Run はスケール0まで縮むため、アプリ内常駐スケジューラは持たない。
+
+        レスポンス方針:
+          - 設定済みチャネル全てに配信成功 -> 200
+          - 一部でも配信失敗           -> 502(詳細を detail に格納。呼び出し側が再送判断できる)
+          - チャネル未設定(no-op)      -> 200 だが delivered=false(誤設定の握り潰しを避ける)
+        """
+        results = app_notifier.send(body.message)
+        payload = {
+            "delivered": MultiNotifier.all_delivered(results),
+            "configured_channels": len(results),
+            "results": [r.as_dict() for r in results],
+            "request_id": get_request_id(),
+        }
+        if not payload["configured_channels"]:
+            # 送信先が1つも無い。事故を隠さないようログに残しつつ 200(no-op)を返す。
+            logger.warning("scheduled notification requested but no channels are configured")
+            return payload
+        if not payload["delivered"]:
+            # 一部/全部の配信に失敗。スケジューラが失敗を検知できるよう 5xx を返す。
+            logger.error("scheduled notification partially failed: %s", payload["results"])
+            raise HTTPException(status_code=502, detail=payload)
+        return payload
 
     @app.get("/healthz")
     def healthz():
