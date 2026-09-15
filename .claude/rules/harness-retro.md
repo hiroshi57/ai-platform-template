@@ -47,3 +47,30 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
 - 1・2 が崩れた（削除・作り直しが起きた）場合は `.claude/rules/memory-curation.md` の保存ルール違反。
   内容欠落がないか diff で確認する。
 - 3 が悪化した場合、taxonomy を守れる強い管理エージェントに切り替えるか、ツールセット（提案4）を見直す。
+
+---
+
+# 提案6: 独立コンテキストの敵対的レビュー
+
+> **起源**: 提案 `harness-proposals/2026-09-15-organizational-second-brain.md`（提案B）／根拠 Meta "Organizational Second Brain"（engineering.fb.com 2026-09-02, Compilation 節）
+> **承認**: 2026-09-15 人間承認済み
+
+改善提案（`harness-proposals/` の diff）を landing する前に、**改善の rationale を一切
+知らない fresh-context のレビューエージェント**へ、提案された **diff だけ** を渡して検証する。
+提案側と context を共有しないことで、その盲点（blind spot）を継承させない。
+
+## ルール
+
+1. **対象**: CLAUDE.md / AGENTS.md / skills / `.claude/rules/` を変える提案のみ。
+   memory への通常の追記は対象外（`memory-curation.md` の over-curation 回避と整合）。
+2. **レビュー役の役割は問題発見に限定する**: 矛盾の導入・壊れたエッジケース・既存ルールとの
+   衝突・宙に浮いた参照。改善意図の忖度や再設計はさせない。
+3. **出力**: `APPROVE` / `REQUEST_CHANGES` ＋ 検出した衝突の列挙。
+4. **人間承認を置き換えない**: 本レビューは人間承認の**前段**。敵対的レビューが APPROVE でも
+   最終反映は人間承認を要する（CLAUDE.md セクション7）。
+
+## 補完関係
+
+- `memory-curation.md` の「silently condense 検知」（コミット前 diff セルフチェック）が
+  *内容の欠落* を捕まえるのに対し、本レビューは *論理の衝突* を landing 前に捕まえる。
+  両者は相補的で、どちらも人間承認の前に通す。

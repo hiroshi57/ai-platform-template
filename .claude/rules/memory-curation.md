@@ -76,3 +76,32 @@ git diff HEAD -- "$TARGET" | grep -E '^-' | grep -vE '^---'
    片方だけにすると、逆側の consumer で性能が落ちる。
 4. 逐語ログは「全部を毎回読ませる」検索コストが唯一 store と共に増える負債。大規模化したら
    蒸留層のインデックス化で検索範囲を絞る（提案2の検索経済性と整合）。
+
+---
+
+# 記憶の分類拡張: position / gateway（提案C）
+
+> **起源**: 提案 `harness-proposals/2026-09-15-organizational-second-brain.md`（提案C）／根拠 Meta "Organizational Second Brain"（engineering.fb.com 2026-09-02, Second Brain 節）
+> **承認**: 2026-09-15 人間承認済み
+
+既存の memory type（user / feedback / project / reference）に、**確定方針**とその**適用範囲**を
+通常の観察メモと区別するための2種を追加する。記事の Position / Gateway ファイルの概念を軽量化したもの。
+
+## 追加する type
+
+| type | 意味 | 例 |
+|------|------|----|
+| **position** | 組織が確定した方針・立場。覆すには人間承認が要る強い制約。**記録するだけで変更権限は人間に留まる** | 「本番デプロイは Cursor 責務」「cc:* マーカーは人間のみ変更」「セキュリティ設定は変更禁止」 |
+| **gateway** | その memory / skill を適用してよい前提条件（threshold）。満たさない場面では適用しない | 「NG-1 は mode==breezing のときだけ適用」「この判断基準はコンプラ領域限定」 |
+
+## ルール（MUST）
+
+1. **position は「人間承認済みの確定方針」に限定する。** 通常の feedback / project 観察を position に
+   格上げしない。小規模ストアでの type 肥大化を防ぐ（提案2 over-curation 回避と整合）。
+2. **position の記録は変更権限を移譲しない。** CLAUDE.md セクション7 の自動改善対象外
+   （禁止事項・コミット規約・cc:* マーカー）を position として *記録* してよいが、
+   その内容を Worker / 自動改善が **書き換えてはならない**。変更は人間のみ。
+3. **gateway は適用条件を明文化して誤適用を防ぐ。** 無関係ドメインへ memory / skill を
+   適用しないためのゲートとして使い、条件を満たさなければ参照を見送る。
+4. frontmatter の `metadata.type` に `position` / `gateway` を記す。MEMORY.md インデックスの
+   1行フックにも type が分かる語を含める。
