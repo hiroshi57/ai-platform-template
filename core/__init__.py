@@ -25,6 +25,10 @@ from .finops import (
     BudgetGuard, BudgetStatus, project_month_end, detect_cost_anomaly, CostAnomaly,
     days_in_month_of,
 )
+from .notifications import (
+    Notifier, TeamsNotifier, ChatworkNotifier, MultiNotifier, NotificationResult,
+    build_default_notifier,
+)
 
 __version__ = "1.1.0"
 
@@ -70,4 +74,10 @@ __all__ = [
     "detect_cost_anomaly",
     "CostAnomaly",
     "days_in_month_of",
+    "Notifier",
+    "TeamsNotifier",
+    "ChatworkNotifier",
+    "MultiNotifier",
+    "NotificationResult",
+    "build_default_notifier",
 ]
