@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 *.csv
 *.json.out
+# fetched / generated geography (regenerate via data/fetch_osm.py)
+data/*.geojson

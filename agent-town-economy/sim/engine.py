@@ -16,7 +16,7 @@ from . import money
 from .agents import Agent, Memory
 from .conditions import Condition
 from .tools import Tools
-from .world import World
+from .world import Place, World
 
 
 @dataclass
@@ -40,6 +40,7 @@ class Simulation:
         seed: int = 0,
         n_agents: int = 100,
         memory_enabled: bool = True,
+        places: Optional[List[Place]] = None,
     ) -> None:
         self.condition = condition
         self.policy = policy
@@ -49,7 +50,7 @@ class Simulation:
         self.pulse = 0
 
         self.ledger = money.Ledger()
-        self.world = World(self.rng)
+        self.world = World(self.rng, places=places)
         self.tools = Tools(self)
         self.agents: List[Agent] = []
         self.tool_stats: Dict[str, Dict[str, int]] = {}
@@ -136,7 +137,7 @@ class Simulation:
             s["failures"] += 1
 
     def _agent_act(self, agent: Agent) -> None:
-        name, kwargs = self.policy.choose(agent)
+        name, kwargs = self.policy.choose(agent, self)
         fn = getattr(self.tools, name, None)
         if fn is None:
             self._record_tool(name, False)

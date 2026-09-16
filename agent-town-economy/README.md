@@ -18,8 +18,8 @@ arXiv:[2609.11108](https://arxiv.org/abs/2609.11108) [cs.MA], 2026.
 | 二重検証（保存則＋エージェント単位の台帳照合） | `analysis/validate.py` | ◎ |
 | 処置条件（観光sweep/ショック/現金給付） | `sim/conditions.py` | ◎ |
 | 指標（Gini・順位持続・五分位流動・賃金伝播・マージン分解・MPC） | `analysis/metrics.py` | ◎ |
-| 実在ポカラ湖畔のOSM地理 | 合成グリッド＋762施設/3,981品 | △ 近似（`build_registry`差替で実OSM投入可） |
-| LLM意思決定方策 | ヒューリスティック既定＋LLM差込口 | △ 近似（`sim/policy.py`） |
+| 実在ポカラ湖畔のOSM地理 | 合成グリッド既定／**実OSM投入対応**（`sim/osm.py`） | ○ Overpass取得＋GeoJSONローダ＋メートル投影 |
+| LLM意思決定方策 | ヒューリスティック既定／**実LLM接続対応**（`sim/llm_backend.py`） | ○ OpenAI互換API・vLLM対応・依存ゼロ |
 
 ## 使い方
 
@@ -38,9 +38,49 @@ python run.py --sweep --pulses 336 --seeds 3
 # 記憶アブレーション arm（記憶を消しても経済指標が動かないことの確認）
 python run.py --condition baseline --pulses 336 --no-memory
 
-# テスト（貨幣保存・台帳照合・指標の健全性）
+# テスト（貨幣保存・台帳照合・指標・OSM・LLM）
 python -m pytest -q
 ```
+
+## 実OSM地理の投入
+
+実在ポカラ湖畔の店舗フットプリントを OpenStreetMap（Overpass API）から取得し、
+lat/lon をメートルに投影して合成グリッドを置き換える。OSMに価格は無いため、
+**実地理の上に価格付きメニューを合成**する（＝実地理・合成経済）。
+
+```bash
+# 1. Overpass から取得（要ネットワーク・1回だけ）
+python data/fetch_osm.py                      # -> data/lakeside.geojson
+
+# 2. 取得した GeoJSON でシミュレーション（以後オフライン）
+python run.py --condition baseline --osm-geojson data/lakeside.geojson
+```
+
+- bbox は `sim/osm.POKHARA_LAKESIDE_BBOX`（`--south/--west/--north/--east` で変更可）。
+- 任意地域の GeoJSON（Point / Polygon）をそのまま読める（`sim.osm.load_places_from_geojson`）。
+- OSMタグ（amenity/shop/tourism）を7カテゴリにマップ。
+
+## 実LLM方策の接続
+
+`LLMPolicy` に任意の **OpenAI互換エンドポイント**（OpenAI本体／自己ホスト vLLM＝論文の
+Qwen・gpt-oss構成）を接続できる。依存パッケージ不要（stdlibの `urllib` のみ）。
+
+```bash
+export LLM_API_KEY=sk-...
+python run.py --condition baseline --pulses 60 \
+    --llm-base-url https://api.openai.com/v1 --llm-model gpt-4o-mini
+
+# 自己ホスト vLLM の例（論文構成に近い）
+python run.py --condition baseline --pulses 60 \
+    --llm-base-url http://localhost:8000/v1 --llm-model Qwen/Qwen3.8-27B-FP8
+```
+
+- 各エージェント活性化ごとに観測（財布・銀行・視界内施設・シフト状況）を渡し、モデルは
+  `{"tool": "<name>"}` を返す。パース失敗・不正ツール名は**フォーフィット**してヒューリスティックに
+  フォールバック（論文の「malformed generations are forfeited, not retried」を踏襲）。
+- `LLMPolicy.malformed` に forfeit 数が記録される。
+- これで論文が未検証とした問い——**「賃上げを促すようなプロンプト/モデルなら伝播失敗は崩れるか」**——を
+  実モデルで検証できる。
 
 ## 実験装置としての使い方（ツマミ）
 
@@ -73,13 +113,17 @@ agent-town-economy/
 │   ├── world.py        # 762施設・3,981品・視認半径80m
 │   ├── agents.py       # エージェント状態＋永続記憶（アブレーション対応）
 │   ├── tools.py        # 19ツール interface
-│   ├── policy.py       # ヒューリスティック方策＋LLM差込口
+│   ├── policy.py       # ヒューリスティック方策＋LLM方策
+│   ├── llm_backend.py  # OpenAI互換バックエンド（vLLM対応・依存ゼロ）
+│   ├── osm.py          # 実OSM取得・GeoJSONローダ・メートル投影
 │   ├── conditions.py   # 処置条件（baseline/low/high/shock/grant）
 │   └── engine.py       # 2つの時計のパルスループ
 ├── analysis/
 │   ├── validate.py     # 独立再計算による検証
 │   └── metrics.py      # Gini/持続/流動/賃金伝播/マージン分解/MPC
-├── tests/              # 貨幣保存・台帳照合・指標の pytest
+├── data/
+│   └── fetch_osm.py    # Overpass から footprint を取得
+├── tests/              # 貨幣保存・台帳照合・指標・OSM・LLM の pytest
 └── run.py              # CLI エントリポイント
 ```
 

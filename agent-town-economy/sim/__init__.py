@@ -5,6 +5,9 @@ treatment conditions, and the analysis pipeline.
 Approximated: real Pokhara OSM geography (synthetic grid) and the LLM decision
 policy (heuristic by default, LLM pluggable).
 """
-from . import agents, conditions, engine, money, policy, tools, world
+from . import agents, conditions, engine, llm_backend, money, osm, policy, tools, world
 
-__all__ = ["agents", "conditions", "engine", "money", "policy", "tools", "world"]
+__all__ = [
+    "agents", "conditions", "engine", "llm_backend", "money",
+    "osm", "policy", "tools", "world",
+]

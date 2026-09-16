@@ -6,6 +6,15 @@ Examples
     python run.py --condition wealth-grant --pulses 336 --seed 1      # prints MPC
     python run.py --sweep --pulses 336 --seeds 3                      # margin decomposition
     python run.py --condition baseline --pulses 336 --no-memory       # ablation arm
+
+    # real OSM geography (fetch once, then load):
+    python data/fetch_osm.py
+    python run.py --condition baseline --osm-geojson data/lakeside.geojson
+
+    # real LLM policy (any OpenAI-compatible endpoint, incl. self-hosted vLLM):
+    export LLM_API_KEY=sk-...
+    python run.py --condition baseline --pulses 60 \
+        --llm-base-url https://api.openai.com/v1 --llm-model gpt-4o-mini
 """
 from __future__ import annotations
 
@@ -25,14 +34,46 @@ from analysis.metrics import (  # noqa: E402
 from analysis.validate import validate  # noqa: E402
 from sim.conditions import get_condition  # noqa: E402
 from sim.engine import Simulation  # noqa: E402
-from sim.policy import HeuristicPolicy  # noqa: E402
+from sim.policy import HeuristicPolicy, LLMPolicy  # noqa: E402
 
 
-def run_one(condition_name, pulses, seed, memory=True, reprice=0.001, wage_raise=0.001, mpc=0.035):
+def _load_places(args, seed):
+    if not args.osm_geojson:
+        return None
+    from sim.osm import load_places_from_geojson
+
+    return load_places_from_geojson(args.osm_geojson, random.Random(seed + 101))
+
+
+def _make_policy(args, seed):
+    heuristic = HeuristicPolicy(
+        random.Random(seed + 7),
+        reprice_prob=args.reprice_prob,
+        wage_raise_prob=args.wage_raise_prob,
+        mpc=args.mpc,
+    )
+    if not args.llm_base_url:
+        return heuristic
+    from sim.llm_backend import OpenAICompatibleBackend
+
+    backend = OpenAICompatibleBackend(
+        base_url=args.llm_base_url,
+        model=args.llm_model,
+        api_key=os.environ.get("LLM_API_KEY"),
+        temperature=args.llm_temperature,
+    )
+    return LLMPolicy(backend, fallback=heuristic)
+
+
+def run_one(args, condition_name, seed):
     condition = get_condition(condition_name)
-    policy = HeuristicPolicy(random.Random(seed + 7), reprice_prob=reprice, wage_raise_prob=wage_raise, mpc=mpc)
-    sim = Simulation(condition, policy, seed=seed, memory_enabled=memory)
-    return sim.run(pulses)
+    policy = _make_policy(args, seed)
+    sim = Simulation(
+        condition, policy, seed=seed,
+        memory_enabled=not args.no_memory,
+        places=_load_places(args, seed),
+    )
+    return sim.run(args.pulses)
 
 
 def _print(title, obj):
@@ -51,24 +92,22 @@ def main() -> int:
     ap.add_argument("--wage-raise-prob", type=float, default=0.001)
     ap.add_argument("--mpc", type=float, default=0.035)
     ap.add_argument("--sweep", action="store_true", help="tourism low/high sweep + margin decomposition")
+    ap.add_argument("--osm-geojson", default=None, help="path to a GeoJSON of real OSM footprints")
+    ap.add_argument("--llm-base-url", default=None, help="OpenAI-compatible base URL (enables LLM policy)")
+    ap.add_argument("--llm-model", default="gpt-4o-mini")
+    ap.add_argument("--llm-temperature", type=float, default=0.0)
     args = ap.parse_args()
 
     if args.sweep:
-        lows, highs = [], []
-        for s in range(args.seeds):
-            lows.append(run_one("tourism-low", args.pulses, s, mpc=args.mpc))
-            highs.append(run_one("tourism-high", args.pulses, s, mpc=args.mpc))
+        lows = [run_one(args, "tourism-low", s) for s in range(args.seeds)]
+        highs = [run_one(args, "tourism-high", s) for s in range(args.seeds)]
         _print("validation (low seed 0)", validate(lows[0]))
         _print("metrics low (seed 0)", compute_metrics(lows[0]))
         _print("metrics high (seed 0)", compute_metrics(highs[0]))
         _print("margin decomposition (seed 0)", margin_decomposition(lows[0], highs[0]))
         return 0
 
-    result = run_one(
-        args.condition, args.pulses, args.seed,
-        memory=not args.no_memory,
-        reprice=args.reprice_prob, wage_raise=args.wage_raise_prob, mpc=args.mpc,
-    )
+    result = run_one(args, args.condition, args.seed)
     _print("validation", validate(result))
     _print("metrics", compute_metrics(result))
     mpc = marginal_propensity_to_consume(result)
