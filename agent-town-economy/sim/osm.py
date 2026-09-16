@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import urllib.parse
 import urllib.request
 from typing import Dict, List, Optional, Tuple
 
@@ -121,20 +122,8 @@ def overpass_query(bbox: Tuple[float, float, float, float]) -> str:
     )
 
 
-def fetch_overpass(
-    bbox: Tuple[float, float, float, float] = POKHARA_LAKESIDE_BBOX,
-    out_path: str = "data/lakeside.geojson",
-    endpoint: str = "https://overpass-api.de/api/interpreter",
-) -> str:
-    """Query Overpass and write a GeoJSON FeatureCollection. Requires network."""
-    query = overpass_query(bbox)
-    req = urllib.request.Request(
-        endpoint, data=("data=" + query).encode("utf-8"),
-        headers={"User-Agent": "agent-town-economy/1.0"},
-    )
-    with urllib.request.urlopen(req, timeout=90) as resp:
-        raw = json.load(resp)
-
+def overpass_json_to_geojson(raw: dict) -> dict:
+    """Convert a raw Overpass JSON response into a GeoJSON FeatureCollection."""
     features = []
     for el in raw.get("elements", []):
         if el.get("type") == "node":
@@ -151,8 +140,34 @@ def fetch_overpass(
                 "properties": el.get("tags", {}),
             }
         )
+    return {"type": "FeatureCollection", "features": features}
 
-    out = {"type": "FeatureCollection", "features": features}
+
+def fetch_overpass(
+    bbox: Tuple[float, float, float, float] = POKHARA_LAKESIDE_BBOX,
+    out_path: str = "data/lakeside.geojson",
+    endpoint: str = "https://overpass-api.de/api/interpreter",
+) -> str:
+    """Query Overpass and write a GeoJSON FeatureCollection. Requires network.
+
+    A descriptive User-Agent and an Accept header are required: the public
+    Overpass instance returns HTTP 406 without them.
+    """
+    query = overpass_query(bbox)
+    data = urllib.parse.urlencode({"data": query}).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=data,
+        headers={
+            "User-Agent": "agent-town-economy/1.0 (arXiv:2609.11108 reproduction)",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        raw = json.load(resp)
+
+    out = overpass_json_to_geojson(raw)
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False)
     return out_path
