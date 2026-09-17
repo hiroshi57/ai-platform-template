@@ -61,6 +61,7 @@ def _make_policy(args, seed):
         model=args.llm_model,
         api_key=os.environ.get("LLM_API_KEY"),
         temperature=args.llm_temperature,
+        max_tokens=args.llm_max_tokens,
     )
     return LLMPolicy(backend, fallback=heuristic)
 
@@ -70,10 +71,17 @@ def run_one(args, condition_name, seed):
     policy = _make_policy(args, seed)
     sim = Simulation(
         condition, policy, seed=seed,
+        n_agents=args.n_agents,
         memory_enabled=not args.no_memory,
         places=_load_places(args, seed),
     )
-    return sim.run(args.pulses)
+    result = sim.run(args.pulses)
+    if isinstance(policy, LLMPolicy):
+        print(f"[llm] malformed/forfeited generations: {policy.malformed}")
+        ranked = sorted(result.tool_stats.items(), key=lambda kv: -kv[1]["calls"])
+        summary = {name: f"{s['calls']}c/{s['failures']}f" for name, s in ranked}
+        print(f"[llm] tool choices (calls/failures): {json.dumps(summary, ensure_ascii=False)}")
+    return result
 
 
 def _print(title, obj):
@@ -87,6 +95,7 @@ def main() -> int:
     ap.add_argument("--pulses", type=int, default=336, help="336 = 2 simulated weeks")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--seeds", type=int, default=3, help="number of seeds for --sweep")
+    ap.add_argument("--n-agents", type=int, default=100, help="fewer keeps LLM runs cheap")
     ap.add_argument("--no-memory", action="store_true", help="run the memory-ablation arm")
     ap.add_argument("--reprice-prob", type=float, default=0.001)
     ap.add_argument("--wage-raise-prob", type=float, default=0.001)
@@ -96,6 +105,8 @@ def main() -> int:
     ap.add_argument("--llm-base-url", default=None, help="OpenAI-compatible base URL (enables LLM policy)")
     ap.add_argument("--llm-model", default="gpt-4o-mini")
     ap.add_argument("--llm-temperature", type=float, default=0.0)
+    ap.add_argument("--llm-max-tokens", type=int, default=1024,
+                    help="reasoning models need a large budget or replies come back empty")
     args = ap.parse_args()
 
     if args.sweep:

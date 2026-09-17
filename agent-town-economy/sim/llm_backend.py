@@ -6,6 +6,12 @@ The backend is a ``callable(prompt) -> str`` returning the model's raw text;
 ``sim.policy.LLMPolicy`` parses and validates it into a tool name, falling back
 to the heuristic on any error so a run never crashes on a bad generation
 (mirroring the paper's "malformed generations are forfeited, not retried").
+
+Note on reasoning models: models that "think" before answering (Gemini 3.x /
+gpt-oss families) spend most of the token budget on internal reasoning, so
+``max_tokens`` must be generous or the reply comes back empty
+(finish_reason=length, completion_tokens=0) -- exactly the paper's gpt-oss
+observation that raising the output budget cut malformed generations sharply.
 """
 from __future__ import annotations
 
@@ -28,9 +34,9 @@ class OpenAICompatibleBackend:
         base_url: str,
         model: str,
         api_key: Optional[str] = None,
-        timeout: float = 30.0,
+        timeout: float = 60.0,
         temperature: float = 0.0,
-        max_tokens: int = 64,
+        max_tokens: int = 1024,
     ) -> None:
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model = model

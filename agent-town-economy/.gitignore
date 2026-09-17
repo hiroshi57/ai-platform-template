@@ -5,3 +5,6 @@ __pycache__/
 *.json.out
 # fetched / generated geography (regenerate via data/fetch_osm.py)
 data/*.geojson
+# secrets: LLM API key stored locally, never committed
+.llmkey
+*.key
