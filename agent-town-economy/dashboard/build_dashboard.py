@@ -425,7 +425,7 @@ ul.insight{{margin:6px 0 0;padding-left:18px}}ul.insight li{{margin:4px 0;font-s
 <div class="section-title">エージェント挙動：モデルを替えると何が変わるか</div>
 <div class="grid g2">
   <div class="card hl"><h3>価格レバー使用回数 (set_price) — 実LLM実験</h3><div class="sub">ヒューリスティック vs 自己ホストLLM(Qwen 0.5B / 7B) — 実地理・240決定/ラン</div>{lever_chart}
-    <div class="note"><b>目玉の発見</b>: ヒューリスティックと0.5Bは価格レバーを<b>0回</b>(伝播失敗)。<b>7Bは low で {sp7_low:.0f}回</b>{'、high で '+format(sp7_high,'.0f')+'回' if seven_b_complete else ''} 価格を改定＝<b>より強いモデルは伝播失敗を部分的に崩す</b>。7B実験: {seven_status}。</div></div>
+    <div class="note"><b>目玉の発見</b>: ヒューリスティックと0.5Bは価格レバーを<b>0回</b>(伝播失敗)。<b>7Bは low {sp7_low:.0f}回 / high {sp7_high:.0f}回</b>と積極改定＝<b>ツール使用はモデル強度に強く依存</b>(論文section9)。ただし7Bは賃金引上げ(set_wage)は0回で循環は起きず。7B実験: {seven_status}。</div></div>
   <div class="card"><h3>社交ツール失敗率 (invite_to_talk)</h3><div class="sub">モデル非依存に失敗する協調ツール</div>{social}
     <div class="note">論文 94-97% / 実装ヒューリスティック・実測Gemini 92%。<b>モデルを問わず高失敗</b>(並行数上限に適応しない)。</div></div>
 </div>
@@ -441,7 +441,7 @@ ul.insight{{margin:6px 0 0;padding-left:18px}}ul.insight li{{margin:4px 0;font-s
   <div class="card"><h3>要約と推奨</h3>
     <ul class="insight">
       <li><b>再現は成立</b>: 実在ポカラ地理でも「収益は店に届くが賃金・価格に伝播しない」伝播失敗、windfall退蔵、マージン恒等式が再現(総合 {label_for(overall)})。</li>
-      <li><b>モデル強度が鍵</b>: 0.5Bは価格レバー未使用だが、<b>7Bは価格を{sp7_low:.0f}回改定</b>。伝播失敗は完全にモデル非依存ではなく、<b>能力次第で崩れる</b>可能性。</li>
+      <li><b>モデル強度が挙動を決める</b>: 0.5Bは価格レバー0回・7Bは low {sp7_low:.0f}/high {sp7_high:.0f}回改定。ツール使用はモデル依存(論文section9)。ただし7Bも賃金引上げ0回・退化的で、<b>健全な循環(賃金→消費)は未達</b>＝伝播失敗は「崩れかけるが解決せず」。</li>
       <li><b>観測期間の罠</b>: 2週間で見ると「富は凍結」だが、緩和フィットは52週でρ≈{pred_pts[-1][1]:.3f}へ漸近。<b>結論はhorizon依存</b>。短期で打ち切らない。</li>
       <li><b>推奨実験</b>: (a) 7B/14Bで多シード×長horizon、(b)「売切れたら賃上げも選択肢」プロンプトで賃金伝播が回復するか、(c) set_wage使用の有無で分配が動くか。</li>
     </ul></div>
