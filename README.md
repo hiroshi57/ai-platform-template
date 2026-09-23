@@ -21,7 +21,7 @@ clone するだけで、認証・レート制限・LLM 切替・観測性・コ�
   (`AI_PLATFORM_MONTHLY_BUDGET_USD` を設定すると `/v1/chat` に適用される)
 - **コスト異常検知** — 直近平均に対する急変を検出(金額下限つきでノイズ抑制)
 - **予測信頼度** — サンプル日数が少ない月初は `confidence: low` を返し、
-  1日分のスパイクで月中ずっと最安モデルに固定される事故を防ぐ
+  1日分のスパイクで月中ずっと最安モデルに固定されるのを防ぐ
 - API: `GET /v1/budget?budget_usd=...`
 
 加えて基盤としての差別化2点:
@@ -115,7 +115,7 @@ python -m pytest --collect-only -q | tail -1
 | `balanced` | min-max 正規化した合成スコア(既定) | 汎用 |
 
 `balanced` の重みは `LLMRouter(weights={"cost":0.4,"latency":0.3,"quality":0.3})` で調整できる。
-3指標はいずれも min-max 正規化されるため、値域の狭い指標(品質など)でも重みが意図どおり効く。
+3指標はいずれも min-max 正規化されるため、値域の狭い指標(品質など)でも重みが意図どおり反映される。
 
 ---
 
@@ -156,7 +156,7 @@ curl -X POST http://localhost:8000/v1/notify/scheduled \
 `.env` に各社のキーを入れるだけで実 API に切り替わる(キーが無ければ自動で mock)。
 `GET /v1/providers` で real / mock を確認できる。
 
-**単価は必ず実測値で上書きすること。** 同梱の単価は未検証の初期値であり、
+**単価は必ず実際に計測した値で上書きすること。** 同梱の単価は未検証の初期値であり、
 `GET /v1/providers` の `pricing_unverified` に未検証プロバイダが列挙される。
 
 ```bash
@@ -187,7 +187,7 @@ export AI_PLATFORM_PRICING_FILE=./pricing.json
 | 観測性(インメモリ) | プロセスローカル・上限10万件 | 恒久集計は `service/db.py`(SQLite)側を使う |
 | SQLite | 単一ノード前提 | Cloud Run 等の揮発環境では外部DBへ差し替えが必要 |
 | 月次予測 | 線形外挿 | 月初はサンプル不足。`confidence: low` を確認すること |
-| mock のレイテンシ | 決定的な擬似ジッタ | 実測値ではない。p95 は分布の形だけを示す |
+| mock のレイテンシ | 決定的な擬似ジッタ | 実際に計測した値ではない。p95 は分布の形だけを示す |
 
 ---
 
