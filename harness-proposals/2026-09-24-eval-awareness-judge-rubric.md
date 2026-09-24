@@ -3,7 +3,7 @@
 - **日付**: 2026-09-24
 - **slug**: `eval-awareness-judge-rubric`
 - **起案**: Claude Code (Worker)
-- **ステータス**: 人間承認待ち（DRAFT）。§5 の論点 P-1〜P-4 は 2026-09-24 に決定済み— CLAUDE.md §7 の運用に従い、承認前は本体ファイル（CLAUDE.md / `.claude/rules/*` / skills）へ反映しない
+- **ステータス**: **2026-09-24 人間承認済み**。§5 の論点 P-1〜P-4 は同日決定。diff 1・2 は [#19](https://github.com/hiroshi57/ai-platform-template/pull/19) で反映。diff 3（グローバル CLAUDE.md）は人間が手で反映する— CLAUDE.md §7 の運用に従い、承認前は本体ファイル（CLAUDE.md / `.claude/rules/*` / skills）へ反映しない
 - **根拠論文**: *Evaluation Awareness in Language Models: Representation, Verbalization, and Control*
   - Heidari, Memarian, Rabusseau（Mila / Université de Montréal）— arXiv:2608.21766v1 [cs.CL], 2026-08-22
   - コード: https://github.com/evaluation-awareness/evaluation-awareness
