@@ -1,0 +1,2207 @@
+{
+ "eras": [
+  {
+   "id": "ancient",
+   "name": "古代",
+   "from": -10000,
+   "to": 476
+  },
+  {
+   "id": "medieval",
+   "name": "中世",
+   "from": 476,
+   "to": 1453
+  },
+  {
+   "id": "early_modern",
+   "name": "近世",
+   "from": 1453,
+   "to": 1789
+  },
+  {
+   "id": "modern",
+   "name": "近代",
+   "from": 1789,
+   "to": 1914
+  },
+  {
+   "id": "contemporary",
+   "name": "現代",
+   "from": 1914,
+   "to": 2100
+  }
+ ],
+ "categories": {
+  "politics": "政治・国家",
+  "war": "戦争・紛争",
+  "science": "科学・技術",
+  "biology": "生物・医学",
+  "environment": "環境・災害",
+  "economy": "経済・産業",
+  "culture": "文化・宗教"
+ },
+ "events": [
+  {
+   "y": -10000,
+   "y2": null,
+   "approx": true,
+   "t": "農耕と牧畜のはじまり",
+   "d": "西アジアの『肥沃な三日月地帯』で麦の栽培やヤギ・ヒツジの飼育が始まり、人々が定住するようになった。",
+   "cat": "economy",
+   "c": [
+    "IRQ",
+    "SYR",
+    "TUR",
+    "ISR",
+    "JOR"
+   ]
+  },
+  {
+   "y": -3500,
+   "y2": null,
+   "approx": true,
+   "t": "メソポタミア文明と文字の誕生",
+   "d": "チグリス川・ユーフラテス川の流域で都市が生まれ、くさび形文字が使われた。",
+   "cat": "culture",
+   "c": [
+    "IRQ"
+   ]
+  },
+  {
+   "y": -3000,
+   "y2": null,
+   "approx": true,
+   "t": "エジプト文明",
+   "d": "ナイル川流域で統一王朝が生まれ、ピラミッドや象形文字(ヒエログリフ)がつくられた。",
+   "cat": "culture",
+   "c": [
+    "EGY"
+   ]
+  },
+  {
+   "y": -2500,
+   "y2": null,
+   "approx": true,
+   "t": "インダス文明",
+   "d": "インダス川流域にモヘンジョ=ダロなどの計画都市が栄えた。",
+   "cat": "culture",
+   "c": [
+    "PAK",
+    "IND"
+   ]
+  },
+  {
+   "y": -1600,
+   "y2": null,
+   "approx": true,
+   "t": "中国の殷王朝",
+   "d": "黄河流域に殷が栄え、漢字のもとになった甲骨文字が使われた。",
+   "cat": "culture",
+   "c": [
+    "CHN"
+   ]
+  },
+  {
+   "y": -776,
+   "y2": null,
+   "approx": false,
+   "t": "古代オリンピック",
+   "d": "記録に残る最初の古代オリンピックがギリシャのオリンピアで開かれたとされる。",
+   "cat": "culture",
+   "c": [
+    "GRC"
+   ]
+  },
+  {
+   "y": -551,
+   "t": "孔子と儒教",
+   "d": "中国の孔子が生まれたとされる年。思いやり(仁)や礼儀を大切にする教えは、のちに儒教として東アジア全体に広まった。",
+   "cat": "culture",
+   "c": [
+    "CHN",
+    "KOR",
+    "JPN",
+    "VNM"
+   ],
+   "p": [
+    {
+     "name": "孔子",
+     "role": "思想家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#495057",
+      "beard": "long",
+      "beardColor": "#adb5bd",
+      "hat": "chinese",
+      "cloth": "#8a5a3a",
+      "trim": "#f8f9fa",
+      "item": "📜"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": -509,
+   "y2": null,
+   "approx": false,
+   "t": "ローマの共和政",
+   "d": "ローマで王政が倒され、市民が代表を選ぶ共和政が始まったとされる。",
+   "cat": "politics",
+   "c": [
+    "ITA"
+   ]
+  },
+  {
+   "y": -500,
+   "approx": true,
+   "t": "仏教の成立",
+   "d": "インド北部でゴータマ・シッダールタ(ブッダ)が悟りを開き、仏教が生まれた(紀元前5世紀頃)。のちにアジア各地へ広まった。",
+   "cat": "culture",
+   "c": [
+    "IND",
+    "NPL"
+   ],
+   "p": [
+    {
+     "name": "ブッダ",
+     "role": "仏教の開祖",
+     "symbol": "☸️",
+     "color": "#f59f00",
+     "note": "宗教の開祖は信仰への配慮から顔を描かず、シンボルで表しています。"
+    }
+   ],
+   "y2": null
+  },
+  {
+   "y": -221,
+   "y2": null,
+   "approx": false,
+   "t": "秦の始皇帝が中国を統一",
+   "d": "文字・貨幣・ものさしを統一し、万里の長城を整備した。",
+   "cat": "politics",
+   "c": [
+    "CHN"
+   ],
+   "p": [
+    {
+     "name": "始皇帝",
+     "role": "秦の初代皇帝",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "mian",
+      "cloth": "#222222",
+      "trim": "#c92a2a",
+      "item": "🏯"
+     }
+    }
+   ]
+  },
+  {
+   "y": -30,
+   "t": "プトレマイオス朝エジプトの滅亡",
+   "d": "女王クレオパトラ7世が亡くなり、エジプトはローマに併合された。",
+   "cat": "politics",
+   "c": [
+    "EGY",
+    "ITA"
+   ],
+   "p": [
+    {
+     "name": "クレオパトラ7世",
+     "role": "プトレマイオス朝エジプト最後の女王",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "bob",
+      "hairColor": "#1b1b1b",
+      "female": true,
+      "beard": "none",
+      "hat": "egypt",
+      "cloth": "#f8f9fa",
+      "trim": "#f59f00",
+      "item": "👑"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": -27,
+   "y2": null,
+   "approx": false,
+   "t": "ローマ帝国の成立",
+   "d": "アウグストゥスが初代皇帝となり、地中海を囲む大帝国が生まれた。",
+   "cat": "politics",
+   "c": [
+    "ITA"
+   ],
+   "p": [
+    {
+     "name": "アウグストゥス",
+     "role": "ローマ帝国の初代皇帝",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#7a4b2a",
+      "beard": "none",
+      "hat": "laurel",
+      "cloth": "#f8f9fa",
+      "trim": "#862e9c",
+      "item": "🏛️"
+     }
+    }
+   ]
+  },
+  {
+   "y": 30,
+   "approx": true,
+   "t": "キリスト教の成立",
+   "d": "イエスの教えをもとに、西アジアのパレスチナ地方でキリスト教が生まれ、のちにローマ帝国全体に広まった(1世紀前半)。",
+   "cat": "culture",
+   "c": [
+    "ISR",
+    "PSE",
+    "ITA"
+   ],
+   "p": [
+    {
+     "name": "イエス",
+     "role": "キリスト教の中心人物",
+     "symbol": "✝️",
+     "color": "#1c7ed6",
+     "note": "宗教の開祖は信仰への配慮から顔を描かず、シンボルで表しています。"
+    }
+   ],
+   "y2": null
+  },
+  {
+   "y": 105,
+   "y2": null,
+   "approx": false,
+   "t": "紙づくりの改良",
+   "d": "中国の蔡倫が紙の製法を改良したと伝えられ、のちに世界中へ広まった。",
+   "cat": "science",
+   "c": [
+    "CHN"
+   ],
+   "p": [
+    {
+     "name": "蔡倫",
+     "role": "後漢の役人",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "goatee",
+      "beardColor": "#1b1b1b",
+      "hat": "chinese",
+      "cloth": "#5c7cfa",
+      "trim": "#364fc7",
+      "item": "📄"
+     }
+    }
+   ]
+  },
+  {
+   "y": 239,
+   "t": "卑弥呼が魏に使いを送る",
+   "d": "邪馬台国の女王・卑弥呼が中国の魏に使いを送り、『親魏倭王』の称号を受けたと中国の歴史書(『魏志』倭人伝)に記されている。",
+   "cat": "politics",
+   "c": [
+    "JPN",
+    "CHN"
+   ],
+   "p": [
+    {
+     "name": "卑弥呼",
+     "role": "邪馬台国の女王",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "long",
+      "hairColor": "#1b1b1b",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#f8f9fa",
+      "trim": "#c92a2a",
+      "item": "🪞"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 476,
+   "y2": null,
+   "approx": false,
+   "t": "西ローマ帝国の滅亡",
+   "d": "ゲルマン人の傭兵隊長によって西ローマ帝国がほろび、ヨーロッパは中世に入る。",
+   "cat": "politics",
+   "c": [
+    "ITA"
+   ]
+  },
+  {
+   "y": 604,
+   "t": "十七条の憲法",
+   "d": "聖徳太子(厩戸王)が、役人の心がまえを示す十七条の憲法を定めたと『日本書紀』に記されている。『和をもって貴しとなす』の言葉で知られる。",
+   "cat": "politics",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "聖徳太子",
+     "role": "飛鳥時代の皇族・政治家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "goatee",
+      "beardColor": "#1b1b1b",
+      "hat": "kanmuri",
+      "cloth": "#862e9c",
+      "trim": "#f8f9fa",
+      "item": "📜"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 610,
+   "y2": null,
+   "approx": true,
+   "t": "イスラム教の成立",
+   "d": "ムハンマドがアラビア半島のメッカで神の啓示を受けたとされ、イスラム教が広がった。",
+   "cat": "culture",
+   "c": [
+    "SAU"
+   ],
+   "p": [
+    {
+     "name": "ムハンマド",
+     "role": "イスラム教の預言者",
+     "symbol": "🕌",
+     "color": "#2b8a3e",
+     "note": "宗教の開祖は信仰への配慮から顔を描かず、シンボルで表しています。"
+    }
+   ]
+  },
+  {
+   "y": 794,
+   "y2": null,
+   "approx": false,
+   "t": "平安京に都を移す",
+   "d": "日本で平安時代が始まり、約400年続いた。",
+   "cat": "politics",
+   "c": [
+    "JPN"
+   ]
+  },
+  {
+   "y": 1008,
+   "approx": true,
+   "t": "『源氏物語』が書かれる",
+   "d": "紫式部が長編物語『源氏物語』を書いた。この頃には宮中で読まれていたことが『紫式部日記』からわかる。世界最古の長編小説の一つといわれる。",
+   "cat": "culture",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "紫式部",
+     "role": "平安時代の作家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "long",
+      "hairColor": "#1b1b1b",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#c2255c",
+      "trim": "#fcc419",
+      "item": "🖌️",
+      "robe": "junihitoe"
+     }
+    }
+   ],
+   "y2": null
+  },
+  {
+   "y": 1192,
+   "t": "源頼朝が征夷大将軍に",
+   "d": "源頼朝が征夷大将軍となった。鎌倉を拠点に、武士が政治を行う時代(鎌倉幕府)が本格的に始まった。",
+   "cat": "politics",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "源頼朝",
+     "role": "鎌倉幕府の初代将軍",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "eboshi",
+      "cloth": "#343a40",
+      "trim": "#f8f9fa",
+      "item": "🏹"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1206,
+   "y2": null,
+   "approx": false,
+   "t": "モンゴル帝国の成立",
+   "d": "チンギス・ハンが建国し、のちにユーラシア大陸の大部分を支配する大帝国となった。",
+   "cat": "politics",
+   "c": [
+    "MNG",
+    "CHN",
+    "RUS",
+    "IRN"
+   ],
+   "p": [
+    {
+     "name": "チンギス・ハン",
+     "role": "モンゴル帝国の建国者",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "short",
+      "hairColor": "#3b2a1a",
+      "beard": "long",
+      "beardColor": "#6b5a4a",
+      "hat": "mongol",
+      "cloth": "#1864ab",
+      "trim": "#f59f00",
+      "item": "🐎"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1215,
+   "y2": null,
+   "approx": false,
+   "t": "マグナ・カルタ",
+   "d": "イギリスで王の権力を法で制限する文書が認められ、のちの立憲政治のもとになった。",
+   "cat": "politics",
+   "c": [
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "ジョン王",
+     "role": "イングランド王",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "long",
+      "hairColor": "#5a3a1a",
+      "beard": "full",
+      "beardColor": "#5a3a1a",
+      "hat": "crown",
+      "cloth": "#c92a2a",
+      "trim": "#f59f00",
+      "item": "📜"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1347,
+   "y2": 1351,
+   "approx": false,
+   "t": "ペスト(黒死病)の大流行",
+   "d": "ヨーロッパで感染症ペストが大流行し、人口の3分の1ほどが亡くなったとされる。",
+   "cat": "biology",
+   "c": [
+    "ITA",
+    "FRA",
+    "GBR",
+    "DEU",
+    "ESP"
+   ]
+  },
+  {
+   "y": 1450,
+   "y2": null,
+   "approx": true,
+   "t": "活版印刷の発明",
+   "d": "ドイツのグーテンベルクが活版印刷を実用化し、本と知識が一気に広まった。",
+   "cat": "science",
+   "c": [
+    "DEU"
+   ],
+   "p": [
+    {
+     "name": "グーテンベルク",
+     "role": "印刷技術の発明者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "long",
+      "hairColor": "#6b4a2a",
+      "beard": "long",
+      "beardColor": "#6b4a2a",
+      "hat": "cap",
+      "cloth": "#6741d9",
+      "trim": "#3b2a1a",
+      "item": "📖"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1453,
+   "y2": null,
+   "approx": false,
+   "t": "東ローマ帝国の滅亡",
+   "d": "オスマン帝国がコンスタンティノープル(今のイスタンブール)を攻め落とした。",
+   "cat": "war",
+   "c": [
+    "TUR"
+   ],
+   "p": [
+    {
+     "name": "メフメト2世",
+     "role": "オスマン帝国の皇帝",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#3b2a1a",
+      "beard": "full",
+      "beardColor": "#3b2a1a",
+      "hat": "turban",
+      "cloth": "#c92a2a",
+      "trim": "#f59f00",
+      "item": "⚔️"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1492,
+   "y2": null,
+   "approx": false,
+   "t": "コロンブスがアメリカ大陸に到達",
+   "d": "スペインの支援を受けたコロンブスがカリブ海の島に到達し、大航海時代が本格化した。",
+   "cat": "politics",
+   "c": [
+    "ESP",
+    "BHS"
+   ],
+   "p": [
+    {
+     "name": "コロンブス",
+     "role": "航海者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "long",
+      "hairColor": "#adb5bd",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#343a40",
+      "trim": "#868e96",
+      "item": "🧭"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1498,
+   "y2": null,
+   "approx": false,
+   "t": "インド航路の開拓",
+   "d": "ポルトガルのヴァスコ・ダ・ガマがアフリカ南端を回ってインドに到達した。",
+   "cat": "economy",
+   "c": [
+    "PRT",
+    "IND"
+   ],
+   "p": [
+    {
+     "name": "ヴァスコ・ダ・ガマ",
+     "role": "ポルトガルの航海者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#3b2a1a",
+      "beard": "full",
+      "beardColor": "#3b2a1a",
+      "hat": "beret",
+      "cloth": "#212529",
+      "trim": "#f59f00",
+      "item": "⛵"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1517,
+   "y2": null,
+   "approx": false,
+   "t": "宗教改革",
+   "d": "ドイツのルターがカトリック教会を批判し、プロテスタントが生まれた。",
+   "cat": "culture",
+   "c": [
+    "DEU"
+   ],
+   "p": [
+    {
+     "name": "ルター",
+     "role": "宗教改革の中心人物",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#5a3a1a",
+      "beard": "none",
+      "hat": "beret",
+      "cloth": "#212529",
+      "trim": "#495057",
+      "item": "📜"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1522,
+   "y2": null,
+   "approx": false,
+   "t": "初めての世界一周",
+   "d": "マゼランの船隊が世界一周を達成し、地球が丸いことが実際に確かめられた。",
+   "cat": "science",
+   "c": [
+    "ESP",
+    "PRT",
+    "PHL"
+   ],
+   "p": [
+    {
+     "name": "マゼラン",
+     "role": "航海者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#3b2a1a",
+      "beard": "full",
+      "beardColor": "#3b2a1a",
+      "hat": "helmet",
+      "cloth": "#495057",
+      "trim": "#adb5bd",
+      "item": "🌏"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1543,
+   "y2": null,
+   "approx": false,
+   "t": "コペルニクスの地動説",
+   "d": "ポーランドのコペルニクスが、地球が太陽のまわりを回るという説を発表した。同じ年、日本に鉄砲が伝わった。",
+   "cat": "science",
+   "c": [
+    "POL",
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "コペルニクス",
+     "role": "天文学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "bob",
+      "hairColor": "#3b2a1a",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#862e9c",
+      "trim": "#e03131",
+      "item": "☀️"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1575,
+   "t": "長篠の戦い",
+   "d": "織田信長と徳川家康の連合軍が、大量の鉄砲を使って武田氏の軍を破った。戦い方が大きく変わるきっかけとなった。",
+   "cat": "war",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "織田信長",
+     "role": "戦国大名",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "topknot",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "none",
+      "cloth": "#c92a2a",
+      "trim": "#212529",
+      "item": "🔥"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1590,
+   "t": "豊臣秀吉が全国を統一",
+   "d": "豊臣秀吉が戦国時代を終わらせ、全国を統一した。太閤検地や刀狩で、身分のしくみが整えられた。",
+   "cat": "politics",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "豊臣秀吉",
+     "role": "天下統一を果たした武将",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "eboshi",
+      "cloth": "#f59f00",
+      "trim": "#c92a2a",
+      "item": "🌾"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1603,
+   "y2": null,
+   "approx": false,
+   "t": "江戸幕府の成立",
+   "d": "徳川家康が江戸幕府を開き、約260年続く江戸時代が始まった。",
+   "cat": "politics",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "徳川家康",
+     "role": "江戸幕府の初代将軍",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "eboshi",
+      "cloth": "#2b8a3e",
+      "trim": "#f8f9fa",
+      "item": "🏯"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1687,
+   "y2": null,
+   "approx": false,
+   "t": "ニュートンの万有引力",
+   "d": "イギリスのニュートンが『プリンキピア』で運動の法則と万有引力を示した。",
+   "cat": "science",
+   "c": [
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "ニュートン",
+     "role": "物理学者・数学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "wig",
+      "hairColor": "#dee2e6",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#5f3dc4",
+      "trim": "#f8f9fa",
+      "item": "🍎"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1760,
+   "y2": null,
+   "approx": true,
+   "t": "産業革命",
+   "d": "イギリスで機械や蒸気機関を使う工場生産が始まり、CO₂排出が増え始めた。",
+   "cat": "economy",
+   "c": [
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "ジェームズ・ワット",
+     "role": "蒸気機関を改良した技術者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "wig",
+      "hairColor": "#f1f3f5",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#495057",
+      "trim": "#f8f9fa",
+      "item": "⚙️"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1776,
+   "y2": null,
+   "approx": false,
+   "t": "アメリカ独立宣言",
+   "d": "イギリスの植民地だった13州が独立を宣言し、アメリカ合衆国が生まれた。",
+   "cat": "politics",
+   "c": [
+    "USA",
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "ジェファソン",
+     "role": "独立宣言の起草者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "wig",
+      "hairColor": "#c9a27a",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#1864ab",
+      "trim": "#f8f9fa",
+      "item": "📜"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1789,
+   "y2": null,
+   "approx": false,
+   "t": "フランス革命",
+   "d": "市民が王政をたおし、『人権宣言』で自由と平等をうたった。",
+   "cat": "politics",
+   "c": [
+    "FRA"
+   ],
+   "p": [
+    {
+     "name": "パリの市民",
+     "role": "革命に立ち上がった人びと",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#5a3a1a",
+      "beard": "none",
+      "hat": "phrygian",
+      "cloth": "#1c7ed6",
+      "trim": "#f8f9fa",
+      "item": "🗼"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1796,
+   "y2": null,
+   "approx": false,
+   "t": "ジェンナーの種痘",
+   "d": "イギリスのジェンナーが牛痘を使った天然痘の予防接種を行い、ワクチンの始まりとなった。",
+   "cat": "biology",
+   "c": [
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "ジェンナー",
+     "role": "医師",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "wig",
+      "hairColor": "#f1f3f5",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#343a40",
+      "trim": "#f8f9fa",
+      "item": "💉"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1804,
+   "y2": null,
+   "approx": false,
+   "t": "ハイチの独立",
+   "d": "奴隷にされていた人々の革命によって、フランスからの独立を果たした。",
+   "cat": "politics",
+   "c": [
+    "HTI",
+    "FRA"
+   ]
+  },
+  {
+   "y": 1804,
+   "t": "ナポレオンが皇帝に即位",
+   "d": "フランス革命のあと権力をにぎったナポレオンが皇帝となり、ヨーロッパの多くを支配した。ナポレオン法典は各国の法律に影響を与えた。",
+   "cat": "politics",
+   "c": [
+    "FRA"
+   ],
+   "p": [
+    {
+     "name": "ナポレオン",
+     "role": "フランス皇帝",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#3b2a1a",
+      "beard": "none",
+      "hat": "bicorne",
+      "cloth": "#1864ab",
+      "trim": "#f59f00",
+      "item": "⚔️"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1840,
+   "y2": 1842,
+   "approx": false,
+   "t": "アヘン戦争",
+   "d": "清とイギリスの戦争。清が敗れ、香港がイギリスに割譲された。",
+   "cat": "war",
+   "c": [
+    "CHN",
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "林則徐",
+     "role": "アヘンを取り締まった清の役人",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "goatee",
+      "beardColor": "#1b1b1b",
+      "hat": "qing",
+      "cloth": "#1864ab",
+      "trim": "#f59f00",
+      "item": "⚓"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1859,
+   "y2": null,
+   "approx": false,
+   "t": "ダーウィン『種の起源』",
+   "d": "生き物は自然選択によって長い時間をかけて進化するという考えを発表した。",
+   "cat": "biology",
+   "c": [
+    "GBR",
+    "ECU"
+   ],
+   "p": [
+    {
+     "name": "ダーウィン",
+     "role": "博物学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "bald",
+      "hairColor": "#e9ecef",
+      "beard": "long",
+      "beardColor": "#e9ecef",
+      "hat": "none",
+      "cloth": "#343a40",
+      "trim": "#868e96",
+      "item": "🐢"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1861,
+   "y2": 1865,
+   "approx": false,
+   "t": "アメリカ南北戦争",
+   "d": "奴隷制などをめぐる内戦。1863年にリンカンが奴隷解放宣言を出した。",
+   "cat": "war",
+   "c": [
+    "USA"
+   ],
+   "p": [
+    {
+     "name": "リンカン",
+     "role": "第16代アメリカ大統領",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "chin",
+      "beardColor": "#1b1b1b",
+      "hat": "tophat",
+      "cloth": "#212529",
+      "trim": "#f8f9fa",
+      "item": "📜"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1865,
+   "y2": null,
+   "approx": false,
+   "t": "メンデルの遺伝の法則",
+   "d": "エンドウ豆の研究から、親の特徴が子に伝わるしくみ(遺伝の法則)を発表した。",
+   "cat": "biology",
+   "c": [
+    "CZE"
+   ],
+   "p": [
+    {
+     "name": "メンデル",
+     "role": "修道士・生物学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#6b4a2a",
+      "beard": "none",
+      "hat": "none",
+      "glasses": true,
+      "cloth": "#212529",
+      "trim": "#495057",
+      "item": "🫛"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1866,
+   "t": "薩長同盟",
+   "d": "坂本龍馬らの仲立ちで薩摩藩と長州藩が手を結び、江戸幕府をたおす流れが生まれた。",
+   "cat": "politics",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "坂本龍馬",
+     "role": "土佐藩出身の志士",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "messy",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#343a40",
+      "trim": "#adb5bd",
+      "item": "🤝"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1868,
+   "y2": null,
+   "approx": false,
+   "t": "明治維新",
+   "d": "日本で江戸幕府が終わり、近代国家づくりが始まった。",
+   "cat": "politics",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "明治の人びと",
+     "role": "文明開化の時代",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "bowler",
+      "cloth": "#343a40",
+      "trim": "#f8f9fa",
+      "item": "🚂"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1869,
+   "y2": null,
+   "approx": false,
+   "t": "スエズ運河の開通と周期表",
+   "d": "エジプトのスエズ運河が開通し、ヨーロッパとアジアの航路が短くなった。同じ年、ロシアのメンデレーエフが元素の周期表を発表した。",
+   "cat": "science",
+   "c": [
+    "EGY",
+    "RUS"
+   ],
+   "p": [
+    {
+     "name": "メンデレーエフ",
+     "role": "化学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "long",
+      "hairColor": "#868e96",
+      "beard": "long",
+      "beardColor": "#868e96",
+      "hat": "none",
+      "cloth": "#343a40",
+      "trim": "#495057",
+      "item": "🧪"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1871,
+   "t": "津田梅子がアメリカへ留学",
+   "d": "岩倉使節団とともに、6歳の津田梅子が日本初の女子留学生の一人としてアメリカへ渡った。のちに女子英学塾(今の津田塾大学)を開いた。2024年から5000円札の肖像。",
+   "cat": "culture",
+   "c": [
+    "JPN",
+    "USA"
+   ],
+   "p": [
+    {
+     "name": "津田梅子",
+     "role": "女子教育の先駆者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "bun",
+      "hairColor": "#1b1b1b",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#5f3dc4",
+      "trim": "#f8f9fa",
+      "item": "✉️"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1872,
+   "t": "福沢諭吉『学問のすゝめ』",
+   "d": "『天は人の上に人を造らず人の下に人を造らず』で始まる本を出し、学ぶことの大切さを説いた。慶應義塾を開き、長く1万円札の肖像にもなった。",
+   "cat": "culture",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "福沢諭吉",
+     "role": "思想家・教育者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "parted",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#495057",
+      "trim": "#212529",
+      "item": "📘",
+      "robe": "hakama"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1890,
+   "t": "北里柴三郎の血清療法",
+   "d": "ドイツで研究していた北里柴三郎が、破傷風の血清療法を開発した。のちにペスト菌も発見した。2024年から1000円札の肖像。",
+   "cat": "biology",
+   "c": [
+    "JPN",
+    "DEU"
+   ],
+   "p": [
+    {
+     "name": "北里柴三郎",
+     "role": "細菌学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "none",
+      "cloth": "#212529",
+      "trim": "#f8f9fa",
+      "item": "🩺"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1895,
+   "y2": null,
+   "approx": false,
+   "t": "X線の発見",
+   "d": "ドイツのレントゲンがX線を発見し、体の中を見る医療が可能になった。",
+   "cat": "science",
+   "c": [
+    "DEU"
+   ],
+   "p": [
+    {
+     "name": "レントゲン",
+     "role": "物理学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#495057",
+      "beard": "full",
+      "beardColor": "#495057",
+      "hat": "none",
+      "cloth": "#343a40",
+      "trim": "#f8f9fa",
+      "item": "🩻"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1898,
+   "t": "キュリー夫妻がラジウムを発見",
+   "d": "パリで研究していたポーランド出身のマリ・キュリーと夫ピエールが、放射性元素ポロニウムとラジウムを発見した。マリは女性で初めてノーベル賞を受賞した(1903年)。",
+   "cat": "science",
+   "c": [
+    "FRA",
+    "POL"
+   ],
+   "p": [
+    {
+     "name": "マリ・キュリー",
+     "role": "物理学者・化学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "bun",
+      "hairColor": "#5a4a3a",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#343a40",
+      "trim": "#495057",
+      "item": "⚗️"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1903,
+   "y2": null,
+   "approx": false,
+   "t": "ライト兄弟の初飛行",
+   "d": "アメリカで動力飛行機による初めての有人飛行に成功した。",
+   "cat": "science",
+   "c": [
+    "USA"
+   ],
+   "p": [
+    {
+     "name": "ライト兄弟",
+     "role": "飛行機の発明者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#5a3a1a",
+      "beard": "mustache",
+      "beardColor": "#5a3a1a",
+      "hat": "flatcap",
+      "cloth": "#495057",
+      "trim": "#f8f9fa",
+      "item": "✈️"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1905,
+   "y2": null,
+   "approx": false,
+   "t": "アインシュタインの相対性理論",
+   "d": "スイスで働いていたアインシュタインが特殊相対性理論を発表した。",
+   "cat": "science",
+   "c": [
+    "CHE",
+    "DEU"
+   ],
+   "p": [
+    {
+     "name": "アインシュタイン",
+     "role": "物理学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "wild",
+      "hairColor": "#adb5bd",
+      "beard": "mustache",
+      "beardColor": "#868e96",
+      "hat": "none",
+      "cloth": "#868e96",
+      "trim": "#f8f9fa",
+      "item": "⚛️"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1914,
+   "y2": 1918,
+   "approx": false,
+   "t": "第一次世界大戦",
+   "d": "ヨーロッパを中心に多くの国が参加した戦争。戦車・飛行機・毒ガスが使われた。",
+   "cat": "war",
+   "c": [
+    "DEU",
+    "FRA",
+    "GBR",
+    "RUS",
+    "AUT",
+    "ITA",
+    "TUR",
+    "USA",
+    "SRB",
+    "BEL"
+   ]
+  },
+  {
+   "y": 1917,
+   "y2": null,
+   "approx": false,
+   "t": "ロシア革命",
+   "d": "ロシアで帝政がたおれ、のちに世界初の社会主義国家ソビエト連邦が生まれた。",
+   "cat": "politics",
+   "c": [
+    "RUS"
+   ],
+   "p": [
+    {
+     "name": "レーニン",
+     "role": "ロシア革命の指導者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "bald",
+      "hairColor": "#8a5a3a",
+      "beard": "goatee",
+      "beardColor": "#8a5a3a",
+      "hat": "flatcap",
+      "cloth": "#343a40",
+      "trim": "#c92a2a",
+      "item": "🚩"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1920,
+   "y2": null,
+   "approx": false,
+   "t": "国際連盟の発足",
+   "d": "第一次世界大戦の反省から、平和を守るための国際機関がつくられた。",
+   "cat": "politics",
+   "c": [
+    "CHE"
+   ]
+  },
+  {
+   "y": 1928,
+   "y2": null,
+   "approx": false,
+   "t": "ペニシリンの発見",
+   "d": "イギリスのフレミングが青カビから抗生物質ペニシリンを発見した。",
+   "cat": "biology",
+   "c": [
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "フレミング",
+     "role": "細菌学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#adb5bd",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#f8f9fa",
+      "trim": "#1c7ed6",
+      "item": "🧫"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1928,
+   "t": "野口英世とアフリカの黄熱病",
+   "d": "細菌学者の野口英世が、アフリカ(今のガーナ)で黄熱病の研究中に感染して亡くなった。2004〜2024年の1000円札の肖像。",
+   "cat": "biology",
+   "c": [
+    "JPN",
+    "GHA",
+    "USA"
+   ],
+   "p": [
+    {
+     "name": "野口英世",
+     "role": "細菌学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "messy",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "none",
+      "cloth": "#f8f9fa",
+      "trim": "#212529",
+      "item": "🔬"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1929,
+   "y2": null,
+   "approx": false,
+   "t": "世界恐慌",
+   "d": "アメリカの株価暴落をきっかけに、世界中で不景気と失業が広がった。",
+   "cat": "economy",
+   "c": [
+    "USA"
+   ]
+  },
+  {
+   "y": 1930,
+   "t": "ガンディーの塩の行進",
+   "d": "イギリスの塩の専売に反対して、ガンディーが約380km歩き、海岸で自分たちで塩をつくった。暴力を使わない抵抗(非暴力・不服従)として世界に影響を与えた。",
+   "cat": "politics",
+   "c": [
+    "IND",
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "ガンディー",
+     "role": "インド独立運動の指導者",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "bald",
+      "hairColor": "#dee2e6",
+      "beard": "none",
+      "hat": "none",
+      "glasses": true,
+      "cloth": "#f8f9fa",
+      "trim": "#dee2e6",
+      "item": "🧂"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1939,
+   "y2": 1945,
+   "approx": false,
+   "t": "第二次世界大戦",
+   "d": "史上最大の戦争。世界で数千万人が亡くなった。",
+   "cat": "war",
+   "c": [
+    "DEU",
+    "POL",
+    "FRA",
+    "GBR",
+    "RUS",
+    "USA",
+    "JPN",
+    "CHN",
+    "ITA"
+   ]
+  },
+  {
+   "y": 1940,
+   "t": "杉原千畝の『命のビザ』",
+   "d": "リトアニアの日本領事館にいた杉原千畝が、ナチス・ドイツの迫害から逃れようとするユダヤ人などに、多くのビザを発行して命を救った。",
+   "cat": "war",
+   "c": [
+    "LTU",
+    "JPN",
+    "POL"
+   ],
+   "p": [
+    {
+     "name": "杉原千畝",
+     "role": "外交官",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "parted",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "none",
+      "glasses": true,
+      "cloth": "#343a40",
+      "trim": "#f8f9fa",
+      "item": "📝"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1945,
+   "y2": null,
+   "approx": false,
+   "t": "広島・長崎への原爆投下",
+   "d": "人類史上初めて核兵器が戦争で使われ、多くの市民が犠牲になった。",
+   "cat": "war",
+   "c": [
+    "JPN",
+    "USA"
+   ]
+  },
+  {
+   "y": 1945,
+   "y2": null,
+   "approx": false,
+   "t": "国際連合の発足",
+   "d": "51か国が参加して国連が生まれた。今は190か国以上が加盟している。",
+   "cat": "politics",
+   "c": [
+    "USA"
+   ]
+  },
+  {
+   "y": 1947,
+   "y2": null,
+   "approx": false,
+   "t": "インドとパキスタンの独立",
+   "d": "イギリスの支配が終わり、インドとパキスタンが独立した。",
+   "cat": "politics",
+   "c": [
+    "IND",
+    "PAK",
+    "GBR"
+   ]
+  },
+  {
+   "y": 1948,
+   "y2": null,
+   "approx": false,
+   "t": "世界人権宣言",
+   "d": "国連総会で、すべての人が生まれながらに持つ権利が宣言された。",
+   "cat": "politics",
+   "c": [
+    "FRA"
+   ]
+  },
+  {
+   "y": 1949,
+   "y2": null,
+   "approx": false,
+   "t": "中華人民共和国の成立",
+   "d": "内戦を経て、中国共産党が中華人民共和国を建国した。",
+   "cat": "politics",
+   "c": [
+    "CHN"
+   ]
+  },
+  {
+   "y": 1949,
+   "t": "湯川秀樹が日本人初のノーベル賞",
+   "d": "原子核の中の粒子『中間子』を理論で予言した湯川秀樹が、日本人で初めてノーベル賞(物理学賞)を受賞した。戦後の日本を勇気づけた。",
+   "cat": "science",
+   "c": [
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "湯川秀樹",
+     "role": "物理学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "parted",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "none",
+      "glasses": true,
+      "cloth": "#1864ab",
+      "trim": "#f8f9fa",
+      "item": "⚛️"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1950,
+   "y2": 1953,
+   "approx": false,
+   "t": "朝鮮戦争",
+   "d": "朝鮮半島で起きた戦争。1953年に休戦し、今も南北に分かれている。",
+   "cat": "war",
+   "c": [
+    "KOR",
+    "PRK",
+    "USA",
+    "CHN"
+   ]
+  },
+  {
+   "y": 1953,
+   "y2": null,
+   "approx": false,
+   "t": "DNAの二重らせん構造",
+   "d": "ワトソンとクリックが、遺伝情報を運ぶDNAの形を明らかにした。",
+   "cat": "biology",
+   "c": [
+    "GBR",
+    "USA"
+   ],
+   "p": [
+    {
+     "name": "ワトソンとクリック",
+     "role": "分子生物学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#8a6a4a",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#1c7ed6",
+      "trim": "#f8f9fa",
+      "item": "🧬"
+     }
+    },
+    {
+     "name": "ロザリンド・フランクリン",
+     "role": "X線で DNA を撮影した化学者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "bob",
+      "hairColor": "#3b2a1a",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#0c8599",
+      "trim": "#f8f9fa",
+      "item": "🔬"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1955,
+   "y2": 1975,
+   "approx": false,
+   "t": "ベトナム戦争",
+   "d": "南北ベトナムの戦争にアメリカなどが加わった。1975年に終わった。",
+   "cat": "war",
+   "c": [
+    "VNM",
+    "USA"
+   ]
+  },
+  {
+   "y": 1957,
+   "y2": null,
+   "approx": false,
+   "t": "人工衛星スプートニク",
+   "d": "ソ連が世界初の人工衛星を打ち上げ、宇宙開発競争が始まった。",
+   "cat": "science",
+   "c": [
+    "RUS"
+   ]
+  },
+  {
+   "y": 1960,
+   "y2": null,
+   "approx": false,
+   "t": "アフリカの年",
+   "d": "この年だけでアフリカの17か国が独立した。",
+   "cat": "politics",
+   "c": [
+    "NGA",
+    "SEN",
+    "MDG",
+    "COD",
+    "SOM",
+    "CMR",
+    "TGO",
+    "MLI",
+    "BEN",
+    "NER",
+    "BFA",
+    "CIV",
+    "TCD",
+    "CAF",
+    "COG",
+    "GAB",
+    "MRT"
+   ]
+  },
+  {
+   "y": 1961,
+   "t": "人類初の宇宙飛行",
+   "d": "ソ連のガガーリンが宇宙船ボストーク1号で地球を1周し、人類で初めて宇宙へ行った。",
+   "cat": "science",
+   "c": [
+    "RUS"
+   ],
+   "p": [
+    {
+     "name": "ガガーリン",
+     "role": "宇宙飛行士",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#8a6a4a",
+      "beard": "none",
+      "hat": "space",
+      "cloth": "#e8590c",
+      "trim": "#f8f9fa",
+      "item": "🚀"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1962,
+   "y2": null,
+   "approx": false,
+   "t": "キューバ危機と『沈黙の春』",
+   "d": "アメリカとソ連が核戦争の一歩手前までいった。同じ年、レイチェル・カーソンが農薬による環境汚染を警告した。",
+   "cat": "war",
+   "c": [
+    "CUB",
+    "USA",
+    "RUS"
+   ],
+   "p": [
+    {
+     "name": "レイチェル・カーソン",
+     "role": "生物学者・作家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "curly",
+      "hairColor": "#8a5a3a",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#2b8a3e",
+      "trim": "#f8f9fa",
+      "item": "🐦"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1963,
+   "t": "ワシントン大行進",
+   "d": "キング牧師が『私には夢がある』と演説し、人種差別をなくす公民権運動が大きく前進した。翌1964年に公民権法が成立した。",
+   "cat": "politics",
+   "c": [
+    "USA"
+   ],
+   "p": [
+    {
+     "name": "キング牧師",
+     "role": "公民権運動の指導者",
+     "look": {
+      "skin": "#8d5a3b",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "none",
+      "cloth": "#212529",
+      "trim": "#f8f9fa",
+      "item": "🎤"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1969,
+   "y2": null,
+   "approx": false,
+   "t": "アポロ11号の月面着陸",
+   "d": "人類が初めて月に降り立った。",
+   "cat": "science",
+   "c": [
+    "USA"
+   ],
+   "p": [
+    {
+     "name": "アームストロング",
+     "role": "宇宙飛行士",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#8a6a4a",
+      "beard": "none",
+      "hat": "space",
+      "cloth": "#f8f9fa",
+      "trim": "#1c7ed6",
+      "item": "🌕"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1972,
+   "y2": null,
+   "approx": false,
+   "t": "国連人間環境会議",
+   "d": "スウェーデンのストックホルムで、環境問題を話し合う初めての大きな国際会議が開かれた。",
+   "cat": "environment",
+   "c": [
+    "SWE"
+   ]
+  },
+  {
+   "y": 1986,
+   "y2": null,
+   "approx": false,
+   "t": "チェルノブイリ原発事故",
+   "d": "ソ連(今のウクライナ)の原子力発電所で大事故が起き、放射性物質が広い範囲に広がった。",
+   "cat": "environment",
+   "c": [
+    "UKR",
+    "BLR"
+   ]
+  },
+  {
+   "y": 1987,
+   "y2": null,
+   "approx": false,
+   "t": "モントリオール議定書",
+   "d": "オゾン層をこわすフロンなどを減らす国際的な約束が結ばれた。",
+   "cat": "environment",
+   "c": [
+    "CAN"
+   ]
+  },
+  {
+   "y": 1989,
+   "y2": null,
+   "approx": false,
+   "t": "ベルリンの壁の崩壊",
+   "d": "東西冷戦の象徴だった壁がこわされ、翌年ドイツが統一した。",
+   "cat": "politics",
+   "c": [
+    "DEU"
+   ],
+   "p": [
+    {
+     "name": "ベルリンの市民",
+     "role": "壁をこえて再会した人びと",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#8a6a4a",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#c92a2a",
+      "trim": "#f8f9fa",
+      "item": "🧱"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1991,
+   "y2": null,
+   "approx": false,
+   "t": "ソ連の崩壊と湾岸戦争",
+   "d": "ソビエト連邦が解体され、15の国に分かれた。同じ年、イラクのクウェート侵攻に対する湾岸戦争が起きた。",
+   "cat": "war",
+   "c": [
+    "RUS",
+    "UKR",
+    "KAZ",
+    "IRQ",
+    "KWT"
+   ]
+  },
+  {
+   "y": 1992,
+   "y2": null,
+   "approx": false,
+   "t": "地球サミット",
+   "d": "ブラジルのリオデジャネイロで、国連環境開発会議が開かれ、気候変動枠組条約と生物多様性条約への署名が始まった。",
+   "cat": "environment",
+   "c": [
+    "BRA"
+   ]
+  },
+  {
+   "y": 1994,
+   "y2": null,
+   "approx": false,
+   "t": "ルワンダの虐殺と南アフリカの新時代",
+   "d": "ルワンダで約100日間に数十万人が殺害された。同じ年、南アフリカでアパルトヘイト後初の選挙が行われ、マンデラが大統領になった。",
+   "cat": "war",
+   "c": [
+    "RWA",
+    "ZAF"
+   ],
+   "p": [
+    {
+     "name": "マンデラ",
+     "role": "南アフリカ大統領",
+     "look": {
+      "skin": "#8d5a3b",
+      "hair": "short",
+      "hairColor": "#dee2e6",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#f59f00",
+      "trim": "#212529",
+      "item": "✊"
+     }
+    }
+   ]
+  },
+  {
+   "y": 1997,
+   "y2": null,
+   "approx": false,
+   "t": "京都議定書",
+   "d": "京都で、先進国に温室効果ガスの削減を義務づける約束が採択された。",
+   "cat": "environment",
+   "c": [
+    "JPN"
+   ]
+  },
+  {
+   "y": 2000,
+   "y2": null,
+   "approx": false,
+   "t": "ミレニアム開発目標(MDGs)",
+   "d": "国連で、2015年までに貧困を半分にするなどの8つの目標が決められた。SDGsの前身。",
+   "cat": "politics",
+   "c": [
+    "USA"
+   ]
+  },
+  {
+   "y": 2001,
+   "y2": null,
+   "approx": false,
+   "t": "アメリカ同時多発テロ",
+   "d": "ニューヨークなどで旅客機を使ったテロが起き、約3000人が亡くなった。",
+   "cat": "war",
+   "c": [
+    "USA",
+    "AFG"
+   ]
+  },
+  {
+   "y": 2003,
+   "y2": null,
+   "approx": false,
+   "t": "ヒトゲノムの解読完了",
+   "d": "人間の遺伝情報(ゲノム)のほぼすべてが読み取られた。",
+   "cat": "biology",
+   "c": [
+    "USA",
+    "GBR",
+    "JPN",
+    "FRA",
+    "DEU",
+    "CHN"
+   ]
+  },
+  {
+   "y": 2008,
+   "y2": null,
+   "approx": false,
+   "t": "世界金融危機",
+   "d": "アメリカの大手証券会社の破たん(リーマン・ショック)をきっかけに、世界的な不景気になった。",
+   "cat": "economy",
+   "c": [
+    "USA"
+   ]
+  },
+  {
+   "y": 2011,
+   "y2": null,
+   "approx": false,
+   "t": "東日本大震災とアラブの春",
+   "d": "日本で巨大地震と津波が起き、原発事故も起きた。中東・北アフリカでは民主化運動『アラブの春』が広がり、シリアでは内戦が始まった。",
+   "cat": "environment",
+   "c": [
+    "JPN",
+    "TUN",
+    "EGY",
+    "LBY",
+    "SYR"
+   ]
+  },
+  {
+   "y": 2014,
+   "t": "マララさんがノーベル平和賞",
+   "d": "女の子が教育を受ける権利を訴えてきたパキスタンのマララ・ユスフザイさんが、17歳でノーベル平和賞を受賞した(史上最年少)。",
+   "cat": "politics",
+   "c": [
+    "PAK"
+   ],
+   "p": [
+    {
+     "name": "マララ・ユスフザイ",
+     "role": "教育活動家",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "long",
+      "hairColor": "#1b1b1b",
+      "female": true,
+      "beard": "none",
+      "hat": "scarf",
+      "cloth": "#d6336c",
+      "trim": "#f8f9fa",
+      "item": "📚"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 2015,
+   "y2": null,
+   "approx": false,
+   "t": "SDGsとパリ協定",
+   "d": "国連で2030年までの17の目標(SDGs)が採択され、パリで気温上昇を抑えるためのパリ協定が結ばれた。",
+   "cat": "environment",
+   "c": [
+    "USA",
+    "FRA"
+   ],
+   "p": [
+    {
+     "name": "世界の若者",
+     "role": "未来をつくる世代",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#1c7ed6",
+      "trim": "#f8f9fa",
+      "item": "🌍"
+     }
+    }
+   ]
+  },
+  {
+   "y": 2018,
+   "t": "若者の気候ストライキ",
+   "d": "スウェーデンのグレタ・トゥーンベリさんが学校を休んで気候変動対策を訴え、世界中の若者に広がった。",
+   "cat": "environment",
+   "c": [
+    "SWE"
+   ],
+   "p": [
+    {
+     "name": "グレタ・トゥーンベリ",
+     "role": "環境活動家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "braids",
+      "hairColor": "#8a5a3a",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#fcc419",
+      "trim": "#1864ab",
+      "item": "🪧"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 2020,
+   "y2": null,
+   "approx": false,
+   "t": "新型コロナウイルスのパンデミック",
+   "d": "新型コロナウイルス感染症(COVID-19)が世界中に広がった。",
+   "cat": "biology",
+   "c": []
+  },
+  {
+   "y": 2022,
+   "y2": null,
+   "approx": false,
+   "t": "ロシアのウクライナ侵攻と世界人口80億人",
+   "d": "ロシアがウクライナに全面的に侵攻した。同じ年、国連は世界人口が80億人に達したと発表した。生き物を守る『昆明・モントリオール生物多様性枠組』(30by30)も採択された。",
+   "cat": "war",
+   "c": [
+    "UKR",
+    "RUS",
+    "CAN"
+   ]
+  }
+ ],
+ "note": "中学・高校の教科書で扱う代表的な出来事を編集部で選んだ年表。年代に『頃』が付くものは推定。",
+ "character_note": "人物はすべて本図鑑オリジナルのデフォルメ・キャラクターです。肖像画などに見られる特徴(帽子・ひげ・持ち物)をもとに描いており、実際の顔とは異なります。宗教の開祖は信仰への配慮から顔を描かず、シンボルで表しています。"
+}

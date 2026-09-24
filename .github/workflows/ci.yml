@@ -66,6 +66,18 @@ jobs:
       - name: Ruff (format check)
         run: ruff format --check . || echo "::warning::formatting drift detected"
 
+  world-atlas-js:
+    # せかい3Dデジタル図鑑の画面ロジック(順位・評価・総評)の単体テスト
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"   # ES module の自動判定(node --check)に 22 以上が必要
+      - run: node --test world_atlas/site/js/analytics.test.mjs
+      - name: Syntax check
+        run: for f in world_atlas/site/js/*.js; do node --check "$f"; done
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
