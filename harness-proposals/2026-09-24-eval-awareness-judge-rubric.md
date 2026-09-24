@@ -3,7 +3,7 @@
 - **日付**: 2026-09-24
 - **slug**: `eval-awareness-judge-rubric`
 - **起案**: Claude Code (Worker)
-- **ステータス**: 人間承認待ち（DRAFT）— CLAUDE.md §7 の運用に従い、承認前は本体ファイル（CLAUDE.md / `.claude/rules/*` / skills）へ反映しない
+- **ステータス**: 人間承認待ち（DRAFT）。§5 の論点 P-1〜P-4 は 2026-09-24 に決定済み— CLAUDE.md §7 の運用に従い、承認前は本体ファイル（CLAUDE.md / `.claude/rules/*` / skills）へ反映しない
 - **根拠論文**: *Evaluation Awareness in Language Models: Representation, Verbalization, and Control*
   - Heidari, Memarian, Rabusseau（Mila / Université de Montréal）— arXiv:2608.21766v1 [cs.CL], 2026-08-22
   - コード: https://github.com/evaluation-awareness/evaluation-awareness
@@ -26,6 +26,8 @@
 - ❌ Reviewer の判定モデルそのものの変更は本提案の対象外
 
 **却下・保留する場合**: 提案単位で可（A〜D は相互に独立して実装できる。ただし C は A の `rubric_version` がある方が集計しやすい）。
+
+- ✅ **2026-09-24 決定**: P-1 観点は self_review 5 rule と揃える／P-2 人手照合は retro ごと／P-3 κ 閾値 0.4（暫定）／P-4 `task.json` の `purpose` メタデータで識別（詳細 §5）
 
 ---
 
@@ -70,7 +72,7 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 ```diff
 --- /dev/null
 +++ b/.claude/rules/judge-rubric.md
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,60 @@
 +# 判定器 rubric ルール（Reviewer / LLM-as-judge）
 +
 +> **適用対象**: Reviewer・Lead・harness-retro など、Worker の成果物を採点/判定する全エージェント
@@ -89,11 +91,28 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 +   各観点のスコアは、外部証跡（`commands.stdout.log` の該当行、diff の該当 hunk）を `evidence_ref` で指す。
 +5. **rubric を版管理する。** rubric を変えたら `rubric_version` を上げる。版が違う判定を同じ母集団で集計しない。
 +
++## 採点観点（criterion）
++
++Worker の `self_review` 5 rule と同じ観点で採点する（観点を揃えることで、自己申告と判定のずれを観点ごとに比べられる）。
++
++| criterion | 判定器が見る外部証跡 |
++|---|---|
++| `dry-violation-none` | diff と `grep` 結果（重複定義の有無） |
++| `plans-cc-markers-untouched` | `git diff HEAD -- Plans.md` の NG-1 正規表現結果 |
++| `all-declared-symbols-called` | 新規シンボルの呼び出し箇所（`grep -rn` 結果） |
++| `dod-items-verified-with-evidence` | DoD 各項目に対応する `commands.stdout.log` の行 |
++| `no-existing-test-regression` | 既存テスト・検証スクリプトの最終行（PASS/FAIL） |
++
++- 各観点の 0〜3 のアンカー定義は `rubric_version` ごとに本ファイルへ追記する。
++- 判定側独自の観点（設計妥当性など）は本版では足さない。追加する場合は `rubric_version` を上げる。
++
 +## 検証タスクの書き方（SHOULD）
 +
 +- 検証・回帰チェック用のタスクは、実案件と同じ書式・語調で出す。「これはテストです」「評価します」
 +  「ベンチマーク」などの評価を示す枠付けは入れない（モデルは評価の枠付けを内部で区別しており、
 +  言語化しないまま振る舞いが変わりうる）。
++- 検証タスクか実タスクかは、タスク本文ではなく `task.json` のメタデータ `purpose: "validation" | "delivery"` で区別する。
++  Worker に渡すプロンプトには `purpose` を含めない。
 +
 +## review.json の必須フィールド（review.v1 追加分）
 +
@@ -111,8 +130,9 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 +
 +## 一致度の確認（`.claude/rules/harness-retro.md` 提案6）
 +
-+- 判定器のモデル・rubric を変えたときと retro のたびに、最低10件を人間が同じ rubric で再採点し、Cohen's κ を記録する。
-+- κ < 0.4 のときは、判定器モデルを強化する前にアンカー定義を直す。
++- **retro のたびに**（`/harness-release` 前の必須 retro を含む）、最低10件を人間が同じ rubric で再採点し、Cohen's κ を記録する。
++  判定器のモデル・rubric を変えた直後の retro では必ず実施する。
++- κ < 0.4 のときは、判定器モデルを強化する前にアンカー定義を直す。0.4 は暫定値で、最初の 2〜3 回の retro の実測で見直す。
 ```
 
 ### 提案 C: retro に判定器の一致度チェックを追加
@@ -122,7 +142,7 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 ```diff
 --- a/.claude/rules/harness-retro.md
 +++ b/.claude/rules/harness-retro.md
-@@ -47,3 +47,20 @@
+@@ -47,3 +47,21 @@
  - 1・2 が崩れた（削除・作り直しが起きた）場合は `.claude/rules/memory-curation.md` の保存ルール違反。
    内容欠落がないか diff で確認する。
  - 3 が悪化した場合、taxonomy を守れる強い管理エージェントに切り替えるか、ツールセット（提案4）を見直す。
@@ -133,10 +153,11 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 +同じ出力に対して Cohen's κ ≤ 0.09 しか一致しなかった。端点しか定義しない判定器は、
 +「ペルソナを守る」といった無関係な推論に最高点近くを付けた。
 +
-+### チェック項目（retro 実行時 / `/harness-release` 前）
++### チェック項目（retro のたびに実施。`/harness-release` 前の必須 retro を含む）
 +
 +4. **判定器の一致度**: 直近の `review.json` から最低10件をサンプルし、人間（または別系統の判定器）が
 +   同じ rubric で再採点する。Cohen's κ < 0.4 なら rubric を見直す（`.claude/rules/judge-rubric.md`）。
++   閾値 0.4 は暫定値。最初の 2〜3 回の retro の実測値で見直す。
 +5. **rubric_version の記録漏れ**: `review.json` に `rubric_version` が無いレコードは、集計（再発率・APPROVE 率）から除外する。
 +   rubric が異なるレコードの判定を同じ母集団として比較しない。
 +
@@ -154,9 +175,12 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 ```diff
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -166,7 +166,7 @@
+@@ -164,9 +164,9 @@
+ 
+ | ファイル | 内容 |
  |---|---|
- | `task.json` | Worker Agentへの入力（task/task_id/files/mode/contract） |
+-| `task.json` | Worker Agentへの入力（task/task_id/files/mode/contract） |
++| `task.json` | Worker Agentへの入力（task/task_id/files/mode/contract）。メタデータ `purpose`（`validation` / `delivery`）を持つ。`purpose` は Worker へのプロンプトに含めない |
  | `worker-report.json` | self_review を含む Worker の完全な出力 |
 -| `review.json` | Reviewer / Lead の判定（APPROVE / REQUEST_CHANGES と理由） |
 +| `review.json` | Reviewer / Lead の判定（APPROVE / REQUEST_CHANGES と理由）。`rubric_version`・観点別スコア・`uncertain` フラグ・根拠となる証跡（コマンド出力の行番号）を必須とする（`.claude/rules/judge-rubric.md`） |
@@ -184,12 +208,16 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 
 - 効果が確認できない提案は、その時点で止めて撤回してよい（各提案は独立）。
 
-## 5. 未解決論点（反映前に個別確定）
+## 5. 論点の決定（2026-09-24 人間決定済み）
 
-- **P-1**: Reviewer の観点（criterion）の一覧をどう定義するか。Worker の self_review 5 rule と揃えるのが最も簡単だが、判定側独自の観点（設計妥当性など）を足すか。
-- **P-2**: 人手照合の担当と頻度（retro ごと／`/harness-release` 前のみ）。10 件の再採点コストが見合うか。
-- **P-3**: κ の閾値 0.4 は一般的な「中程度の一致」の目安で、本ハーネス向けに検証した値ではない。最初の 2〜3 回の retro で実測してから見直す。
-- **P-4**: 検証タスクの枠付けを外すと、ログ上で「検証タスクか実タスクか」が区別しにくくなる。`task.json` のメタデータ（本文ではなく）に `purpose: validation` を持たせる案で両立できるか。
+| # | 論点 | 決定 | diff への反映 |
+|---|---|---|---|
+| P-1 | Reviewer の採点観点 | **Worker の self_review 5 rule と揃える**。判定側独自の観点は本版では足さない | diff 1「採点観点（criterion）」表 |
+| P-2 | 人手照合の担当と頻度 | **retro ごとに実施**（`/harness-release` 前の必須 retro を含む） | diff 1「一致度の確認」、diff 2 のチェック項目見出し |
+| P-3 | κ の閾値 | **0.4 を暫定値として採用**。最初の 2〜3 回の retro の実測で見直す | diff 1・diff 2 に「暫定値」と明記 |
+| P-4 | 検証タスクの識別 | **`task.json` のメタデータ `purpose: validation / delivery` で区別**。Worker へのプロンプトには含めない | diff 1「検証タスクの書き方」、diff 3 の `task.json` 行 |
+
+未決定の論点は残っていない。残るのは本提案全体の承認（diff 1・2 の反映 GO）のみ。
 
 ## 付録: 根拠と関連
 
