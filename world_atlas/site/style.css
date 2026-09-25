@@ -287,3 +287,11 @@ table.src th, table.src td { padding: 6px 8px; border-bottom: 1px solid var(--li
 .gal b { font-size: 11px; line-height: 1.25; text-align: center; }
 .gal small { font-size: 9.5px; text-align: center; }
 .tl-flag { width: 40px; border: 1px solid #ddd; border-radius: 3px; }
+
+/* 年表: 前後ボタンをパネル上部に固定 */
+.ev-nav { position: sticky; top: -14px; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: -14px -14px 10px; padding: 10px 14px; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(4px); }
+.ev-nav .tb { font: inherit; font-size: 13px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: #fff; min-width: 118px; }
+.ev-nav .tb:hover:not(:disabled) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+.ev-nav .tb:disabled { opacity: .4; cursor: default; }
+.ev-pos { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

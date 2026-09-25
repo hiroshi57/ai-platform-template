@@ -731,7 +731,15 @@ async function renderEventDex() {
   const [pop, life, gdp] = await Promise.all(["pop_hist", "life_long", "gdp_long"].map(loadSeries));
   const near = (ser) => (ser?.world?.length ? A.valueAt(ser.world, e.y, gapFor(e.y) * 3) : null);
   const wp = near(pop), wl = near(life), wg = near(gdp);
-  $("#dex").innerHTML = `<div class="ev-hero">${e.p?.length ? e.p.map((p) => characterSVG(p, 118)).join("") : `<span style="font-size:80px">📌</span>`}</div>
+  // 前後ボタンは位置が変わらないよう、パネル上部に固定(並び順は年表に表示中の出来事の年順)
+  const order = tlOrder();
+  const pos = order.indexOf(e);
+  $("#dex").innerHTML = `<div class="ev-nav">
+      <button class="tb" data-tlnav="-1" ${pos <= 0 ? "disabled" : ""} title="前の出来事(← キー)">◀ 前の出来事</button>
+      <span class="ev-pos">${pos + 1} / ${order.length}</span>
+      <button class="tb" data-tlnav="1" ${pos >= order.length - 1 ? "disabled" : ""} title="次の出来事(→ キー)">次の出来事 ▶</button>
+    </div>
+    <div class="ev-hero">${e.p?.length ? e.p.map((p) => characterSVG(p, 118)).join("") : `<span style="font-size:80px">📌</span>`}</div>
     <div class="ev-year" style="color:${catColor(e.cat)}">${esc(T.categories[e.cat])}・${A.fmtYear(e.y)}${e.approx ? "頃" : ""}${e.y2 ? `〜${e.y2}年` : ""}</div>
     <h2>${esc(e.t)}</h2>
     ${e.p?.length ? `<div class="ev-people">${e.p.map((p) => `<div class="ev-person"><b>${esc(p.name)}</b> — ${esc(p.role)}</div>`).join("")}</div>` : ""}
@@ -741,8 +749,17 @@ async function renderEventDex() {
     <div class="kpis"><div class="kpi"><div class="l">世界の人口</div><div class="v">${wp ? A.fmtNum(wp[1], 0) + "人" : "—"}</div><small>${wp ? A.fmtYear(wp[0]) : ""}</small></div>
       <div class="kpi"><div class="l">世界の平均寿命</div><div class="v">${wl ? wl[1].toFixed(0) + "歳" : "—"}</div><small>${wl ? A.fmtYear(wl[0]) : "推計なし"}</small></div>
       <div class="kpi"><div class="l">1人あたりGDP(世界)</div><div class="v">${wg ? A.fmtNum(wg[1], 0) : "—"}</div><small>${wg ? A.fmtYear(wg[0]) + "・国際ドル" : "推計なし"}</small></div></div>
-    <div class="toolbar"><button class="tb" data-tlnav="-1">◀ 前の出来事</button><button class="tb" data-tlnav="1">次の出来事 ▶</button></div>
     <div class="note">${e.p?.some((p) => p.symbol) ? esc(e.p.find((p) => p.symbol).note) + "<br>" : ""}${esc(T.character_note)}</div>`;
+}
+// 年表に今表示している出来事(フィルタ適用後)を年順に並べたもの
+function tlOrder() {
+  const cats = S.tlCats || new Set(Object.keys(D.timeline.categories).filter((k) => k !== "independence"));
+  return D.timeline.events.filter((e) => cats.has(e.cat) || e === S.tlEvent).sort((a, b) => a.y - b.y);
+}
+function stepEvent(dir) {
+  const order = tlOrder();
+  const next = order[order.indexOf(S.tlEvent) + dir];
+  if (next) selectEvent(D.timeline.events.indexOf(next));
 }
 async function selectEvent(idx) {
   const e = D.timeline.events[idx];
@@ -750,7 +767,8 @@ async function selectEvent(idx) {
   S.tlEvent = e;
   S.highlight = new Set(e.c);
   if (S.mode !== "timeline") setMode("timeline");
-  await renderTimeline(); renderEventDex(); paintGlobe(); syncHash();
+  await renderTimeline(); await renderEventDex(); paintGlobe(); syncHash();
+  $("#dex").scrollTop = 0;
   const cc = e.c.map((k) => D.countries[k]).filter((c) => c?.lat != null);
   if (cc.length && globe) globe.pointOfView({ lat: A.mean(cc.map((c) => c.lat)), lng: A.mean(cc.map((c) => c.lng)), altitude: cc.length > 4 ? 2.2 : 1.7 }, 900);
   const sc = $("#tl-scroll");
@@ -899,7 +917,7 @@ function bind() {
     if (d.globeSdg) return setIndicator(`sdg:${d.globeSdg}`);
     if (d.tlcat) { S.tlCats.has(d.tlcat) ? S.tlCats.delete(d.tlcat) : S.tlCats.add(d.tlcat); return renderTimeline(); }
     if (d.jump != null) { $("#tl-scroll").scrollLeft = tlX(+d.jump) - 20; return; }
-    if (d.tlnav) { const i = D.timeline.events.indexOf(S.tlEvent) + +d.tlnav; if (i >= 0 && i < D.timeline.events.length) selectEvent(i); return; }
+    if (d.tlnav) return stepEvent(+d.tlnav);
     if (d.event != null) return selectEvent(+d.event);
     if (d.country) return selectCountry(d.country);
     if (d.id && D.countries[d.id]) return selectCountry(d.id);
@@ -910,6 +928,11 @@ function bind() {
     if (t.id === "cmp-add" && t.value) { S.compare = [...new Set([...S.compare, t.value])].slice(0, 4); renderCompare(); }
     if (t.id === "sx") { S.sx = t.value; renderClassify(); }
     if (t.id === "sy") { S.sy = t.value; renderClassify(); }
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (S.mode !== "timeline" || !S.tlEvent || ev.target.closest("input, select, textarea")) return;
+    if (ev.key === "ArrowLeft") { ev.preventDefault(); stepEvent(-1); }
+    if (ev.key === "ArrowRight") { ev.preventDefault(); stepEvent(1); }
   });
   $("#year").addEventListener("input", async (ev) => {
     S.yearIdx = +ev.target.value;
