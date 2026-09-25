@@ -4,6 +4,15 @@
   "trailingSlash": false,
   "headers": [
     {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
       "source": "/vendor/(.*)",
       "headers": [
         {
@@ -80,5 +89,23 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/data.js": {
+      "includeFiles": "api/_paid/**",
+      "maxDuration": 10
+    },
+    "api/checkout.js": {
+      "maxDuration": 10
+    },
+    "api/claim.js": {
+      "maxDuration": 10
+    },
+    "api/redeem.js": {
+      "maxDuration": 10
+    },
+    "api/license.js": {
+      "maxDuration": 5
+    }
+  }
 }

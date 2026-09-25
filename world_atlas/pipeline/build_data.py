@@ -40,6 +40,8 @@ from . import analytics as A
 from .factbook_ja import merge_translations
 from .indicators import CATEGORIES, INDICATORS, SDG_GOALS, validate_catalog
 from .products_ja import HS2_JA, SECTOR_COLOR, SECTOR_JA
+from .split_paid import load_latest_all, series_file
+from .split_paid import split as split_paid
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUT = HERE.parent / "site" / "data"
@@ -652,12 +654,12 @@ def fetch_geo(valid: set[str]) -> dict:
 
 def write_latest(out: Path) -> dict:
     """series/*.json(今回更新しなかった指標も含む)から latest.json を作り、前回との差分を返す。"""
-    prev = out / "latest.json"
-    old = json.loads(prev.read_text(encoding="utf-8")) if prev.exists() else {}
+    paid = out.parent / "api" / "_paid"
+    old = load_latest_all(out, paid)  # 公開分+完全版分
     latest = {}
     for ind in INDICATORS:
-        f = out / "series" / f"{ind['id']}.json"
-        if f.exists():
+        f = series_file(ind["id"], out, paid)
+        if f:
             latest[ind["id"]] = A.summarize_series(json.loads(f.read_text(encoding="utf-8")))
     write_json(out / "latest.json", latest)
     return A.diff_latest(old, latest)
@@ -789,6 +791,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.report:
         names = {i["id"]: i["name"] for i in INDICATORS}
         Path(args.report).write_text(A.update_report_markdown(diff, status, names, now), encoding="utf-8")
+    # 完全版のデータを非公開フォルダへ分ける(公開フォルダには無料版のデータだけを残す)
+    if out.resolve() == DEFAULT_OUT.resolve():
+        r = split_paid(out, out.parent / "api" / "_paid")
+        log(f"split: free {r['free']} indicators, {len(r['moved'])} files -> api/_paid")
     log(f"done: {ok}/{len(status)} sources ok -> {out}")
     failed = [k for k, v in status.items() if not v.get("ok")]
     if failed:

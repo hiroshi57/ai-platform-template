@@ -70,14 +70,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- world_atlas/site/data; then
+          if git diff --quiet -- world_atlas/site/data world_atlas/site/api/_paid; then
             echo "no data changes"; exit 0
           fi
           BR="world-atlas/data-$(date -u +%Y%m%d)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BR"
-          git add world_atlas/site/data
+          git add world_atlas/site/data world_atlas/site/api/_paid
           git commit -m "chore: せかい3Dデジタル図鑑のデータを週次更新 ($(date -u +%Y-%m-%d))"
           git push -u origin "$BR"
           gh pr create --base "${{ github.event.repository.default_branch }}" --head "$BR" \

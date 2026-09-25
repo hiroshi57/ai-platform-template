@@ -416,7 +416,7 @@ def test_site_loads_nothing_from_external_hosts():
 
     allowed = {"sekai-3d-zukan.vercel.app", "data.un.org", "unstats.un.org"}  # OGP・出典ページのリンク
     site = _site()
-    files = [site / "index.html", site / "sw.js", *sorted((site / "js").glob("*.js"))]
+    files = [site / "index.html", site / "sw.js", *sorted((site / "js").glob("*.js"))]  # api/ はサーバー側なので対象外
     hosts = set()
     for f in files:
         hosts |= set(re.findall(r"https?://([a-zA-Z0-9.-]+)", f.read_text(encoding="utf-8")))
@@ -430,3 +430,41 @@ def test_local_server_applies_vercel_headers():
     h = serve.headers_for("/index.html", rules)
     assert "Content-Security-Policy" in h
     assert serve.headers_for("/vendor/img/night-sky.png", rules)["Cache-Control"].endswith("immutable")
+
+
+# ---------------------------------------------------------------- 完全版のデータ保護
+def test_paid_data_is_not_in_public_folder():
+    import json
+
+    from world_atlas.pipeline.split_paid import free_indicators
+
+    site = _site()
+    free = free_indicators()
+    public = {p.stem for p in (site / "data" / "series").glob("*.json")}
+    assert public <= free, public - free  # 公開フォルダには無料の指標だけ
+    assert not (site / "data" / "exports.json").exists()
+    assert not (site / "data" / "flows" / "refugees.json").exists()
+    latest = json.loads((site / "data" / "latest.json").read_text(encoding="utf-8"))
+    assert set(latest) <= free
+    countries = json.loads((site / "data" / "countries.json").read_text(encoding="utf-8"))["countries"]
+    assert not any("factbook_ja" in c for c in countries.values())
+
+
+def test_split_paid_is_idempotent(tmp_path):
+    import json
+
+    from world_atlas.pipeline.split_paid import split
+
+    pub, paid = tmp_path / "data", tmp_path / "paid"
+    (pub / "series").mkdir(parents=True)
+    for i in ("a", "b"):
+        (pub / "series" / f"{i}.json").write_text("{}", encoding="utf-8")
+    (pub / "latest.json").write_text(json.dumps({"a": 1, "b": 2}), encoding="utf-8")
+    (pub / "countries.json").write_text(json.dumps({"countries": {"JPN": {"factbook_ja": {"x": 1}}}}), encoding="utf-8")
+    for _ in range(2):
+        split(pub, paid, free={"a"})
+    assert [p.name for p in (pub / "series").iterdir()] == ["a.json"]
+    assert (paid / "series" / "b.json").exists()
+    assert json.loads((pub / "latest.json").read_text(encoding="utf-8")) == {"a": 1}
+    assert json.loads((paid / "latest_paid.json").read_text(encoding="utf-8")) == {"b": 2}
+    assert json.loads((paid / "factbook_ja.json").read_text(encoding="utf-8")) == {"JPN": {"x": 1}}

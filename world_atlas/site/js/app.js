@@ -36,7 +36,8 @@ async function getJSON(path) {
 }
 async function loadSeries(id) {
   if (!id || id.startsWith("sdg:")) return null;
-  if (!D.series[id]) D.series[id] = getJSON(`data/series/${id}.json`).catch(() => null);
+  const url = canUseIndicator(id, false) ? `data/series/${id}.json` : `api/data?f=series/${id}.json`;
+  if (!D.series[id]) D.series[id] = getJSON(url).catch(() => null);
   return D.series[id];
 }
 const IND = (id) => (id?.startsWith("sdg:") ? sdgVirtual(+id.slice(4)) : D.catalog.indicators.find((i) => i.id === id));
@@ -1096,7 +1097,7 @@ function teacherGuideHTML() {
 }
 
 // ---------------------------------------------------------------- 無料版・有料版(買い切り)
-const PAID = isPaidFromStorage(localStorage, location);
+let PAID = isPaidFromStorage(localStorage, location); // 起動時に /api/license でも確かめる
 const lock = (key) => (canUseFeature(key, PAID) ? "" : " 🔒");
 function upsell(key) {
   const m = $("#upsell");
@@ -1108,7 +1109,8 @@ function upsell(key) {
     <p class="muted">この機能は「${esc(PLAN.name)}」(買い切り)で使えます。一度買えば、追加料金なしでずっと使えます。</p>
     <ul class="up-list">${Object.values(PLAN.paidFeatures).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
     <div class="up-price">${PLAN.price ? `買い切り <b>${PLAN.price.toLocaleString("ja-JP")}円</b>(税込)` : "価格・購入方法は準備中です"}</div>
-    <div class="toolbar"><button class="tb on" data-act="up-plans">無料版と完全版をくらべる</button><button class="tb" data-act="up-close">閉じる</button></div>
+    <div class="toolbar"><button class="tb buy" data-act="buy">💎 ${PLAN.price.toLocaleString("ja-JP")}円で完全版を買う</button><button class="tb" data-act="up-plans">無料版とくらべる</button><button class="tb" data-act="up-close">閉じる</button></div>
+    <p class="note">お支払いは Stripe の安全な決済画面で行います(クレジットカードなど)。購入後に表示される「ライセンスコード」を保存しておくと、ほかの端末でも使えます。</p>
   </div>`;
   m.hidden = false;
   m.querySelector(".up-x").focus();
@@ -1135,7 +1137,79 @@ function renderPlans() {
     <div class="up-price big">${PLAN.price ? `完全版 買い切り <b>${PLAN.price.toLocaleString("ja-JP")}円</b>(税込)` : "完全版の価格・購入方法は準備中です"}</div>
     <table class="cmp plans"><thead><tr><th>できること</th><th>無料版</th><th>完全版</th></tr></thead>
     <tbody>${rows.map(([n, f, p]) => `<tr><td>${esc(n)}</td><td>${cell(f)}</td><td>${cell(p)}</td></tr>`).join("")}</tbody></table>
-    <p class="note">いまお使いの版: <b>${PAID ? "完全版" : "無料版"}</b></p>`;
+    <p class="note">いまお使いの版: <b>${PAID ? "完全版" : "無料版"}</b></p>
+    ${PAID ? `<div class="card"><b>✅ 完全版をご利用中です</b><p class="muted">ありがとうございます。すべての機能とデータを使えます。</p></div>` : `
+    <div class="toolbar"><button class="tb buy" data-act="buy">💎 ${PLAN.price.toLocaleString("ja-JP")}円で完全版を買う</button></div>
+    <div class="card redeem"><b>🔑 購入済みの方(ほかの端末で使う)</b>
+      <p class="muted">購入後に表示された「ライセンスコード」(SK1. で始まる文字列)を入れてください。</p>
+      <div class="toolbar"><input id="lic-code" placeholder="SK1.xxxx.yyyy" autocomplete="off" aria-label="ライセンスコード"><button class="tb" data-act="redeem">使えるようにする</button></div>
+      <p class="ng" id="lic-msg" role="status"></p></div>`}`;
+}
+
+// ---------------------------------------------------------------- 購入(Stripe・買い切り)
+async function loadPaidData() {
+  const [lp, ex, fl, ja] = await Promise.all(["latest_paid.json", "exports.json", "flows/refugees.json", "factbook_ja.json"]
+    .map((f) => getJSON(`api/data?f=${f}`).catch(() => null)));
+  if (!lp) return; // ライセンスが確認できなかった(開発用のプレビューなど)
+  Object.assign(D.latest, lp);
+  D.exports = ex; D.flows = fl;
+  if (ja) for (const [k, v] of Object.entries(ja)) if (D.countries[k]) D.countries[k].factbook_ja = v;
+}
+async function startCheckout(btn) {
+  btn.disabled = true;
+  btn.textContent = "決済画面をひらいています…";
+  try {
+    const r = await fetch("api/checkout", { method: "POST" });
+    const j = await r.json();
+    if (!r.ok || !j.url) throw new Error(j.error || "エラー");
+    location.href = j.url; // Stripe の決済画面へ
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = "💎 もう一度ためす";
+    toast(`決済画面を開けませんでした: ${e.message}`);
+  }
+}
+async function redeemCode() {
+  const code = $("#lic-code").value.trim();
+  const msg = $("#lic-msg");
+  if (!code) { msg.textContent = "ライセンスコードを入れてください"; return; }
+  msg.textContent = "確認しています…";
+  try {
+    const r = await fetch("api/redeem", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "エラー");
+    location.hash = "#m=globe";
+    location.reload();
+  } catch (e) {
+    msg.textContent = `使えませんでした: ${e.message}`;
+  }
+}
+// 決済のあと ?purchase=success&session_id=... で戻ってくる
+async function handlePurchaseReturn() {
+  const q = new URLSearchParams(location.search);
+  const status = q.get("purchase");
+  if (!status) return;
+  history.replaceState(null, "", location.pathname + location.hash); // URL から購入情報を消す
+  if (status === "cancel") { setTimeout(() => toast("購入をキャンセルしました"), 500); return; }
+  try {
+    const j = await getJSON(`api/claim?session_id=${encodeURIComponent(q.get("session_id") || "")}`);
+    if (!j.ok) throw new Error(j.error);
+    PAID = true;
+    setTimeout(() => showThanks(j.code), 300);
+  } catch {
+    setTimeout(() => toast("お支払いの確認ができませんでした。時間をおいてページを開き直してください"), 500);
+  }
+}
+function showThanks(code) {
+  const m = $("#upsell");
+  m.innerHTML = `<div class="up-box" role="dialog" aria-modal="true" aria-labelledby="th-t">
+    <div class="up-badge">💎 完全版</div><h2 id="th-t">ご購入ありがとうございます!</h2>
+    <p>この端末で完全版のすべての機能が使えるようになりました。</p>
+    <p class="muted">ほかの端末(タブレット・家族のパソコンなど)で使うときは、この<b>ライセンスコード</b>を入れてください。メモ帳などに保存しておきましょう。</p>
+    <textarea class="lic-box" readonly rows="3" aria-label="ライセンスコード">${esc(code)}</textarea>
+    <div class="toolbar"><button class="tb" data-act="copy-code" data-code="${esc(code)}">📋 コピー</button><button class="tb on" data-act="thanks-close">はじめる</button></div>
+    <p class="note">領収書は Stripe からメールで届きます。</p></div>`;
+  m.hidden = false;
 }
 
 // ---------------------------------------------------------------- 画面切りかえ
@@ -1242,6 +1316,10 @@ function bind() {
     if (d.act === "quiz-print") { document.body.classList.add("print-ws"); window.print(); document.body.classList.remove("print-ws"); return; }
     if (d.qi != null && d.ci != null) { if (S.quizAns[d.qi] == null) S.quizAns[d.qi] = +d.ci; return renderQuiz(); }
     if (d.qlink != null) return followQuizLink(+d.qlink);
+    if (d.act === "buy") return startCheckout(t);
+    if (d.act === "redeem") return redeemCode();
+    if (d.act === "thanks-close") { $("#upsell").hidden = true; return; }
+    if (d.act === "copy-code") { navigator.clipboard?.writeText(d.code || ""); toast("ライセンスコードをコピーしました。メモ帳などに保存しておいてください"); return; }
     if (d.act === "up-close") { $("#upsell").hidden = true; return; }
     if (d.act === "up-plans") { $("#upsell").hidden = true; return setMode("plans"); }
     if (d.act === "vs-japan" && !guard("compare")) return;
@@ -1369,7 +1447,10 @@ async function saveOffline() {
   if (!guard("offline")) return;
   const reg = await navigator.serviceWorker?.ready;
   if (!reg?.active) return;
-  const urls = D.catalog.indicators.map((i) => `data/series/${i.id}.json`);
+  const urls = [
+    ...D.catalog.indicators.map((i) => (canUseIndicator(i.id, false) ? `data/series/${i.id}.json` : `api/data?f=series/${i.id}.json`)),
+    ...["latest_paid.json", "exports.json", "flows/refugees.json", "factbook_ja.json"].map((f) => `api/data?f=${f}`),
+  ];
   $("#save-offline").innerHTML = `📥<span class="lbl"> 保存中… 0/${urls.length}</span>`;
   reg.active.postMessage({ type: "prefetch", urls });
 }
@@ -1382,8 +1463,9 @@ async function main() {
       getJSON("data/meta.json"), getJSON("data/geo/countries.json"), getJSON("data/timeline.json"),
     ]);
     Object.assign(D, { catalog, countries: countries.countries, latest, meta, geo, timeline });
-    D.flows = await getJSON("data/flows/refugees.json").catch(() => null);
-    D.exports = await getJSON("data/exports.json").catch(() => null);
+    await handlePurchaseReturn();
+    PAID = PAID || await getJSON("api/license").then((j) => !!j.paid).catch(() => false);
+    if (PAID) await loadPaidData();
     D.updateReport = await getJSON("data/update_report.json").catch(() => null);
     D.glossary = await getJSON("data/glossary.json").catch(() => null);
     addIndependenceEvents();

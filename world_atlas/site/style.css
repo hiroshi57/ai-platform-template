@@ -503,3 +503,8 @@ body.paid .modes .plans-btn { display: none; }
 .up-price { background: #fff9db; border-radius: 10px; padding: 8px 12px; font-size: 14px; margin: 8px 0; }
 .up-price.big { font-size: 16px; display: inline-block; }
 table.plans td:not(:first-child), table.plans th:not(:first-child) { text-align: center; width: 22%; }
+
+/* 購入 */
+.tb.buy { background: linear-gradient(90deg, #f59f00, #e8590c) !important; color: #fff !important; border: 0 !important; font-weight: 800; padding: 8px 16px !important; }
+.redeem input { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; min-width: 280px; flex: 1; }
+.lic-box { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; word-break: break-all; }

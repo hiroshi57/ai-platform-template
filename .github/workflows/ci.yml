@@ -74,9 +74,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"   # ES module の自動判定(node --check)に 22 以上が必要
-      - run: node --test world_atlas/site/js/analytics.test.mjs world_atlas/site/js/quiz.test.mjs world_atlas/site/js/plan.test.mjs
+      - run: node --test world_atlas/site/js/analytics.test.mjs world_atlas/site/js/quiz.test.mjs world_atlas/site/js/plan.test.mjs world_atlas/site/api/api.test.mjs
       - name: Syntax check
-        run: for f in world_atlas/site/js/*.js; do node --check "$f"; done
+        run: for f in world_atlas/site/js/*.js world_atlas/site/api/*.js; do node --check "$f"; done
 
   frontend:
     runs-on: ubuntu-latest
