@@ -4,7 +4,7 @@
 
 export const PLAN = {
   name: "せかい3Dデジタル図鑑 完全版",
-  price: null, // 価格は未定(決まったら円で入れる。例 2980)
+  price: 990, // 買い切り・税込(2026-09-25 決定)
   // 無料版で使える指標(各章の代表。歴史のデータの章は有料)
   freeIndicators: [
     "land_area", "forest", "density", "precip",
