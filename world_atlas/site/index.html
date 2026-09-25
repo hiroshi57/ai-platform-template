@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>せかい3Dデジタル図鑑 — 国連・国際機関・世界の大学のデータで見る200か国</title>
+  <meta name="description" content="国連(UNDP・UNHCR)・世界銀行・CIA World Factbook・世界の大学の研究データをもとに、200か国以上の地理・人口・気候・生き物・経済・健康・教育・平和・歴史を3D地球儀で比べられるデジタル図鑑。">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="せかい3Dデジタル図鑑">
+  <meta property="og:title" content="せかい3Dデジタル図鑑 — 200か国以上を3D地球儀でくらべる">
+  <meta property="og:description" content="国連・世界銀行・CIA・世界の大学のデータで、地理・人口・気候・生き物・経済・健康・教育・平和・歴史を3D地球儀と図鑑で。中学生・高校生向け。">
+  <meta property="og:url" content="https://sekai-3d-zukan.vercel.app/">
+  <meta property="og:image" content="https://sekai-3d-zukan.vercel.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0b1f4d">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/globe.gl-2.46.2.min.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">本文へ移動</a>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🌏</span>
+      <div>
+        <h1>せかい3Dデジタル図鑑</h1>
+        <p class="tagline">国連・国際機関・世界の大学のデータで、200か国以上を比べて・分けて・考える</p>
+      </div>
+    </div>
+    <nav class="modes" id="modes" aria-label="見せ方">
+      <button data-mode="globe" class="on">🌐 地球儀</button>
+      <button data-mode="rank">🏆 ランキング</button>
+      <button data-mode="compare">⚖️ くらべる<span class="lk-m"> 🔒</span></button>
+      <button data-mode="classify">🧩 分類<span class="lk-m"> 🔒</span></button>
+      <button data-mode="timeline">📜 ビジュアル年表</button>
+      <button data-mode="sdg">🎯 SDGs</button>
+      <button data-mode="quiz">🧠 クイズ</button>
+      <button data-mode="guide">📖 使い方・用語集</button>
+      <button data-mode="sources">📚 出典</button>
+      <button data-mode="plans" class="plans-btn">💎 完全版</button>
+    </nav>
+    <div class="tools">
+      <button id="share" class="cvd-btn" title="いま見ている画面(国・指標・モード)の URL をコピーします">🔗<span class="lbl"> 共有</span></button>
+      <button id="cvd" class="cvd-btn" aria-pressed="false" title="色の見分けにくさに配慮した配色に切りかえ">🎨<span class="lbl"> 見やすい色</span></button>
+      <input id="search" list="country-list" placeholder="国をさがす(例: ブラジル)" autocomplete="off" aria-label="国をさがす">
+      <datalist id="country-list"></datalist>
+      <span class="badge" id="updated" title="データの更新日">更新 —</span>
+      <span class="badge net" id="net" hidden title="インターネットにつながっていません。保存したデータを表示しています">📴 オフライン</span>
+      <button class="cvd-btn" id="save-offline" title="全指標のデータ(約15MB)をこの端末に保存して、通信なしでも使えるようにします">📥<span class="lbl"> オフライン用に保存</span></button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="chapters" id="chapters" aria-label="章">
+      <div id="chapter-list"></div>
+      <div class="ind-box" id="ind-box"></div>
+    </aside>
+
+    <main class="main" id="main" tabindex="-1">
+      <section class="view" id="view-globe">
+        <div class="globe-slot" id="globe-slot-main">
+          <div id="globe-wrap">
+            <div id="globe"></div>
+            <div class="globe-title" id="globe-title"></div>
+            <div class="globe-legend" id="legend"></div>
+            <div class="globe-ctrl" id="globe-ctrl">
+              <button id="play" title="年を進めて再生">▶</button>
+              <input type="range" id="year" min="0" max="0" value="0" aria-label="年">
+              <span id="year-label">最新</span>
+              <select id="viz" aria-label="3Dの表し方" title="3Dの表し方">
+                <option value="extrude">🧱 国を立体に</option>
+                <option value="bars">📊 3D棒グラフ</option>
+                <option value="flat">🗺️ 平らな地図</option>
+              </select>
+              <label class="chk" title="UNHCR の難民の流れ(出身国→受入国)を弧で表示"><input type="checkbox" id="arcs"> 難民の流れ</label>
+              <label class="chk"><input type="checkbox" id="labels" checked> 国名</label>
+              <label class="chk"><input type="checkbox" id="rotate" checked> 自動回転</label>
+            </div>
+            <div class="loading" id="loading">データを読み込み中…</div>
+          </div>
+        </div>
+      </section>
+      <section class="view" id="view-rank" hidden></section>
+      <section class="view" id="view-compare" hidden></section>
+      <section class="view" id="view-classify" hidden></section>
+      <section class="view" id="view-timeline" hidden>
+        <div class="tl-head">
+          <div>
+            <h2>📜 ビジュアル年表 — 人物キャラクターでたどる世界の歴史</h2>
+            <p class="muted">カードを押すと、その出来事に関係する国が地球儀で光ります。うしろの薄い山は「世界の人口」の変化です。</p>
+          </div>
+          <div class="tl-filters" id="tl-filters"></div>
+        </div>
+        <div class="tl-eras" id="tl-eras"></div>
+        <div class="tl-scroll" id="tl-scroll"><div class="tl-canvas" id="tl-canvas"></div></div>
+        <div class="globe-slot tl-globe" id="globe-slot-tl"></div>
+      </section>
+      <section class="view" id="view-sdg" hidden></section>
+      <section class="view" id="view-sources" hidden></section>
+      <section class="view" id="view-quiz" hidden></section>
+      <section class="view" id="view-print" hidden></section>
+      <section class="view" id="view-guide" hidden></section>
+      <section class="view" id="view-plans" hidden></section>
+    </main>
+
+    <aside class="dex" id="dex" aria-label="図鑑ページ" aria-live="polite"></aside>
+  </div>
+
+  <footer class="foot">
+    データ: 国連開発計画(UNDP)・国連難民高等弁務官事務所(UNHCR)・世界銀行・CIA World Factbook・Our World in Data(オックスフォード大)・Maddison Project(フローニンゲン大)・V-Dem(ヨーテボリ大)・UCDP(ウプサラ大)・Growth Lab(ハーバード大)・EPI(イェール大)・ND-GAIN(ノートルダム大)・Wikipedia 日本語版(CC BY-SA)・Natural Earth。
+    数値は各機関の公表値・推計で、予測は過去10年の傾向を伸ばした参考値です。
+  </footer>
+
+  <div class="upsell" id="upsell" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
