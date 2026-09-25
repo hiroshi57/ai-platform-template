@@ -13,7 +13,7 @@ const S = {
   country: null, compare: [], dexTab: "chapter",
   rankRegion: "all", rankOrder: "top",
   groupBy: "region", sx: "gdp_pc", sy: "life_exp",
-  tlCats: null, tlEvent: null, sdgGoal: 3, highlight: null,
+  tlCats: null, tlEvent: null, sdgGoal: 3, highlight: null, labels: true,
 };
 const RATE_COLOR = { S: "#2b8a3e", A: "#5c940d", B: "#e8a200", C: "#e8590c", D: "#c92a2a" };
 // 色覚の多様性に配慮した配色(ColorBrewer RdYlBu / YlGnBu)
@@ -24,7 +24,7 @@ const NO_DATA = "rgba(190,196,210,0.45)";
 
 // ---------------------------------------------------------------- データ
 async function getJSON(path) {
-  const r = await fetch(path);
+  const r = await fetch(path, { cache: "no-cache" }); // 週次更新のデータを確実に反映(ETag で再検証)
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }
@@ -129,7 +129,48 @@ function colorizer(snap, ind) {
 }
 
 // ---------------------------------------------------------------- 地球儀
-let globe = null, geoFeatures = [], pointCountries = [], colorFn = null, snapNow = {};
+let globe = null, geoFeatures = [], pointCountries = [], colorFn = null, snapNow = {}, labelData = [];
+let labelEls = [], labelThreshold = 3, povNow = { lat: 25, lng: 135, altitude: 2.3 }, labelRaf = 0;
+const RAD = Math.PI / 180;
+// 画面の中心(カメラの真下)からの角度。縁に近い国名は重なって読めないので隠す
+function angleFromCenter(lat, lng) {
+  const c = Math.sin(lat * RAD) * Math.sin(povNow.lat * RAD) + Math.cos(lat * RAD) * Math.cos(povNow.lat * RAD) * Math.cos((lng - povNow.lng) * RAD);
+  return Math.acos(Math.max(-1, Math.min(1, c))) / RAD;
+}
+
+// 国名ラベル(地図帳のように)。優先度 = Natural Earth の LABELRANK と国土面積の大きい方(1 が最優先)
+function buildLabels() {
+  const area = latestSnap("land_area");
+  const areaRank = (iso) => {
+    const a = area[iso]?.[1];
+    if (a == null) return 7;
+    return a > 3e6 ? 1 : a > 1e6 ? 2 : a > 3e5 ? 3 : a > 1e5 ? 4 : a > 3e4 ? 5 : a > 5e3 ? 6 : 7;
+  };
+  labelData = geoFeatures.filter((f) => f.properties.iso3 && f.properties.label_x != null).map((f) => ({
+    type: "label", iso3: f.properties.iso3, lat: f.properties.label_y, lng: f.properties.label_x,
+    rank: Math.max(f.properties.labelrank || 1, areaRank(f.properties.iso3)),
+  }));
+  // 国境ポリゴンの無い小さな国(島国など)は首都の位置に
+  for (const c of pointCountries) labelData.push({ type: "label", iso3: c.iso3, lat: c.lat, lng: c.lng, rank: 7 });
+}
+// カメラの高さに応じて、表示する国名の優先度を変える
+function thresholdFor(alt) { return alt > 2.3 ? 2 : alt > 1.8 ? 3 : alt > 1.35 ? 4 : alt > 0.95 ? 5 : alt > 0.6 ? 6 : 8; }
+function applyLabelVisibility() {
+  // display は地球儀ライブラリが「裏側を隠す」ために使うので、こちらは visibility で出し分ける
+  // 見えている地平線の角度 = acos(1/(1+高さ))。その 75% より外側(縁)の国名は隠す
+  const edge = (Math.acos(1 / (1 + povNow.altitude)) / RAD) * 0.75;
+  // 要素は地球儀ライブラリが後から作るので、毎回集め直す
+  labelEls = document.querySelectorAll("#globe .country-label");
+  for (const el of labelEls) {
+    el.classList.toggle("lh", +el.dataset.rank > labelThreshold || angleFromCenter(+el.dataset.lat, +el.dataset.lng) > edge);
+  }
+}
+function altOf(iso, cz) {
+  const tl = S.mode === "timeline" && S.highlight;
+  if (tl) return S.highlight.has(iso) ? 0.09 : 0.006;
+  const base = S.height && iso && snapNow[iso] ? 0.008 + cz.q(snapNow[iso][1]) * 0.16 : 0.008;
+  return iso === S.country ? base + 0.06 : base;
+}
 function initGlobe() {
   const el = $("#globe");
   globe = Globe()(el)
@@ -148,6 +189,11 @@ function initGlobe() {
     .pointLat((c) => c.lat).pointLng((c) => c.lng).pointRadius(0.45)
     .pointLabel((c) => tipHTML(c.iso3))
     .onPointClick((c) => selectCountry(c.iso3, { fly: false }));
+  globe.onZoom((pov) => {
+    povNow = pov;
+    labelThreshold = thresholdFor(pov.altitude);
+    if (!labelRaf) labelRaf = requestAnimationFrame(() => { labelRaf = 0; applyLabelVisibility(); });
+  });
   globe.controls().autoRotate = true;
   globe.controls().autoRotateSpeed = 0.35;
   globe.pointOfView({ lat: 25, lng: 135, altitude: 2.3 });
@@ -185,12 +231,7 @@ async function paintGlobe() {
       if (tl) return S.highlight.has(iso) ? tlColor : "rgba(210,215,228,0.5)";
       return iso && snapNow[iso] ? cz.color(snapNow[iso][1]) : NO_DATA;
     })
-    .polygonAltitude((f) => {
-      const iso = f.properties.iso3;
-      if (tl) return S.highlight.has(iso) ? 0.09 : 0.006;
-      const base = S.height && iso && snapNow[iso] ? 0.008 + cz.q(snapNow[iso][1]) * 0.16 : 0.008;
-      return iso === S.country ? base + 0.06 : base;
-    })
+    .polygonAltitude((f) => altOf(f.properties.iso3, cz))
     .pointColor((c) => (tl ? (S.highlight.has(c.iso3) ? tlColor : "rgba(230,232,238,.6)") : snapNow[c.iso3] ? cz.color(snapNow[c.iso3][1]) : NO_DATA))
     .pointAltitude((c) => (tl ? (S.highlight.has(c.iso3) ? 0.09 : 0.01) : S.height && snapNow[c.iso3] ? 0.01 + cz.q(snapNow[c.iso3][1]) * 0.16 : 0.01));
   // 年表モード: 関係国に波紋(rings)と、地球儀の上に立つキャラクター(3D の HTML 要素)
@@ -199,9 +240,23 @@ async function paintGlobe() {
   globe
     .ringsData(tlc).ringLat((c) => c.lat).ringLng((c) => c.lng)
     .ringColor(() => (t) => `rgba(250,176,5,${Math.max(0, 1 - t)})`).ringMaxRadius(7).ringPropagationSpeed(2.5).ringRepeatPeriod(1100)
-    .htmlElementsData(tlc.map((c, i) => ({ c, i })))
-    .htmlLat((d) => d.c.lat).htmlLng((d) => d.c.lng).htmlAltitude(tl ? 0.1 : 0.2)
+    .htmlElementsData([
+      ...(S.labels && !tl ? labelData.filter((d) => d.iso3 !== S.country) : []),
+      ...tlc.map((c, i) => ({ type: "marker", c, i, lat: c.lat, lng: c.lng })),
+    ])
+    .htmlLat((d) => d.lat).htmlLng((d) => d.lng)
+    .htmlAltitude((d) => (d.type === "label" ? altOf(d.iso3, cz) + 0.004 : tl ? 0.1 : 0.2))
     .htmlElement((d) => {
+      if (d.type === "label") {
+        const el = document.createElement("div");
+        el.className = `country-label r${Math.min(d.rank, 5)}`;
+        el.dataset.rank = d.rank;
+        el.dataset.lat = d.lat;
+        el.dataset.lng = d.lng;
+        el.textContent = cname(d.iso3);
+        if (d.rank > labelThreshold || angleFromCenter(d.lat, d.lng) > (Math.acos(1 / (1 + povNow.altitude)) / RAD) * 0.75) el.classList.add("lh");
+        return el;
+      }
       const el = document.createElement("div");
       el.className = "globe-chara";
       const people = tl && d.i === 0 && S.tlEvent?.p?.length ? S.tlEvent.p.slice(0, 2).map((p) => characterSVG(p, 46)).join("") : "";
@@ -211,6 +266,7 @@ async function paintGlobe() {
       el.onclick = () => selectCountry(d.c.iso3);
       return el;
     });
+  requestAnimationFrame(applyLabelVisibility);
   // タイトル・凡例
   const cat = CAT(ind.category);
   $("#globe-title").innerHTML = tl && S.tlEvent
@@ -822,6 +878,7 @@ function bind() {
   });
   $("#play").addEventListener("click", togglePlay);
   $("#height").addEventListener("change", (ev) => { S.height = ev.target.checked; paintGlobe(); });
+  $("#labels").addEventListener("change", (ev) => { S.labels = ev.target.checked; paintGlobe(); });
   $("#rotate").addEventListener("change", (ev) => { if (globe) globe.controls().autoRotate = ev.target.checked; });
   $("#search").addEventListener("change", (ev) => {
     const q = ev.target.value.trim();
@@ -852,6 +909,7 @@ async function main() {
   geoFeatures = D.geo.features;
   const inGeo = new Set(geoFeatures.map((f) => f.properties.iso3).filter(Boolean));
   pointCountries = Object.values(D.countries).filter((c) => !inGeo.has(c.iso3) && c.lat != null);
+  buildLabels();
   // URL の状態を復元
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.get("i") && (IND(h.get("i")))) { S.ind = h.get("i"); S.cat = IND(S.ind).category === "sdg" ? S.cat : IND(S.ind).category; }

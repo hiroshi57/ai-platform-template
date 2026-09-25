@@ -365,6 +365,10 @@ def fetch_geo(valid: set[str]) -> dict:
             "properties": {
                 "iso3": iso3 if iso3 in valid else None,
                 "name": p.get("NAME_JA") or p.get("NAME"),
+                # 地図帳のような国名ラベル用(ラベル位置と、ズームに応じた表示の優先度 1=最優先)
+                "label_x": round(p["LABEL_X"], 2) if p.get("LABEL_X") is not None else None,
+                "label_y": round(p["LABEL_Y"], 2) if p.get("LABEL_Y") is not None else None,
+                "labelrank": p.get("LABELRANK"),
             },
             "geometry": A.round_coords(f["geometry"], 2),
         })
