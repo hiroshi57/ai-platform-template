@@ -44,7 +44,7 @@ const indsOf = (cat) => D.catalog.indicators.filter((i) => i.category === cat);
 const cname = (iso3) => D.countries[iso3]?.name_ja || iso3;
 const flag = (iso3, w = 40) => {
   const c = D.countries[iso3];
-  return c?.iso2 && /^[A-Z]{2}$/.test(c.iso2) ? `https://flagcdn.com/w${w <= 40 ? 40 : 160}/${c.iso2.toLowerCase()}.png` : "";
+  return c?.iso2 && /^[A-Z]{2}$/.test(c.iso2) && c.iso2 !== "JG" ? `vendor/flags/w${w <= 40 ? 40 : 160}/${c.iso2.toLowerCase()}.png` : "";
 };
 const unitOf = (ind) => (ind.unit && !ind.levels ? ` ${ind.unit}` : "");
 // 段階の指標(法律の有無など)は、点数ではなく「18歳以上」のような言葉で表示する
@@ -194,9 +194,9 @@ const arcsOn = () => (S.arcs == null ? REFUGEE_INDS.has(S.ind) : S.arcs) && D.fl
 function initGlobe() {
   const el = $("#globe");
   globe = Globe()(el)
-    .globeImageUrl("https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg")
-    .bumpImageUrl("https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png")
-    .backgroundImageUrl("https://cdn.jsdelivr.net/npm/three-globe/example/img/night-sky.png")
+    .globeImageUrl("vendor/img/earth-blue-marble.jpg")
+    .bumpImageUrl("vendor/img/earth-topology.png")
+    .backgroundImageUrl("vendor/img/night-sky.png")
     .atmosphereColor("#9ecbff").atmosphereAltitude(0.18)
     .polygonsData(geoFeatures)
     .polygonSideColor(() => "rgba(20,30,60,0.35)")
@@ -902,7 +902,7 @@ function renderSources() {
     <div class="grid3">
       <div class="card"><b>🇺🇳 国連・国際機関</b><p class="fact">国連統計部 SDG Global Database(公式 SDG 指標を API で直接取得)/ UNESCO 統計研究所(教育)/ UNDP(人間開発報告書)/ UNHCR(難民)/ 世界銀行(WHO・FAO・ILO・IEA・IUCN・SIPRI などのデータを集約)/ UN Data Commons(参照)</p></div>
       <div class="card"><b>🎓 世界の大学・研究機関</b><p class="fact">オックスフォード大学 Our World in Data / フローニンゲン大学 Maddison Project / ヨーテボリ大学 V-Dem 研究所 / ウプサラ大学 紛争データ計画(UCDP) / ハーバード大学 Growth Lab(経済の複雑さ)/ イェール大学・コロンビア大学 環境パフォーマンス指数(EPI)/ ノートルダム大学 ND-GAIN(気候変動への備え)/ UCLA WORLD Policy Analysis Center(子どもの結婚・教育の法律。CC BY-NC 4.0)</p></div>
-      <div class="card"><b>🗂️ そのほか</b><p class="fact">CIA World Factbook(国の基本情報)/ Wikipedia 日本語版(CC BY-SA 4.0)/ Natural Earth(国境・パブリックドメイン)/ 国旗画像 flagcdn.com</p></div></div>
+      <div class="card"><b>🗂️ そのほか</b><p class="fact">CIA World Factbook(国の基本情報)/ Wikipedia 日本語版(CC BY-SA 4.0)/ Natural Earth(国境・パブリックドメイン)/ 国旗画像 flagcdn.com(自前で配信)/ 3D地球儀 globe.gl・three.js(MIT)</p></div></div>
     ${updateReportHTML()}
     <h3>付帯データ</h3><table class="src"><thead><tr><th>データ</th><th>状態</th><th>件数</th></tr></thead><tbody>${aux}</tbody></table>
     <h3>指標一覧(${D.catalog.indicators.length})</h3>

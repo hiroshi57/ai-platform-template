@@ -382,3 +382,51 @@ def test_catalog_levels_are_well_formed():
             scores = [lv[0] for lv in ind["levels"]]
             assert scores == sorted(scores) and len(set(scores)) == len(scores), ind["id"]
             assert ind["forecast"] is False, ind["id"]
+
+
+# ---------------------------------------------------------------- 6-C1 セキュリティ(回帰テスト)
+def _site():
+    from pathlib import Path
+
+    return Path(__file__).resolve().parent.parent / "world_atlas" / "site"
+
+
+def test_vendor_files_match_manifest():
+    from world_atlas.pipeline import vendor
+
+    assert vendor.verify() == []
+
+
+def test_security_headers_in_vercel_json():
+    import json
+
+    conf = json.loads((_site() / "vercel.json").read_text(encoding="utf-8"))
+    all_headers = {h["key"]: h["value"] for rule in conf["headers"] if rule["source"] == "/(.*)" for h in rule["headers"]}
+    csp = all_headers["Content-Security-Policy"]
+    assert "script-src 'self'" in csp and "unsafe-eval" not in csp
+    assert "frame-ancestors 'none'" in csp and "object-src 'none'" in csp
+    for key in ("Strict-Transport-Security", "X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy",
+                "Permissions-Policy"):
+        assert key in all_headers
+
+
+def test_site_loads_nothing_from_external_hosts():
+    """画面のコードが実行時に外部 URL を読み込まないこと(出典リンクと OGP は除く)。"""
+    import re
+
+    allowed = {"sekai-3d-zukan.vercel.app", "data.un.org", "unstats.un.org"}  # OGP・出典ページのリンク
+    site = _site()
+    files = [site / "index.html", site / "sw.js", *sorted((site / "js").glob("*.js"))]
+    hosts = set()
+    for f in files:
+        hosts |= set(re.findall(r"https?://([a-zA-Z0-9.-]+)", f.read_text(encoding="utf-8")))
+    assert hosts <= allowed, hosts - allowed
+
+
+def test_local_server_applies_vercel_headers():
+    from world_atlas.pipeline import serve
+
+    rules = serve.load_rules()
+    h = serve.headers_for("/index.html", rules)
+    assert "Content-Security-Policy" in h
+    assert serve.headers_for("/vendor/img/night-sky.png", rules)["Cache-Control"].endswith("immutable")

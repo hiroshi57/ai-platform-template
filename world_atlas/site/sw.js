@@ -1,7 +1,7 @@
 // せかい3Dデジタル図鑑: オフライン対応(サービスワーカー)
 // 一度開いた画面・データ・3D地球儀のライブラリを保存し、通信が弱い教室でも使えるようにする。
 // データは「保存した分をすぐ表示し、裏で最新版に更新する」(stale-while-revalidate)。
-const VERSION = "atlas-v5";
+const VERSION = "atlas-v6";
 const SHELL = [
   "./", "index.html", "style.css",
   "js/app.js", "js/analytics.js", "js/charts.js", "js/characters.js", "js/quiz.js",
@@ -10,17 +10,15 @@ const SHELL = [
   "data/flows/refugees.json", "data/exports.json", "data/update_report.json",
 ];
 const CDN = [
-  "https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js",
-  "https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg",
-  "https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png",
-  "https://cdn.jsdelivr.net/npm/three-globe/example/img/night-sky.png",
+  "vendor/globe.gl-2.46.2.min.js",
+  "vendor/img/earth-blue-marble.jpg", "vendor/img/earth-topology.png", "vendor/img/night-sky.png",
 ];
 
 self.addEventListener("install", (ev) => {
   ev.waitUntil((async () => {
     const cache = await caches.open(VERSION);
     // 1つ失敗しても残りは保存する(addAll は1つでも失敗すると全体が失敗するため)
-    await Promise.all([...SHELL, ...CDN].map((u) => cache.add(new Request(u, { mode: u.startsWith("http") ? "no-cors" : "same-origin" })).catch(() => null)));
+    await Promise.all([...SHELL, ...CDN].map((u) => cache.add(u).catch(() => null)));
     self.skipWaiting();
   })());
 });
@@ -48,10 +46,7 @@ self.addEventListener("fetch", (ev) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
-  const cacheable = sameOrigin
-    || url.hostname === "cdn.jsdelivr.net"
-    || url.hostname === "flagcdn.com";
-  if (!cacheable) return; // Wikipedia などは保存しない
+  if (!sameOrigin) return; // 外部には接続しない(CSP でも禁止している)
   ev.respondWith(staleWhileRevalidate(req));
 });
 
