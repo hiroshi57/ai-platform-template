@@ -96,7 +96,13 @@ def status_rows(ja: dict, countries: dict) -> list[tuple[str, str]]:
 
 
 def load_env_file(path: Path = ENV_FILE) -> None:
-    """KEY=VALUE 形式のファイルを読み、未設定の環境変数だけを補う(値は表示しない)。"""
+    """KEY=VALUE 形式のファイルを読み、未設定の環境変数だけを補う(値は表示しない)。
+
+    pipeline/.env.local が無ければ、ユーザーフォルダ直下の sekai-zukan.env.txt も探す
+    (リポジトリの外なので、誤ってコミットされない)。
+    """
+    if not path.exists():
+        path = Path.home() / "sekai-zukan.env.txt"
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
