@@ -796,7 +796,7 @@ async function renderEventDex() {
       <h3>🧑‍🤝‍🧑 キャラクター図鑑(${people.length}人)</h3>
       ${T.eras.map((era) => {
         const ps = people.filter(({ e: ev }) => ev.y >= era.from && ev.y < era.to);
-        return ps.length ? `<div class="gal-era" style="--c:${ERA_COLOR[era.id]}">${esc(era.name)}</div><div class="gallery">${ps.map(({ p, e: ev }) => `<button class="gal" data-event="${T.events.indexOf(ev)}" title="${esc(ev.t)}">${characterSVG(p, 48)}<b>${esc(p.name)}</b><small>${A.fmtYear(ev.y)}${ev.approx ? "頃" : ""}・${esc(ev.c.map(cname).slice(0, 1).join(""))}</small></button>`).join("")}</div>` : "";
+        return ps.length ? `<div class="gal-era" style="--c:${ERA_COLOR[era.id]}">${esc(era.name)}</div><div class="gallery">${ps.map(({ p, e: ev }) => `<button class="gal" data-event="${T.events.indexOf(ev)}" title="${esc(ev.t)}">${characterSVG(p, 48)}<b>${esc(p.name)}</b><small>${A.fmtYear(ev.y)}${ev.approx ? "頃" : ""}・${esc(cname(p.home || ev.c[0]))}</small></button>`).join("")}</div>` : "";
       }).join("")}
       <div class="note">${esc(T.character_note)}<br>${esc(T.note)}</div>`;
     return;
