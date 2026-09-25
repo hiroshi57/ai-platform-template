@@ -1125,6 +1125,7 @@ function bind() {
       ev.target.click();
     }
   });
+  $("#share").addEventListener("click", shareNow);
   $("#cvd").addEventListener("click", () => {
     cvd = !cvd;
     localStorage.setItem("atlas-cvd", cvd ? "1" : "0");
@@ -1181,6 +1182,28 @@ function addIndependenceEvents() {
   }
 }
 
+// ---------------------------------------------------------------- 共有
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
+}
+async function shareNow() {
+  syncHash();
+  const url = location.href;
+  const title = S.country ? `${cname(S.country)} — せかい3Dデジタル図鑑` : `${IND(S.ind)?.name || ""} — せかい3Dデジタル図鑑`;
+  // スマホなどでは共有メニュー、パソコンでは URL をコピー
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try { await navigator.share({ title, url }); return; } catch { /* キャンセル時はコピーに切りかえ */ }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("🔗 この画面の URL をコピーしました。授業のスライドやチャットに貼って共有できます");
+  } catch {
+    prompt("この URL をコピーしてください", url);
+  }
+}
+
 // ---------------------------------------------------------------- オフライン対応
 function setupOffline() {
   const badge = $("#net");
@@ -1191,16 +1214,16 @@ function setupOffline() {
   navigator.serviceWorker.addEventListener("message", (ev) => {
     if (ev.data?.type !== "prefetch-progress") return;
     const { done, total } = ev.data;
-    $("#save-offline").textContent = done >= total ? "✅ オフライン用に保存済み" : `📥 保存中… ${done}/${total}`;
+    $("#save-offline").innerHTML = done >= total ? '✅<span class="lbl"> 保存済み</span>' : `📥<span class="lbl"> 保存中… ${done}/${total}</span>`;
     if (done >= total) localStorage.setItem("atlas-offline-saved", D.meta.generated_at || "1");
   });
-  if (localStorage.getItem("atlas-offline-saved") === (D.meta.generated_at || "1")) $("#save-offline").textContent = "✅ オフライン用に保存済み";
+  if (localStorage.getItem("atlas-offline-saved") === (D.meta.generated_at || "1")) $("#save-offline").innerHTML = '✅<span class="lbl"> 保存済み</span>';
 }
 async function saveOffline() {
   const reg = await navigator.serviceWorker?.ready;
   if (!reg?.active) return;
   const urls = D.catalog.indicators.map((i) => `data/series/${i.id}.json`);
-  $("#save-offline").textContent = `📥 保存中… 0/${urls.length}`;
+  $("#save-offline").innerHTML = `📥<span class="lbl"> 保存中… 0/${urls.length}</span>`;
   reg.active.postMessage({ type: "prefetch", urls });
 }
 

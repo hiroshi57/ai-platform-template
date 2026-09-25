@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>せかい3Dデジタル図鑑 — 国連・国際機関・世界の大学のデータで見る200か国</title>
   <meta name="description" content="国連(UNDP・UNHCR)・世界銀行・CIA World Factbook・世界の大学の研究データをもとに、200か国以上の地理・人口・気候・生き物・経済・健康・教育・平和・歴史を3D地球儀で比べられるデジタル図鑑。">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="せかい3Dデジタル図鑑">
+  <meta property="og:title" content="せかい3Dデジタル図鑑 — 200か国以上を3D地球儀でくらべる">
+  <meta property="og:description" content="国連・世界銀行・CIA・世界の大学のデータで、地理・人口・気候・生き物・経済・健康・教育・平和・歴史を3D地球儀と図鑑で。中学生・高校生向け。">
+  <meta property="og:url" content="https://sekai-3d-zukan.vercel.app/">
+  <meta property="og:image" content="https://sekai-3d-zukan.vercel.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0b1f4d">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js"></script>
 </head>
@@ -29,12 +39,13 @@
       <button data-mode="sources">📚 出典</button>
     </nav>
     <div class="tools">
-      <button id="cvd" class="cvd-btn" aria-pressed="false" title="色の見分けにくさに配慮した配色に切りかえ">🎨 見やすい色</button>
+      <button id="share" class="cvd-btn" title="いま見ている画面(国・指標・モード)の URL をコピーします">🔗<span class="lbl"> 共有</span></button>
+      <button id="cvd" class="cvd-btn" aria-pressed="false" title="色の見分けにくさに配慮した配色に切りかえ">🎨<span class="lbl"> 見やすい色</span></button>
       <input id="search" list="country-list" placeholder="国をさがす(例: ブラジル)" autocomplete="off" aria-label="国をさがす">
       <datalist id="country-list"></datalist>
       <span class="badge" id="updated" title="データの更新日">更新 —</span>
       <span class="badge net" id="net" hidden title="インターネットにつながっていません。保存したデータを表示しています">📴 オフライン</span>
-      <button class="cvd-btn" id="save-offline" title="全指標のデータ(約15MB)をこの端末に保存して、通信なしでも使えるようにします">📥 オフライン用に保存</button>
+      <button class="cvd-btn" id="save-offline" title="全指標のデータ(約15MB)をこの端末に保存して、通信なしでも使えるようにします">📥<span class="lbl"> オフライン用に保存</span></button>
     </div>
   </header>
 
@@ -97,6 +108,7 @@
     数値は各機関の公表値・推計で、予測は過去10年の傾向を伸ばした参考値です。
   </footer>
 
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
