@@ -355,7 +355,7 @@ async function renderDex() {
   el.innerHTML = `<div class="dex-head">${f ? `<img class="flag" src="${f}" alt="">` : ""}
       <div><h2>${esc(c.name_ja)}</h2><div class="en">${esc(c.name_en)}${c.capital ? `・首都 ${esc(c.capital)}` : ""}</div></div></div>
     <div class="chips"><span class="chip">🗺️ ${esc(c.region_ja)}</span><span class="chip">💴 ${esc(c.income_ja)}</span>
-      <button class="chip" data-act="cmp-add">⚖️ くらべるに追加</button><button class="chip" data-act="world">🌍 世界全体を見る</button><button class="chip" data-act="print">🖨️ 印刷用ページ</button></div>
+      ${S.country !== "JPN" ? `<button class="chip jp-cmp" data-act="vs-japan">🇯🇵 日本とくらべる</button>` : `<button class="chip jp-cmp" data-act="vs-similar">🧩 日本と似ている国とくらべる</button>`}<button class="chip" data-act="cmp-add">⚖️ くらべるに追加</button><button class="chip" data-act="world">🌍 世界全体を見る</button><button class="chip" data-act="print">🖨️ 印刷用ページ</button></div>
     <div class="tabs">${[["chapter", "この章"], ["overview", "全体像"], ["profile", "プロフィール"], ["history", "歴史"]].map(([k, l]) => `<button data-tab="${k}" class="${S.dexTab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <div id="dex-body"><div class="empty">読み込み中…</div></div>`;
   const body = $("#dex-body");
@@ -425,7 +425,7 @@ async function dexChapter(iso3) {
   }
   const score = scoreFor(iso3, inds);
   const lines = A.commentary(cname(iso3), rows, cat.name);
-  const exportsBox = S.cat === "economy" ? exportsHTML(iso3) : "";
+  const exportsBox = (S.cat === "economy" ? exportsHTML(iso3) : "") + (iso3 !== "JPN" ? vsJapanHTML(iso3, inds) : "");
   return `${exportsBox}<div class="kpis"><div class="kpi"><div class="l">${esc(cat.name)}の章スコア</div><div class="v">${score == null ? "—" : `${score.toFixed(0)}点`}</div>${score == null ? "<small>良し悪しで測らない章</small>" : ""}</div>
       <div class="kpi"><div class="l">評価</div><div class="v">${score == null ? "—" : `<span class="rate ${A.rateLabel(score / 100)}">${A.rateLabel(score / 100)}</span> ${A.RATE_TEXT[A.rateLabel(score / 100)]}`}</div></div>
       <div class="kpi"><div class="l">データのある指標</div><div class="v">${rows.length}/${inds.length}</div></div></div>
@@ -448,6 +448,19 @@ function exportsHTML(iso3) {
     <div class="ex-band">${band}</div><div class="legend-row">${legend}</div>${top}
     <div class="comment" style="margin:8px 0 0"><p>【特徴】いちばん多く輸出しているのは「${esc(main)}」です。上位3品目で輸出の${(conc * 100).toFixed(0)}%をしめています。${conc > 0.6 ? "少ない品目にたよっているため、値段の変化の影響を受けやすいかもしれません。" : "いろいろな品目を輸出しています。"}</p></div>
     <div class="note">出典: ハーバード大学 Growth Lab「Atlas of Economic Complexity」(HS 1992 分類・2桁)。品目名は本図鑑で日本語にしたもの。</div></div>`;
+}
+// 「日本とくらべると」: この章の指標で、日本より良い/課題のあるものを短く示す
+function vsJapanHTML(iso3, inds) {
+  const rows = inds.filter((i) => i.better).map((ind) => ({ ind, a: rowFor(iso3, ind), j: rowFor("JPN", ind) })).filter((x) => x.a && x.j);
+  if (!rows.length) return "";
+  const better = rows.filter((x) => x.a.goodness > x.j.goodness + 0.05).map((x) => x.ind.name);
+  const worse = rows.filter((x) => x.a.goodness < x.j.goodness - 0.05).map((x) => x.ind.name);
+  const name = cname(iso3);
+  return `<div class="card vsjp"><b>🇯🇵 日本とくらべると(この章)</b>
+    ${better.length ? `<p>⬆️ <b>${esc(name)}のほうが良い</b>: ${esc(better.slice(0, 4).join("、"))}</p>` : ""}
+    ${worse.length ? `<p>⬇️ <b>日本のほうが良い</b>: ${esc(worse.slice(0, 4).join("、"))}</p>` : ""}
+    ${!better.length && !worse.length ? "<p>この章では、日本とほぼ同じくらいです。</p>" : ""}
+    <button class="chip jp-cmp" data-act="vs-japan">⚖️ グラフでくらべる</button></div>`;
 }
 function regionMedianSeries(ser, region) {
   const byYear = {};
@@ -1170,6 +1183,8 @@ function bind() {
     if (d.act === "quiz-print") { document.body.classList.add("print-ws"); window.print(); document.body.classList.remove("print-ws"); return; }
     if (d.qi != null && d.ci != null) { if (S.quizAns[d.qi] == null) S.quizAns[d.qi] = +d.ci; return renderQuiz(); }
     if (d.qlink != null) return followQuizLink(+d.qlink);
+    if (d.act === "vs-japan") { S.compare = [S.country, "JPN"]; return setMode("compare"); }
+    if (d.act === "vs-similar") { S.compare = ["JPN", ...similarCountries("JPN", 3).map((x) => x.iso3)]; return setMode("compare"); }
     if (d.act === "cmp-add") { if (!S.compare.includes(S.country)) S.compare = [...S.compare, S.country].slice(-4); return setMode("compare"); }
     if (d.rm) { S.compare = S.compare.filter((k) => k !== d.rm); return renderCompare(); }
     if (d.order) { S.rankOrder = d.order; return renderRank(); }

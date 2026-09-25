@@ -480,3 +480,8 @@ html, body { overflow-x: hidden; }
 .gloss b { font-size: 14.5px; color: #0b1f4d; }
 .gloss p { font-size: 13px; line-height: 1.75; margin: 4px 0 6px; }
 .gloss-link { margin-top: 6px; }
+
+/* 日本とくらべる */
+.chip.jp-cmp { background: #fff0f0; color: #c92a2a; font-weight: 700; }
+.vsjp { margin: 10px 0; border-color: #ffc9c9; background: #fff8f8; font-size: 13px; }
+.vsjp p { margin: 5px 0; line-height: 1.6; }
