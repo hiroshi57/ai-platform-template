@@ -335,6 +335,7 @@ function renderIndBox() {
   $("#ind-box").innerHTML = `<h4>${esc(ind.name)}</h4><div>${esc(ind.explain)}</div>
     ${w ? `<div style="margin-top:6px">🌍 世界全体: <b>${fmtV(ind, w[1])}${esc(unitOf(ind))}</b> <small>(${w[0]}年)</small></div>` : ""}
     ${ind.sdg.length ? `<div style="margin-top:6px">${ind.sdg.map((n) => `<span class="sdg-dot" style="background:${D.catalog.sdg_goals[n - 1].color};width:auto;padding:0 5px">SDGs ${n}</span>`).join(" ")}</div>` : ""}
+    ${glossaryFor(ind.id) ? `<button class="chip gloss-link" data-gterm="${esc(glossaryFor(ind.id).t)}">📖 用語集で詳しく: ${esc(glossaryFor(ind.id).t)}</button>` : ""}
     <div class="src">出典: ${esc(ind.org || sourceName(ind.source))}${ind.source === "ucla" ? "(CC BY-NC 4.0・非営利の教育利用)" : ""}</div>
     ${ind.levels ? `<div class="src">段階: ${ind.levels.map((l) => esc(l[1])).join(" < ")}</div>` : ""}`;
 }
@@ -1010,10 +1011,71 @@ function updateReportHTML() {
     ${failed.length ? `<p class="ng">⚠️ 取得に失敗したソース ${failed.length}件(前回のデータを表示しています): ${failed.map(([k]) => esc(k)).join(", ")}</p>` : ""}`;
 }
 
+// ---------------------------------------------------------------- 使い方・用語集(T5-1 / T5-2)
+function glossaryFor(indId) {
+  for (const g of D.glossary?.groups || []) for (const t of g.terms) if (t.ind === indId) return t;
+  return null;
+}
+function renderGuide() {
+  const tab = S.guideTab || "teacher";
+  const tabs = `<div class="tabs"><button data-gtab="teacher" class="${tab === "teacher" ? "on" : ""}">👩‍🏫 先生用ガイド</button><button data-gtab="glossary" class="${tab === "glossary" ? "on" : ""}">📖 用語集</button></div>`;
+  $("#view-guide").innerHTML = `<h2>📖 使い方・用語集</h2>${tabs}<div id="guide-body"></div>`;
+  $("#guide-body").innerHTML = tab === "glossary" ? glossaryHTML(S.glossQ || "") : teacherGuideHTML();
+  if (tab === "glossary") {
+    const q = $("#gloss-q");
+    q.value = S.glossQ || "";
+    q.addEventListener("input", () => { S.glossQ = q.value; $("#gloss-list").innerHTML = glossaryList(q.value); });
+  }
+}
+function glossaryList(q) {
+  const k = q.trim().toLowerCase();
+  const groups = (D.glossary?.groups || []).map((g) => ({ ...g, terms: g.terms.filter((t) => !k || (t.t + t.d).toLowerCase().includes(k)) })).filter((g) => g.terms.length);
+  if (!groups.length) return `<p class="muted">「${esc(q)}」に当てはまる言葉は見つかりませんでした。</p>`;
+  return groups.map((g) => `<h3>${esc(g.name)}</h3><div class="gloss-grid">${g.terms.map((t) => `<div class="gloss" id="g-${esc(t.t)}">
+      <b>${esc(t.t)}</b><p>${esc(t.d)}</p>${t.ind && IND(t.ind) ? `<button class="chip" data-gind="${t.ind}">🌐 「${esc(IND(t.ind).name)}」を地球儀で見る</button>` : ""}</div>`).join("")}</div>`).join("");
+}
+function glossaryHTML(q) {
+  const n = (D.glossary?.groups || []).reduce((a, g) => a + g.terms.length, 0);
+  return `<p class="muted">図鑑に出てくる言葉を、中学生・高校生向けにやさしく説明しています(${n}語)。</p>
+    <input id="gloss-q" class="gloss-q" placeholder="言葉をさがす(例: GDP、ジニ、SDGs)" aria-label="用語をさがす">
+    <div id="gloss-list">${glossaryList(q)}</div>`;
+}
+function teacherGuideHTML() {
+  const card = (title, body) => `<div class="card guide-card"><h3>${title}</h3>${body}</div>`;
+  return `<p class="muted">授業でこの図鑑を使うときのヒントです。すべての画面は URL(🔗 共有)で開いたまま共有でき、🖨️ 印刷用ページとワークシートは紙でも使えます。</p>
+  <div class="grid2">
+    ${card("⏱️ 45分授業の流れ(例)", `<ol class="fact">
+      <li><b>導入(5分)</b> 🧠 クイズを全員で1〜2問。<b>問題番号</b>を黒板に書けば、全員が同じ問題に取り組める。</li>
+      <li><b>課題(5分)</b> 「なぜこの国は○○なのか?」という問いを立てる(例: 平均寿命の差はどこから?)。</li>
+      <li><b>調べる(20分)</b> 🌐 地球儀で色と高さを見る → 🏆 ランキング → ⚖️ くらべる(最大4か国)→ 📘 図鑑ページの総評。</li>
+      <li><b>考える(10分)</b> 🧩 分類の散布図で「2つの指標の関係」を見る。相関と原因のちがいに注意。</li>
+      <li><b>まとめ(5分)</b> 図鑑ページの「考えてみよう」やワークシートの記入欄に、自分の言葉で書く。</li></ol>`)}
+    ${card("🧑‍🏫 教科ごとの使い方", `<ul class="fact">
+      <li><b>地理</b>: 地形・気候・人口密度を地球儀で見て、地域ごとの特色を分類する(🧩 分類 → 地域で分ける)。</li>
+      <li><b>歴史</b>: 📜 ビジュアル年表の人物キャラクターと、関係する国が光る地球儀。歴史のデータの章で人口や寿命を数百年さかのぼる。</li>
+      <li><b>公民・現代社会</b>: 🎯 SDGs、人間開発(UNDP)、子どもの結婚や教育の法律(UCLA)と実際の数字をくらべる。</li>
+      <li><b>理科(生物・地学)</b>: 絶滅が心配される生き物、保護区、気温の平年差、自然災害。</li>
+      <li><b>数学・情報</b>: 散布図と相関係数、対数目盛り、2030年の予測(直線でのばす考え方)を読み解く。</li>
+      <li><b>英語</b>: 国ページの CIA World Factbook の英語原文と日本語要約を読みくらべる。</li></ul>`)}
+    ${card("🧠 クイズとワークシート", `<ol class="fact">
+      <li>🧠 クイズを開き、<b>問題番号</b>(例 #2026)を決める。番号を入れると同じ問題が出る。</li>
+      <li>「🖨️ ワークシートを印刷」で、問題と記入欄を印刷(解答と解説は最後のページ)。</li>
+      <li>答え合わせでは「図鑑で見る」から、その問題のデータを全員で確認する。</li></ol>`)}
+    ${card("🖨️ 印刷用ページ(1国1冊子)", `<p class="fact">図鑑ページの「🖨️ 印刷用ページ」から、A4 縦の冊子(概要・章ごとのバランス・SDGs・主な輸出品・全指標の表・歴史・考えてみよう欄)を印刷できます。ブラウザの印刷で「PDF に保存」を選べば PDF になります。グループごとに担当の国を決めて発表する授業に向いています。</p>`)}
+    ${card("📶 通信が弱い教室では", `<p class="fact">授業の前に、ヘッダーの「📥 オフライン用に保存」を押しておくと、全指標のデータが端末に保存され、通信がなくても地球儀や図鑑を使えます(一度開いたことのある端末に限ります)。</p>`)}
+    ${card("⚠️ データを使うときの注意", `<ul class="fact">
+      <li>国によって調べた年がちがいます。くらべるときは「何年のデータか」を必ず確認しましょう。</li>
+      <li>S〜D の評価・章スコア・SDGs スコアは、順位から本図鑑が計算した<b>目安</b>で、国連の公式評価ではありません。</li>
+      <li>2030年の予測は、過去10年の変化をそのまま伸ばした参考値です。</li>
+      <li>CIA 原文の日本語要約は AI による下書きで、確認済みの表示がないものは誤りを含む可能性があります。</li>
+      <li>法律データ(UCLA)は CC BY-NC 4.0(非営利・出典表示)。授業資料に使うときは出典を書きましょう。</li></ul>`)}
+  </div>`;
+}
+
 // ---------------------------------------------------------------- 画面切りかえ
 function setMode(mode) {
   S.mode = mode;
-  document.body.classList.toggle("wide", mode === "quiz" || mode === "print");
+  document.body.classList.toggle("wide", mode === "quiz" || mode === "print" || mode === "guide");
   document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${mode}`));
   // 地球儀は「地球儀」「年表」で共有(DOM を移動)
@@ -1037,7 +1099,8 @@ async function renderAll() {
   if (m === "sources") renderSources();
   if (m === "quiz") renderQuiz();
   if (m === "print") await renderPrint();
-  if (m !== "quiz" && m !== "print") await renderDex();
+  if (m === "guide") renderGuide();
+  if (m !== "quiz" && m !== "print" && m !== "guide") await renderDex();
   syncHash();
 }
 async function setIndicator(id) {
@@ -1098,6 +1161,9 @@ function bind() {
     if (d.tab) { S.dexTab = d.tab; return renderDex(); }
     if (d.act === "world") { S.country = null; return renderAll(); }
     if (d.act === "print") return setMode("print");
+    if (d.gtab) { S.guideTab = d.gtab; return renderGuide(); }
+    if (d.gind) { S.ind = d.gind; S.cat = IND(d.gind).category; return setupYears().then(() => setMode("globe")); }
+    if (d.gterm) { S.guideTab = "glossary"; S.glossQ = d.gterm; return setMode("guide"); }
     if (d.act === "print-now") return window.print();
     if (d.act === "back") return setMode("globe");
     if (d.act === "quiz-new") { S.quizSeed = Math.floor(Math.random() * 9000) + 1000; S.quizAns = {}; return renderQuiz(); }
@@ -1238,6 +1304,7 @@ async function main() {
     D.flows = await getJSON("data/flows/refugees.json").catch(() => null);
     D.exports = await getJSON("data/exports.json").catch(() => null);
     D.updateReport = await getJSON("data/update_report.json").catch(() => null);
+    D.glossary = await getJSON("data/glossary.json").catch(() => null);
     addIndependenceEvents();
   } catch (e) {
     $("#loading").textContent = `データを読み込めませんでした(${e.message})。README の手順でローカルサーバーから開いてください。`;
@@ -1267,6 +1334,7 @@ async function main() {
   setMode(h.get("m") || "globe");
   if (h.get("e") != null && D.timeline.events[+h.get("e")]) selectEvent(+h.get("e"));
   if (h.get("t")) { S.dexTab = h.get("t"); renderDex(); }
+  if (h.get("g")) { S.guideTab = h.get("g"); if (S.mode === "guide") renderGuide(); }
   if (S.country && globe) { const c = D.countries[S.country]; if (c.lat != null) globe.pointOfView({ lat: c.lat, lng: c.lng, altitude: 1.8 }); }
 }
 main();

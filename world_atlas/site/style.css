@@ -463,11 +463,20 @@ html, body { overflow-x: hidden; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 200; background: #1f2430; color: #fff;
   padding: 10px 18px; border-radius: 999px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.25); max-width: 90vw; }
 
-/* 1500px 以下: メニューは2段目の1行に、右上のボタンはアイコンだけ */
-@media (max-width: 1500px) {
+/* 1720px 以下: メニューは2段目の1行に、右上のボタンはアイコンだけ */
+@media (max-width: 1720px) {
   .modes { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
   .modes::-webkit-scrollbar { display: none; }
   .tools { margin-left: auto; }
   .tools .lbl { display: none; }
   .tools .cvd-btn { padding: 5px 9px; font-size: 14px; }
 }
+
+/* 使い方・用語集 */
+.guide-card h3 { margin-top: 0; }
+.gloss-q { width: 100%; max-width: 420px; font: inherit; font-size: 14px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; margin: 6px 0 4px; }
+.gloss-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 8px; }
+.gloss { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; background: #fff; }
+.gloss b { font-size: 14.5px; color: #0b1f4d; }
+.gloss p { font-size: 13px; line-height: 1.75; margin: 4px 0 6px; }
+.gloss-link { margin-top: 6px; }
