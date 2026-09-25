@@ -165,7 +165,8 @@
       "hat": "chinese",
       "cloth": "#8a5a3a",
       "trim": "#f8f9fa",
-      "item": "📜"
+      "item": "📜",
+      "robe": "kimono"
      }
     }
    ],
@@ -227,7 +228,9 @@
       "hat": "mian",
       "cloth": "#222222",
       "trim": "#c92a2a",
-      "item": "🏯"
+      "item": "🏯",
+      "robe": "kimono",
+      "mood": "stern"
      }
     }
    ]
@@ -333,7 +336,8 @@
       "hat": "chinese",
       "cloth": "#5c7cfa",
       "trim": "#364fc7",
-      "item": "📄"
+      "item": "📄",
+      "robe": "kimono"
      }
     }
    ]
@@ -360,7 +364,9 @@
       "hat": "none",
       "cloth": "#f8f9fa",
       "trim": "#c92a2a",
-      "item": "🪞"
+      "item": "🪞",
+      "robe": "kimono",
+      "mood": "gentle"
      }
     }
    ],
@@ -427,7 +433,8 @@
       "hat": "kanmuri",
       "cloth": "#862e9c",
       "trim": "#f8f9fa",
-      "item": "📜"
+      "item": "📜",
+      "robe": "kimono"
      }
     }
    ],
@@ -517,7 +524,8 @@
       "cloth": "#c2255c",
       "trim": "#fcc419",
       "item": "🖌️",
-      "robe": "junihitoe"
+      "robe": "junihitoe",
+      "mood": "gentle"
      }
     }
    ],
@@ -544,7 +552,9 @@
       "hat": "eboshi",
       "cloth": "#343a40",
       "trim": "#f8f9fa",
-      "item": "🏹"
+      "item": "🏹",
+      "robe": "kimono",
+      "mood": "stern"
      }
     }
    ],
@@ -577,7 +587,8 @@
       "hat": "mongol",
       "cloth": "#1864ab",
       "trim": "#f59f00",
-      "item": "🐎"
+      "item": "🐎",
+      "mood": "stern"
      }
     }
    ]
@@ -714,7 +725,8 @@
       "hat": "chinese",
       "cloth": "#c92a2a",
       "trim": "#f59f00",
-      "item": "⛵"
+      "item": "⛵",
+      "robe": "kimono"
      }
     }
    ],
@@ -801,7 +813,8 @@
       "hat": "turban",
       "cloth": "#c92a2a",
       "trim": "#f59f00",
-      "item": "⚔️"
+      "item": "⚔️",
+      "mood": "stern"
      }
     }
    ]
@@ -1025,9 +1038,11 @@
       "beard": "mustache",
       "beardColor": "#1b1b1b",
       "hat": "none",
-      "cloth": "#c92a2a",
+      "cloth": "#2f9e44",
       "trim": "#212529",
-      "item": "🔥"
+      "item": "🔥",
+      "robe": "kimono",
+      "mood": "stern"
      }
     }
    ],
@@ -1050,12 +1065,14 @@
       "skin": "#f1c9a5",
       "hair": "short",
       "hairColor": "#1b1b1b",
-      "beard": "mustache",
+      "beard": "goatee",
       "beardColor": "#1b1b1b",
       "hat": "eboshi",
-      "cloth": "#f59f00",
+      "cloth": "#f8f9fa",
       "trim": "#c92a2a",
-      "item": "🌾"
+      "item": "🌾",
+      "robe": "kimono",
+      "mood": "stern"
      }
     }
    ],
@@ -1078,14 +1095,18 @@
      "role": "江戸幕府の初代将軍",
      "look": {
       "skin": "#f1c9a5",
-      "hair": "short",
-      "hairColor": "#1b1b1b",
+      "hair": "topknot",
+      "hairColor": "#9aa0a6",
       "beard": "mustache",
-      "beardColor": "#1b1b1b",
-      "hat": "eboshi",
-      "cloth": "#2b8a3e",
+      "beardColor": "#c9cdd2",
+      "hat": "none",
+      "cloth": "#3b3b3b",
       "trim": "#f8f9fa",
-      "item": "🏯"
+      "item": "🏯",
+      "robe": "hakama",
+      "hakama": "#c9a227",
+      "old": true,
+      "mood": "gentle"
      }
     }
    ]
@@ -1303,7 +1324,8 @@
       "hat": "bicorne",
       "cloth": "#1864ab",
       "trim": "#f59f00",
-      "item": "⚔️"
+      "item": "⚔️",
+      "mood": "stern"
      }
     }
    ],
@@ -1366,7 +1388,8 @@
       "hat": "qing",
       "cloth": "#1864ab",
       "trim": "#f59f00",
-      "item": "⚓"
+      "item": "⚓",
+      "robe": "kimono"
      }
     }
    ]
@@ -1422,8 +1445,10 @@
       "beardColor": "#e9ecef",
       "hat": "none",
       "cloth": "#343a40",
-      "trim": "#868e96",
-      "item": "🐢"
+      "trim": "#212529",
+      "item": "🐢",
+      "robe": "suit",
+      "mood": "gentle"
      }
     }
    ]
@@ -1450,8 +1475,10 @@
       "beardColor": "#1b1b1b",
       "hat": "tophat",
       "cloth": "#212529",
-      "trim": "#f8f9fa",
-      "item": "📜"
+      "trim": "#212529",
+      "item": "📜",
+      "robe": "suit",
+      "mood": "gentle"
      }
     }
    ]
@@ -1478,8 +1505,9 @@
       "hat": "none",
       "glasses": true,
       "cloth": "#212529",
-      "trim": "#495057",
-      "item": "🫛"
+      "trim": "#212529",
+      "item": "🫛",
+      "robe": "suit"
      }
     }
    ]
@@ -1504,7 +1532,9 @@
       "hat": "none",
       "cloth": "#343a40",
       "trim": "#adb5bd",
-      "item": "🤝"
+      "item": "🤝",
+      "robe": "hakama",
+      "hakama": "#868e96"
      }
     }
    ],
@@ -1676,8 +1706,9 @@
       "beardColor": "#1b1b1b",
       "hat": "none",
       "cloth": "#212529",
-      "trim": "#f8f9fa",
-      "item": "🩺"
+      "trim": "#343a40",
+      "item": "🩺",
+      "robe": "suit"
      }
     }
    ],
@@ -1734,8 +1765,9 @@
       "beardColor": "#495057",
       "hat": "none",
       "cloth": "#343a40",
-      "trim": "#f8f9fa",
-      "item": "🩻"
+      "trim": "#212529",
+      "item": "🩻",
+      "robe": "suit"
      }
     }
    ]
@@ -1761,8 +1793,9 @@
       "beardColor": "#1b1b1b",
       "hat": "none",
       "cloth": "#212529",
-      "trim": "#f8f9fa",
-      "item": "📕"
+      "trim": "#212529",
+      "item": "📕",
+      "robe": "suit"
      }
     }
    ],
@@ -1821,8 +1854,9 @@
       "beardColor": "#5a3a1a",
       "hat": "flatcap",
       "cloth": "#495057",
-      "trim": "#f8f9fa",
-      "item": "✈️"
+      "trim": "#212529",
+      "item": "✈️",
+      "robe": "suit"
      }
     }
    ]
@@ -1850,8 +1884,10 @@
       "beardColor": "#868e96",
       "hat": "none",
       "cloth": "#868e96",
-      "trim": "#f8f9fa",
-      "item": "⚛️"
+      "trim": "#495057",
+      "item": "⚛️",
+      "robe": "suit",
+      "mood": "gentle"
      }
     }
    ]
@@ -2061,7 +2097,9 @@
       "glasses": true,
       "cloth": "#f8f9fa",
       "trim": "#dee2e6",
-      "item": "🧂"
+      "item": "🧂",
+      "robe": "kimono",
+      "mood": "gentle"
      }
     }
    ],
@@ -2109,8 +2147,9 @@
       "hat": "none",
       "glasses": true,
       "cloth": "#343a40",
-      "trim": "#f8f9fa",
-      "item": "📝"
+      "trim": "#1c7ed6",
+      "item": "📝",
+      "robe": "suit"
      }
     }
    ],
@@ -2260,8 +2299,9 @@
       "hat": "none",
       "glasses": true,
       "cloth": "#1864ab",
-      "trim": "#f8f9fa",
-      "item": "⚛️"
+      "trim": "#212529",
+      "item": "⚛️",
+      "robe": "suit"
      }
     }
    ],
@@ -2302,8 +2342,9 @@
       "hat": "none",
       "glasses": true,
       "cloth": "#1864ab",
-      "trim": "#f8f9fa",
-      "item": "📘"
+      "trim": "#212529",
+      "item": "📘",
+      "robe": "suit"
      }
     }
    ],
@@ -2474,7 +2515,8 @@
       "hat": "none",
       "cloth": "#f59f00",
       "trim": "#2f9e44",
-      "item": "⭐"
+      "item": "⭐",
+      "robe": "suit"
      }
     }
    ],
@@ -2586,8 +2628,9 @@
       "beardColor": "#1b1b1b",
       "hat": "none",
       "cloth": "#212529",
-      "trim": "#f8f9fa",
-      "item": "🎤"
+      "trim": "#495057",
+      "item": "🎤",
+      "robe": "suit"
      }
     }
    ],
@@ -2681,7 +2724,8 @@
       "hat": "scarf",
       "cloth": "#f8f9fa",
       "trim": "#1c7ed6",
-      "item": "🤲"
+      "item": "🤲",
+      "mood": "gentle"
      },
      "home": "IND"
     }
