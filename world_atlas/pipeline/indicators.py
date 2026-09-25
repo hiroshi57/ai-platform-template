@@ -15,6 +15,10 @@
 - source="ndgain" : ノートルダム大 ND-GAIN Country Index(code は指標名 例 "gain")
 - source="unsdg"  : 国連統計部 SDG Global Database API(code は "系列コード|区分=値/値;区分=値")
 - source="uis"    : UNESCO 統計研究所(UIS)Data API(code は指標コード 例 "CR.2")
+- source="ucla"   : UCLA WORLD Policy Analysis Center(Harvard Dataverse。code は "DOI|列名")。
+                   法律の有無などの「段階」データ。
+                   levels=[[点数, 表示名], ...] と codes={コード: 点数} を持つ。
+                   取得にはゲストブック回答が必要なため、週次更新では取らず `--only ucla` のときだけ取得する。
 
 better:
 - "high" … 大きいほど望ましい(例: 平均寿命)
@@ -70,12 +74,14 @@ SDG_GOALS = [
 
 
 def _i(id_, source, code, cat, name, unit, explain, better=None, sdg=(), decimals=1, scale="linear",
-       forecast=True, org=""):
-    return {
+       forecast=True, org="", **extra):
+    d = {
         "id": id_, "source": source, "code": code, "category": cat, "name": name,
         "unit": unit, "explain": explain, "better": better, "sdg": list(sdg),
         "decimals": decimals, "scale": scale, "forecast": forecast, "org": org,
     }
+    d.update(extra)
+    return d
 
 
 INDICATORS = [
@@ -379,8 +385,54 @@ INDICATORS = [
     _i("uis_cr_lsec_rich", "uis", "CR.2.Q5", "education", "中学校の修了率(最も豊かな20%の家庭)", "%",
        "所得がいちばん高い20%の家庭の子どもの中学校修了率。",
        better="high", sdg=(4,), forecast=False, org="UNESCO 統計研究所"),
+    # --- UCLA WORLD Policy Analysis Center(法律・政策の「段階」データ。CC BY-NC 4.0)---
+    _i("ucla_minage_girls", "ucla", "doi:10.7910/DVN/N4DNHL|minage_fem_any", "people",
+       "女の子が結婚できる最低年齢(法律・例外込み)", "",
+       "親の同意・裁判所の許可・宗教や慣習の法などの例外をすべて考えたときに、"
+       "法律上、女の子が何歳から結婚できるか。"
+       "「18歳未満で結婚した女性の割合」とくらべると、法律と実際のちがいがわかる。",
+       better="high", sdg=(5,), decimals=0, forecast=False, org="UCLA WORLD Policy Analysis Center",
+       levels=[[0, "年齢の決まりなし(宗教・慣習の法)"], [1, "13歳以下"], [2, "14〜15歳"], [3, "16〜17歳"],
+               [4, "18歳以上"]],
+       codes={9: 0, 1: 1, 2: 2, 3: 3, 5: 4}),
+    _i("ucla_marriage18_girls", "ucla", "doi:10.7910/DVN/N4DNHL|minage_par_18_f_*", "people",
+       "親の同意があっても18歳未満の結婚を認めない(女子)", "",
+       "親が同意しても、女の子が18歳になる前には結婚できないと法律で決めているか(1995〜2023年の毎年)。"
+       "年スライダーで、世界の法律がどう変わってきたかを見てみよう。",
+       better="high", sdg=(5,), decimals=0, forecast=False, org="UCLA WORLD Policy Analysis Center",
+       levels=[[0, "いいえ(親の同意で18歳未満も可)"], [1, "はい(18歳未満は不可)"]], codes={0: 0, 1: 1}),
+    _i("ucla_marriage_gender_gap", "ucla", "doi:10.7910/DVN/N4DNHL|legal_diff_leg", "people",
+       "結婚できる年齢の男女差(法律)", "",
+       "法律で決められた結婚できる最低年齢に、男女で差があるか。女の子だけ若く結婚できる国もある。",
+       better="high", sdg=(5,), decimals=0, forecast=False, org="UCLA WORLD Policy Analysis Center",
+       levels=[[0, "女子の最低年齢の決まりなし"], [1, "女子が3歳以上若く結婚できる"],
+               [2, "女子が1〜2歳若く結婚できる"],
+               [3, "男女の差なし"]],
+       codes={1: 0, 2: 1, 3: 2, 5: 3}),
+    _i("ucla_tuition_free", "ucla", "doi:10.7910/DVN/LFCHTB|finbar", "education",
+       "授業料が無料になる範囲(法律)", "",
+       "国の法律や憲法で、公立の学校の授業料をどこまで無料にすると決めているか。",
+       better="high", sdg=(4,), decimals=0, forecast=False, org="UCLA WORLD Policy Analysis Center",
+       levels=[[0, "無料の決まりなし"], [1, "小学校まで"], [2, "中学校の始めまで"], [3, "高校の終わりまで"]],
+       codes={1: 0, 2: 1, 3: 2, 5: 3}),
+    _i("ucla_compulsory", "ucla", "doi:10.7910/DVN/LFCHTB|compend", "education",
+       "義務教育の範囲(法律)", "",
+       "国の法律や憲法で、どこまでの教育を義務(子どもが必ず受ける)と決めているか。",
+       better="high", sdg=(4,), decimals=0, forecast=False, org="UCLA WORLD Policy Analysis Center",
+       levels=[[0, "義務教育の決まりなし"], [1, "小学校まで"], [2, "中学校の始めまで"],
+               [3, "高校の終わりまで"]],
+       codes={1: 0, 2: 1, 3: 2, 5: 3}),
+    _i("ucla_edu_gender_discrimination", "ucla", "doi:10.7910/DVN/LFCHTB|disc_sex_prim", "education",
+       "教育での男女差別の禁止(法律)", "",
+       "法律で、教育の場での男女差別をどこまではっきり禁止しているか。",
+       better="high", sdg=(4, 5), decimals=0, forecast=False, org="UCLA WORLD Policy Analysis Center",
+       levels=[[0, "禁止の決まりなし"], [1, "男女平等を広く保障(教育の明記なし)"],
+               [2, "入学・通学での差別を禁止"],
+               [3, "教育の場での差別を禁止"]],
+       codes={1: 0, 3: 1, 4: 2, 5: 3}),
 ]
 
+SOURCES = ("wb", "unhcr", "undp", "owid", "harvard", "epi", "ndgain", "unsdg", "uis", "ucla")
 INDICATOR_BY_ID = {x["id"]: x for x in INDICATORS}
 
 
@@ -403,7 +455,7 @@ def validate_catalog() -> list[str]:
         for n in ind["sdg"]:
             if n not in goal_ns:
                 errors.append(f"{ind['id']}: unknown SDG goal {n}")
-        if ind["source"] not in ("wb", "unhcr", "undp", "owid", "harvard", "epi", "ndgain", "unsdg", "uis"):
+        if ind["source"] not in SOURCES:
             errors.append(f"{ind['id']}: unknown source {ind['source']}")
         if ind["source"] == "owid" and ":" not in ind["code"]:
             errors.append(f"{ind['id']}: owid code must be '<slug>:<column>'")

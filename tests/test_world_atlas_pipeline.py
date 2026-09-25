@@ -360,3 +360,25 @@ def test_factbook_ja_english_word_check():
 
     assert F.english_words("抗議activityが起きた。") == ["activity"]
     assert F.english_words("NATO や EU に加盟した。") == []
+
+
+def test_parse_coded_rows_static_and_yearly():
+    rows = [
+        {"iso3": "JPN", "minage_fem_any": "5.0", "minage_par_18_f_2000": "0.0", "minage_par_18_f_2001": "1.0"},
+        {"iso3": "AFG", "minage_fem_any": "", "minage_par_18_f_2000": "0.0", "minage_par_18_f_2001": ""},
+        {"iso3": "IRN", "minage_fem_any": "9.0", "minage_par_18_f_2000": "", "minage_par_18_f_2001": ""},
+        {"iso3": "XXX", "minage_fem_any": "5.0"},
+    ]
+    scores = {9: 0, 1: 1, 2: 2, 3: 3, 5: 4}
+    out = A.parse_coded_rows(rows, "minage_fem_any", scores, valid={"JPN", "AFG", "IRN"}, year=2023)
+    assert out == {"JPN": [[2023, 4.0]], "IRN": [[2023, 0.0]]}
+    yearly = A.parse_coded_rows(rows, "minage_par_18_f_*", {0: 0, 1: 1}, valid={"JPN", "AFG"}, year=None)
+    assert yearly == {"JPN": [[2000, 0.0], [2001, 1.0]], "AFG": [[2000, 0.0]]}
+
+
+def test_catalog_levels_are_well_formed():
+    for ind in INDICATORS:
+        if ind.get("levels"):
+            scores = [lv[0] for lv in ind["levels"]]
+            assert scores == sorted(scores) and len(set(scores)) == len(scores), ind["id"]
+            assert ind["forecast"] is False, ind["id"]

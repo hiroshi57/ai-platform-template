@@ -24,6 +24,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import re
 import shutil
 import sys
@@ -376,9 +377,70 @@ def fetch_uis(indicator: str, valid: set[str]) -> dict[str, list]:
     return out
 
 
+# ---------------------------------------------------------------- UCLA WORLD(ゲストブック付き)
+GUESTBOOK_FILE = Path.home() / "sekai-zukan.guestbook.env.txt"  # リポジトリの外(個人情報をコミットしない)
+_ucla_cache: dict[str, tuple[int | None, list[dict]]] = {}
+
+
+def _guestbook_payload(guestbook_id: int) -> dict:
+    """ゲストブックの回答を組み立てる。回答内容は GUESTBOOK_FILE か環境変数 WORLD_GB_* から読む。"""
+    from .factbook_ja import load_env_file
+
+    load_env_file(GUESTBOOK_FILE)
+    need = [f"WORLD_GB_{k}" for k in ("NAME", "EMAIL", "INSTITUTION", "POSITION", "COUNTRY")]
+    miss = [k for k in need if not os.environ.get(k)]
+    if miss:
+        raise RuntimeError(f"ゲストブックの回答が未設定です({', '.join(miss)}): {GUESTBOOK_FILE}")
+    gb = http_json(f"https://dataverse.harvard.edu/api/guestbooks/{guestbook_id}")["data"]
+    answers = []
+    for q in gb.get("customQuestions", []):
+        text = q["question"].lower()
+        if "country" in text:
+            answers.append({"id": q["id"], "value": os.environ["WORLD_GB_COUNTRY"]})
+        elif "use" in text or "purpose" in text:
+            purpose = os.environ.get("WORLD_GB_PURPOSE", "Non-commercial education")
+            answers.append({"id": q["id"], "value": purpose})
+        elif q.get("required"):
+            raise RuntimeError(f"想定外の必須質問があります: {q['question']}")
+    return {"guestbookResponse": {
+        "name": os.environ["WORLD_GB_NAME"], "email": os.environ["WORLD_GB_EMAIL"],
+        "institution": os.environ["WORLD_GB_INSTITUTION"], "position": os.environ["WORLD_GB_POSITION"],
+        "answers": answers,
+    }}
+
+
+def fetch_ucla(code: str, valid: set[str]) -> dict[str, list]:
+    """UCLA WORLD Policy Analysis Center の表(Harvard Dataverse)をゲストブックに回答して取得する。"""
+    doi, column = code.split("|", 1)
+    ind = next(i for i in INDICATORS if i["source"] == "ucla" and i["code"] == code)
+    if doi not in _ucla_cache:
+        meta = http_json(f"https://dataverse.harvard.edu/api/datasets/:persistentId/?persistentId={doi}")["data"]
+        ver = meta["latestVersion"]
+        fields = ver["metadataBlocks"]["citation"]["fields"]
+        title = next((f["value"] for f in fields if f["typeName"] == "title"), "")
+        m = re.search(r"(19|20)\d{2}", title)
+        year = int(m.group(0)) if m else None
+        tab = next(f["dataFile"] for f in ver["files"] if f["dataFile"].get("filename", "").endswith(".tab"))
+        gb_id = tab.get("guestbookId") or meta.get("guestbookId") or ver.get("guestbookId")
+        if not gb_id:
+            gb_id = 614  # WORLD Policy Analysis Center Guestbook
+        req = urllib.request.Request(  # noqa: S310 (固定の https URL)
+            f"https://dataverse.harvard.edu/api/access/datafile/{tab['id']}",
+            data=json.dumps(_guestbook_payload(int(gb_id))).encode("utf-8"),
+            headers={"User-Agent": UA, "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310
+            signed = json.loads(r.read().decode("utf-8"))["data"]["signedUrl"]
+        text = http_get(signed, timeout=180).decode("utf-8", "replace")
+        _ucla_cache[doi] = (year, list(csv.DictReader(io.StringIO(text), delimiter="	")))
+    year, rows = _ucla_cache[doi]
+    codes = {int(k): v for k, v in ind["codes"].items()}
+    return A.parse_coded_rows(rows, column, codes, valid, year)
+
+
 FETCHERS = {"wb": fetch_wb, "unhcr": fetch_unhcr, "undp": fetch_undp, "owid": fetch_owid,
             "harvard": fetch_harvard, "epi": fetch_epi, "ndgain": fetch_ndgain,
-            "unsdg": fetch_unsdg, "uis": fetch_uis}
+            "unsdg": fetch_unsdg, "uis": fetch_uis, "ucla": fetch_ucla}
 
 
 def atlas_query(query: str) -> dict:
@@ -691,6 +753,8 @@ def main(argv: list[str] | None = None) -> int:
     for ind in INDICATORS:
         if only and ind["source"] not in only:
             continue
+        if ind["source"] == "ucla" and "ucla" not in only:
+            continue  # ゲストブック回答が必要なため、明示したときだけ取得(前回のファイルを使い続ける)
         key = f"{ind['source']}:{ind['code']}"
         try:
             raw = FETCHERS[ind["source"]](ind["code"], valid)

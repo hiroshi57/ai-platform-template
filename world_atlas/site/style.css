@@ -452,3 +452,7 @@ html, body { overflow-x: hidden; }
   #search { flex: 1; width: auto; min-width: 0; }
   .ind, .chap { white-space: normal; text-align: left; }
 }
+
+/* 段階の指標の凡例 */
+.globe-legend .lv { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.globe-legend .lv i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }

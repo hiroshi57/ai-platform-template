@@ -46,8 +46,10 @@ const flag = (iso3, w = 40) => {
   const c = D.countries[iso3];
   return c?.iso2 && /^[A-Z]{2}$/.test(c.iso2) ? `https://flagcdn.com/w${w <= 40 ? 40 : 160}/${c.iso2.toLowerCase()}.png` : "";
 };
-const unitOf = (ind) => (ind.unit ? ` ${ind.unit}` : "");
-const fmtV = (ind, v) => A.fmtNum(v, ind.decimals ?? 1);
+const unitOf = (ind) => (ind.unit && !ind.levels ? ` ${ind.unit}` : "");
+// 段階の指標(法律の有無など)は、点数ではなく「18歳以上」のような言葉で表示する
+const levelLabel = (ind, v) => (ind.levels?.find((l) => l[0] === Math.round(v)) || [null, "—"])[1];
+const fmtV = (ind, v) => (ind.levels ? (Number.isFinite(v) ? levelLabel(ind, v) : "—") : A.fmtNum(v, ind.decimals ?? 1));
 
 // 最新値スナップショット・順位(キャッシュ)
 const _snapLatest = {}, _ranks = {};
@@ -122,6 +124,12 @@ async function currentSnap() {
 
 // ---------------------------------------------------------------- 色分け
 function colorizer(snap, ind) {
+  if (ind.levels) {
+    const n = ind.levels.length, max = ind.levels[n - 1][0];
+    const pal = cvd ? PAL_CVD : ind.better ? PAL_GOOD : PAL_SIZE;
+    const idx = (v) => Math.round((Math.max(0, Math.min(max, v)) / (max || 1)) * 6);
+    return { color: (v) => (Number.isFinite(v) ? pal[idx(v)] : NO_DATA), q: (v) => (Number.isFinite(v) ? v / (max || 1) : 0), pal, breaks: [], levels: ind.levels.map((l) => ({ label: l[1], color: pal[idx(l[0])] })) };
+  }
   const vals = Object.values(snap).map((p) => p[1]).filter(Number.isFinite);
   const log = ind.scale === "log";
   const tv = (v) => (log ? Math.log10(Math.max(v, 1e-9)) : v);
@@ -303,7 +311,7 @@ async function paintGlobe() {
   // 凡例は左が小さい値。少ないほど良い指標(better=low)は左が「良い」になる
   const lbl = ind.better === "high" ? ["課題が大きい", "良い"] : ind.better === "low" ? ["良い(少ない)", "課題が大きい"] : ["小さい", "大きい"];
   const br = cz.breaks;
-  $("#legend").innerHTML = tl ? "" : `<div>${esc(ind.name)}${ind.better ? (cvd ? "(黄色いほど望ましい)" : "(青いほど望ましい)") : ""}</div>
+  $("#legend").innerHTML = tl ? "" : cz.levels ? `<div>${esc(ind.name)}</div>${cz.levels.map((l) => `<div class="lv"><i style="background:${l.color}"></i>${esc(l.label)}</div>`).join("")}<div class="legend-lbl"><span><i style="display:inline-block;width:10px;height:10px;background:${NO_DATA}"></i> データなし</span></div>` : `<div>${esc(ind.name)}${ind.better ? (cvd ? "(黄色いほど望ましい)" : "(青いほど望ましい)") : ""}</div>
     <div class="legend-bar">${cz.pal.map((c) => `<i style="background:${c}"></i>`).join("")}</div>
     <div class="legend-lbl"><span>${lbl[0]}</span><span>${br.length ? `${fmtV(ind, br[0])} … ${fmtV(ind, br[br.length - 1])}` : ""}</span><span>${lbl[1]}</span></div>
     <div class="legend-lbl"><span><i style="display:inline-block;width:10px;height:10px;background:${NO_DATA}"></i> データなし</span>${S.viz !== "flat" ? "<span>高さ = 値の大きさの順位</span>" : ""}</div>
@@ -327,12 +335,13 @@ function renderIndBox() {
   $("#ind-box").innerHTML = `<h4>${esc(ind.name)}</h4><div>${esc(ind.explain)}</div>
     ${w ? `<div style="margin-top:6px">🌍 世界全体: <b>${fmtV(ind, w[1])}${esc(unitOf(ind))}</b> <small>(${w[0]}年)</small></div>` : ""}
     ${ind.sdg.length ? `<div style="margin-top:6px">${ind.sdg.map((n) => `<span class="sdg-dot" style="background:${D.catalog.sdg_goals[n - 1].color};width:auto;padding:0 5px">SDGs ${n}</span>`).join(" ")}</div>` : ""}
-    <div class="src">出典: ${esc(ind.org || sourceName(ind.source))}</div>`;
+    <div class="src">出典: ${esc(ind.org || sourceName(ind.source))}${ind.source === "ucla" ? "(CC BY-NC 4.0・非営利の教育利用)" : ""}</div>
+    ${ind.levels ? `<div class="src">段階: ${ind.levels.map((l) => esc(l[1])).join(" < ")}</div>` : ""}`;
 }
 function sourceName(s) {
   return { wb: "世界銀行 World Development Indicators(国連機関等のデータを集約)", unhcr: "UNHCR", undp: "UNDP 人間開発報告書", owid: "Our World in Data",
     harvard: "ハーバード大学 Growth Lab", epi: "イェール大学 環境パフォーマンス指数", ndgain: "ノートルダム大学 ND-GAIN",
-    unsdg: "国連統計部 SDG Global Database", uis: "UNESCO 統計研究所" }[s] || s;
+    unsdg: "国連統計部 SDG Global Database", uis: "UNESCO 統計研究所", ucla: "UCLA WORLD Policy Analysis Center" }[s] || s;
 }
 
 // ---------------------------------------------------------------- 図鑑ページ(右)
@@ -368,6 +377,7 @@ function rowFor(iso3, ind) {
 }
 function trendHTML(row) {
   if (!row.tr) return "";
+  if (row.ind.levels) return row.tr.dir === "flat" ? "" : `<span class="${row.meaning === "改善" ? "up" : "down"}">${row.tr.from[0]}年から変化(${esc(levelLabel(row.ind, row.tr.from[1]))} → ${esc(levelLabel(row.ind, row.tr.to[1]))})</span>`;
   const arrow = row.tr.dir === "up" ? "↗" : row.tr.dir === "down" ? "↘" : "→";
   const cls = row.meaning === "改善" ? "up" : row.meaning === "悪化" ? "down" : "flat";
   return `<span class="${cls}">${arrow} ${row.tr.from[0]}年から${row.tr.pct != null ? `${row.tr.pct > 0 ? "+" : ""}${row.tr.pct.toFixed(0)}%` : ""}${row.meaning ? `(${row.meaning})` : ""}</span>`;
@@ -533,6 +543,18 @@ function worldCommentary(ind, snap) {
   const ranks = A.rankAll(snap, ind.better);
   const order = Object.entries(ranks).sort((a, b) => a[1].rank - b[1].rank).map(([k]) => k);
   const lines = [];
+  if (ind.levels) {
+    // 段階の指標: 各段階に何か国あるか
+    const vals = Object.values(snap).map((p) => Math.round(p[1]));
+    const total = vals.length;
+    for (const [sc, label] of [...ind.levels].reverse()) {
+      const n = vals.filter((v) => v === sc).length;
+      if (n) lines.push(`【${label}】${n}か国(${((n / total) * 100).toFixed(0)}%)`);
+    }
+    if (ind.sdg.length) lines.push(`【SDGs】この指標は目標${ind.sdg.join("・")}に関係しています。`);
+    lines.push("【考えてみよう】法律で決まっていることと、実際のくらし(ほかの指標)にちがいはあるかな?");
+    return { lines, order, w };
+  }
   if (order.length) {
     lines.push(`【${ind.better === "low" ? "少ない(良い)" : "大きい"}国】${order.slice(0, 3).map(cname).join("、")}`);
     lines.push(`【${ind.better === "low" ? "多い(課題が大きい)" : "小さい"}国】${order.slice(-3).reverse().map(cname).join("、")}`);
@@ -561,7 +583,7 @@ async function renderWorldDex() {
       <div class="kpi"><div class="l">各国の中央値</div><div class="v">${fmtV(ind, med)}</div></div><div class="kpi"><div class="l">データのある国</div><div class="v">${Object.keys(snap).length}</div></div></div>
     <div class="comment">${lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div>
     ${ser?.world?.length ? `<h3>📈 世界全体の移り変わり</h3>${lineChart([{ name: "世界全体", color: "#1c64d6", points: ser.world, width: 3 }], { log: ind.scale === "log", decimals: ind.decimals, height: 170 })}` : ""}
-    <h3>🗺️ 地域ごとの中央値</h3>${barRows(regRows, { decimals: ind.decimals, log: ind.scale === "log" })}
+    <h3>🗺️ 地域ごとの中央値</h3>${barRows(regRows, { decimals: ind.decimals, log: ind.scale === "log", fmt: ind.levels ? (v) => fmtV(ind, v) : null })}
     <div class="grid2" style="margin-top:10px"><div><h3>🔝 上位5か国</h3>${top.map((k, i) => `<div class="tl-mini" role="button" tabindex="0" data-country="${k}">${i + 1}. ${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div>
       <div><h3>🔚 下位5か国</h3>${bottom.map((k) => `<div class="tl-mini" role="button" tabindex="0" data-country="${k}">${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div></div>
     <div class="note">「上位」は値が${ind.better === "low" ? "小さい(望ましい)" : "大きい"}順です。${esc(ind.org || sourceName(ind.source))}のデータ。</div>`;
@@ -584,7 +606,7 @@ async function renderRank() {
     <div class="toolbar"><select id="rank-region"><option value="all">すべての地域</option>${regions.map((r) => `<option value="${r}" ${S.rankRegion === r ? "selected" : ""}>${esc(Object.values(D.countries).find((c) => c.region === r).region_ja)}</option>`).join("")}</select>
       <button class="tb ${S.rankOrder === "top" ? "on" : ""}" data-order="top">${ind.better === "low" ? "少ない順" : "大きい順"}</button><button class="tb ${S.rankOrder === "bottom" ? "on" : ""}" data-order="bottom">逆順</button>
       <span class="muted">黒い線 = 世界全体${w && curYear() == null ? `(${fmtV(ind, w[1])})` : ""}・${rows.length}か国</span></div>
-    ${barRows(rows, { ref: curYear() == null ? w?.[1] : null, decimals: ind.decimals, log: ind.scale === "log" })}`;
+    ${barRows(rows, { ref: curYear() == null ? w?.[1] : null, decimals: ind.decimals, log: ind.scale === "log", fmt: ind.levels ? (v) => fmtV(ind, v) : null })}`;
 }
 
 // ---------------------------------------------------------------- くらべる
@@ -865,7 +887,7 @@ function renderSources() {
     <h3>データを提供している機関</h3>
     <div class="grid3">
       <div class="card"><b>🇺🇳 国連・国際機関</b><p class="fact">国連統計部 SDG Global Database(公式 SDG 指標を API で直接取得)/ UNESCO 統計研究所(教育)/ UNDP(人間開発報告書)/ UNHCR(難民)/ 世界銀行(WHO・FAO・ILO・IEA・IUCN・SIPRI などのデータを集約)/ UN Data Commons(参照)</p></div>
-      <div class="card"><b>🎓 世界の大学・研究機関</b><p class="fact">オックスフォード大学 Our World in Data / フローニンゲン大学 Maddison Project / ヨーテボリ大学 V-Dem 研究所 / ウプサラ大学 紛争データ計画(UCDP) / ハーバード大学 Growth Lab(経済の複雑さ)/ イェール大学・コロンビア大学 環境パフォーマンス指数(EPI)/ ノートルダム大学 ND-GAIN(気候変動への備え)</p></div>
+      <div class="card"><b>🎓 世界の大学・研究機関</b><p class="fact">オックスフォード大学 Our World in Data / フローニンゲン大学 Maddison Project / ヨーテボリ大学 V-Dem 研究所 / ウプサラ大学 紛争データ計画(UCDP) / ハーバード大学 Growth Lab(経済の複雑さ)/ イェール大学・コロンビア大学 環境パフォーマンス指数(EPI)/ ノートルダム大学 ND-GAIN(気候変動への備え)/ UCLA WORLD Policy Analysis Center(子どもの結婚・教育の法律。CC BY-NC 4.0)</p></div>
       <div class="card"><b>🗂️ そのほか</b><p class="fact">CIA World Factbook(国の基本情報)/ Wikipedia 日本語版(CC BY-SA 4.0)/ Natural Earth(国境・パブリックドメイン)/ 国旗画像 flagcdn.com</p></div></div>
     ${updateReportHTML()}
     <h3>付帯データ</h3><table class="src"><thead><tr><th>データ</th><th>状態</th><th>件数</th></tr></thead><tbody>${aux}</tbody></table>

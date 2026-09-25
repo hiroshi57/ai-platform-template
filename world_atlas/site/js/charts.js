@@ -151,6 +151,6 @@ export function barRows(rows, opts = {}) {
       <span class="bar-rank">${r.rank ?? i + 1}</span>
       <span class="bar-label" title="${esc(r.label)}">${esc(r.label)}</span>
       <span class="bar-track">${refPos != null ? `<i class="bar-ref" style="left:${refPos}%" title="世界全体"></i>` : ""}<i class="bar-fill" style="width:${pct(r.value)}%;background:${r.color}"></i></span>
-      <span class="bar-val">${fmtNum(r.value, opts.decimals ?? 1)}${r.sub ? `<small>${esc(r.sub)}</small>` : ""}</span>
+      <span class="bar-val">${opts.fmt ? esc(opts.fmt(r.value)) : fmtNum(r.value, opts.decimals ?? 1)}${r.sub ? `<small>${esc(r.sub)}</small>` : ""}</span>
     </div>`).join("");
 }

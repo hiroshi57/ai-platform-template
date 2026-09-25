@@ -42,7 +42,7 @@ export function makeQuiz(data, seed, n = 10) {
   const pop = snap("population");
   // 身近に感じやすいよう、人口500万人以上の国から出題する
   const bigCountries = Object.keys(countries).filter((k) => (pop[k]?.[1] || 0) >= 5e6);
-  const inds = catalog.indicators.filter((i) => latest[i.id] && Object.keys(latest[i.id].c).length >= 100 && i.category !== "history");
+  const inds = catalog.indicators.filter((i) => latest[i.id] && Object.keys(latest[i.id].c).length >= 100 && i.category !== "history" && !i.levels);
   const events = (timeline?.events || []).filter((e) => !e.auto);
   const people = events.flatMap((e) => (e.p || []).filter((p) => !p.symbol).map((p) => ({ p, e })));
   const regions = [...new Set(Object.values(countries).map((c) => c.region_ja))];

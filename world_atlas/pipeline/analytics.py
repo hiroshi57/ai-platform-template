@@ -431,3 +431,31 @@ def update_report_markdown(report: dict, sources: dict, names: dict[str, str], g
     if report["removed"]:
         lines += ["", "### 🗑️ なくなった指標", ""] + [f"- {k}" for k in report["removed"]]
     return "\n".join(lines) + "\n"
+
+
+def parse_coded_rows(rows: Iterable[dict], column: str, scores: dict[int, float], valid: set[str],
+                     year: int | None) -> dict[str, list]:
+    """UCLA WORLD のようなコード(区分番号)の表を、段階の点数に置きかえた時系列にする。
+
+    column が "prefix_*" のときは、列名の末尾4桁を年とする毎年のデータとして読む。
+    scores: {コード: 点数}(点数が大きいほど望ましい)。対応表にないコードや空欄は捨てる。
+    """
+    out: dict[str, list] = {}
+    for r in rows:
+        iso3 = r.get("iso3")
+        if iso3 not in valid:
+            continue
+        if column.endswith("*"):
+            prefix = column[:-1]
+            items = [(int(k[-4:]), v) for k, v in r.items() if k.startswith(prefix) and k[-4:].isdigit()]
+        else:
+            items = [(year, r.get(column))]
+        pts = []
+        for y, v in items:
+            n = _num(v)
+            if n is None or int(n) not in scores:
+                continue
+            pts.append([y, float(scores[int(n)])])
+        if pts:
+            out[iso3] = sorted(pts)
+    return out
