@@ -658,7 +658,15 @@ const ERA_COLOR = { ancient: "#8d6e63", medieval: "#5c7cfa", early_modern: "#20c
 async function renderTimeline() {
   const T = D.timeline;
   if (!S.tlCats) S.tlCats = new Set(Object.keys(T.categories).filter((k) => k !== "independence"));
-  $("#tl-filters").innerHTML = Object.entries(T.categories).map(([k, v]) => `<button data-tlcat="${k}" class="${S.tlCats.has(k) ? "on" : ""}" style="--c:${catColor(k)}">${esc(v)}</button>`).join("");
+  // 分野フィルタ: ✓ と件数を付け、非表示の分野は薄く・取り消し線にして状態をはっきりさせる
+  const counts = T.events.reduce((m, e) => ((m[e.cat] = (m[e.cat] || 0) + 1), m), {});
+  const shown = T.events.filter((e) => S.tlCats.has(e.cat)).length;
+  $("#tl-filters").innerHTML = `<div class="tlf-head"><b>表示する分野</b><span class="muted">押すと表示/非表示が切りかわります(いま ${shown}件を表示)</span>
+      <button class="tlf-all" data-tlall="1">すべて表示</button><button class="tlf-all" data-tlall="0">すべて隠す</button></div>
+    <div class="tlf-chips">${Object.entries(T.categories).map(([k, v]) => {
+      const on = S.tlCats.has(k);
+      return `<button data-tlcat="${k}" class="${on ? "on" : "off"}" style="--c:${catColor(k)}" aria-pressed="${on}" title="${on ? "表示中(押すと隠す)" : "非表示(押すと表示)"}"><span class="tick">${on ? "✓" : ""}</span>${esc(v)}<span class="cnt">${counts[k] || 0}</span></button>`;
+    }).join("")}</div>`;
   $("#tl-eras").innerHTML = T.eras.map((e) => `<button data-jump="${e.from}" style="background:${ERA_COLOR[e.id]}">${esc(e.name)} ${e.from < 0 ? `前${-e.from}` : e.from}〜</button>`).join("");
   const cardW = 150, cardH = 74, top0 = 36, rowGap = 6;
   const evs = T.events.map((e, i) => ({ e, i })).filter(({ e }) => S.tlCats.has(e.cat)).sort((a, b) => a.e.y - b.e.y);
@@ -916,6 +924,7 @@ function bind() {
     if (d.goal) { S.sdgGoal = +d.goal; return renderSDG(); }
     if (d.globeSdg) return setIndicator(`sdg:${d.globeSdg}`);
     if (d.tlcat) { S.tlCats.has(d.tlcat) ? S.tlCats.delete(d.tlcat) : S.tlCats.add(d.tlcat); return renderTimeline(); }
+    if (d.tlall != null) { S.tlCats = new Set(d.tlall === "1" ? Object.keys(D.timeline.categories) : []); return renderTimeline(); }
     if (d.jump != null) { $("#tl-scroll").scrollLeft = tlX(+d.jump) - 20; return; }
     if (d.tlnav) return stepEvent(+d.tlnav);
     if (d.event != null) return selectEvent(+d.event);
