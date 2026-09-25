@@ -781,6 +781,7 @@ def main(argv: list[str] | None = None) -> int:
         "products": {"hs2": HS2_JA, "sectors": SECTOR_JA, "sector_colors": SECTOR_COLOR},
     })
     shutil.copyfile(HERE / "timeline_ja.json", out / "timeline.json")
+    shutil.copyfile(HERE / "glossary_ja.json", out / "glossary.json")
     ok = sum(1 for v in status.values() if v.get("ok"))
     write_json(meta_path, {"generated_at": now, "sources": status, "ok": ok, "total": len(status)})
     # 更新の差分レポート(画面の「出典」と、週次ワークフローの PR 本文・失敗通知に使う)

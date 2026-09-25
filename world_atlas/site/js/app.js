@@ -1181,6 +1181,29 @@ function addIndependenceEvents() {
   }
 }
 
+// ---------------------------------------------------------------- オフライン対応
+function setupOffline() {
+  const badge = $("#net");
+  const show = () => { badge.hidden = navigator.onLine; };
+  addEventListener("online", show); addEventListener("offline", show); show();
+  if (!("serviceWorker" in navigator)) { $("#save-offline").hidden = true; return; }
+  navigator.serviceWorker.register("sw.js").catch(() => { $("#save-offline").hidden = true; });
+  navigator.serviceWorker.addEventListener("message", (ev) => {
+    if (ev.data?.type !== "prefetch-progress") return;
+    const { done, total } = ev.data;
+    $("#save-offline").textContent = done >= total ? "✅ オフライン用に保存済み" : `📥 保存中… ${done}/${total}`;
+    if (done >= total) localStorage.setItem("atlas-offline-saved", D.meta.generated_at || "1");
+  });
+  if (localStorage.getItem("atlas-offline-saved") === (D.meta.generated_at || "1")) $("#save-offline").textContent = "✅ オフライン用に保存済み";
+}
+async function saveOffline() {
+  const reg = await navigator.serviceWorker?.ready;
+  if (!reg?.active) return;
+  const urls = D.catalog.indicators.map((i) => `data/series/${i.id}.json`);
+  $("#save-offline").textContent = `📥 保存中… 0/${urls.length}`;
+  reg.active.postMessage({ type: "prefetch", urls });
+}
+
 // ---------------------------------------------------------------- 起動
 async function main() {
   try {
@@ -1210,6 +1233,8 @@ async function main() {
   if (["extrude", "bars", "flat"].includes(h.get("v"))) { S.viz = h.get("v"); $("#viz").value = S.viz; }
   if (+h.get("q") > 0) S.quizSeed = +h.get("q");
   bind();
+  setupOffline();
+  $("#save-offline").addEventListener("click", saveOffline);
   $("#cvd").setAttribute("aria-pressed", String(cvd));
   $("#cvd").classList.toggle("on", cvd);
   if (typeof Globe === "function") initGlobe();
