@@ -37,8 +37,9 @@ small { color: var(--muted); }
 .modes { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; justify-content: center; }
 .modes button {
   background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.2);
-  border-radius: 999px; padding: 6px 12px; font-size: 13px;
+  border-radius: 999px; padding: 5px 10px; font-size: 12.5px; white-space: nowrap;
 }
+@media (max-width: 1700px) { .tagline { display: none; } }
 .modes button.on { background: #fff; color: #0b1f4d; font-weight: 700; }
 .tools { display: flex; align-items: center; gap: 8px; }
 #search { border: 0; border-radius: 999px; padding: 7px 14px; width: 210px; font-size: 13px; }
@@ -309,3 +310,77 @@ table.src th, table.src td { padding: 6px 8px; border-bottom: 1px solid var(--li
 .ev-nav .tb:hover:not(:disabled) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
 .ev-nav .tb:disabled { opacity: .4; cursor: default; }
 .ev-pos { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 主な輸出品目 */
+.ex-card { margin: 10px 0; }
+.ex-band { display: flex; height: 16px; border-radius: 8px; overflow: hidden; margin: 8px 0 4px; }
+.ex-band i { display: block; height: 100%; }
+.ex-row { display: grid; grid-template-columns: 20px 1fr 90px 92px; gap: 6px; align-items: center; font-size: 12.5px; padding: 3px 0; }
+.ex-rank { color: var(--muted); text-align: right; }
+.ex-bar { height: 8px; background: #f1f3f7; border-radius: 4px; position: relative; }
+.ex-bar i { position: absolute; inset: 0 auto 0 0; background: #4d8de6; border-radius: 4px; }
+.ex-val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ex-val small { display: block; font-weight: 400; font-size: 10px; }
+
+/* 広い表示(クイズ・印刷用ページ) */
+body.wide .layout { grid-template-columns: 1fr; }
+body.wide .chapters, body.wide .dex { display: none; }
+.print-only { display: none; }
+
+/* クイズ */
+.quiz-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.quiz-score { text-align: center; background: var(--brand-soft); border-radius: var(--r); padding: 8px 18px; }
+.quiz-score .big { font-size: 34px; font-weight: 900; color: var(--brand); line-height: 1.1; }
+.qlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+.qcard { border: 2px solid var(--line); border-radius: var(--r); padding: 12px 14px; background: #fff; }
+.qcard.ok { border-color: #2b8a3e; background: #f4fcf5; }
+.qcard.ng { border-color: #e8590c; background: #fff8f3; }
+.qhead { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.qno { background: var(--brand); color: #fff; font-weight: 800; border-radius: 6px; padding: 1px 8px; font-size: 13px; }
+.qtype { font-size: 12px; color: var(--muted); }
+.qres { margin-left: auto; font-weight: 800; }
+.qchara { text-align: center; }
+.qtext { font-size: 15.5px; font-weight: 700; line-height: 1.6; margin-bottom: 8px; }
+.qchoices { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.qchoices button { text-align: left; border: 2px solid var(--line); background: #fff; border-radius: 10px; padding: 9px 10px; font-size: 14px; font-weight: 700; }
+.qchoices button:hover:not(:disabled) { border-color: var(--brand); background: var(--brand-soft); }
+.qchoices button.right { border-color: #2b8a3e; background: #d3f9d8; }
+.qchoices button.wrong { border-color: #e03131; background: #ffe3e3; text-decoration: line-through; }
+.qchoices button.dim { opacity: .55; }
+.qexp { margin-top: 8px; font-size: 13px; line-height: 1.7; background: #fff9e6; border-radius: var(--r-sm); padding: 8px 10px; }
+
+/* 印刷用ページ(画面表示) */
+.print-page { max-width: 900px; margin: 0 auto; }
+.print-head { display: flex; gap: 14px; align-items: center; border-bottom: 3px solid var(--brand); padding-bottom: 10px; margin-bottom: 10px; }
+.print-head img { width: 90px; border: 1px solid var(--line); }
+.print-head h1 { margin: 0; font-size: 26px; }
+.print-head p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.print-brand { margin-left: auto; text-align: right; font-size: 12px; font-weight: 800; color: var(--brand); }
+.print-sec { margin: 10px 0; }
+.print-sec h3 { border-left: 5px solid var(--brand); padding-left: 8px; }
+.ws-lines { height: 90px; background: repeating-linear-gradient(transparent 0 28px, #c5cad3 28px 29px); margin-top: 6px; }
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body { background: #fff; }
+  .topbar, .chapters, .dex, .foot, .no-print, #view-globe { display: none !important; }
+  .layout { display: block; padding: 0; }
+  .view { box-shadow: none; padding: 0; min-height: 0; overflow: visible; }
+  .print-sec, .qcard, .ws-q, tr { break-inside: avoid; }
+  table.cmp { font-size: 10.5px; }
+  .print-only { display: block; }
+  body:not(.print-ws) #view-quiz .ws { display: none; }
+  .ws-q { margin: 10px 0 14px; font-size: 13px; }
+  .ws-c { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin: 4px 0 2px 1.5em; }
+  .ws-a { text-align: right; }
+  .ws-key { break-before: page; font-size: 11.5px; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* CIA 原文の日本語要約 */
+.jab { display: inline-block; font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 10px; }
+.jab.draft { background: #fff3bf; color: #8a6d00; }
+.jab.ok { background: #d3f9d8; color: #2b8a3e; }
+.jab.stale { background: #ffe3e3; color: #c92a2a; }
+details.en-orig { margin-top: 12px; }
+details.en-orig summary { cursor: pointer; font-weight: 700; font-size: 14px; color: #33415c; }

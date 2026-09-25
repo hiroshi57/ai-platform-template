@@ -36,7 +36,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import analytics as A
+from .factbook_ja import merge_translations
 from .indicators import CATEGORIES, INDICATORS, SDG_GOALS, validate_catalog
+from .products_ja import HS2_JA, SECTOR_COLOR, SECTOR_JA
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUT = HERE.parent / "site" / "data"
@@ -54,6 +56,7 @@ HARVARD_FILE = "growth_proj_eci_rankings.csv"
 EPI_DOWNLOADS = "https://epi.yale.edu/{year}/downloads"  # 版ごとに年が入る(隔年発行)
 EPI_RESULTS_RE = r"/sites/default/files/[^\"']*epi(\d{4})results[^\"']*\.xlsx"
 NDGAIN_DOWNLOADS = "https://gain.nd.edu/our-work/country-index/download-data/"
+ATLAS_GRAPHQL = "https://atlas.hks.harvard.edu/api/graphql"
 NE_GEOJSON = ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
               "ne_110m_admin_0_countries.geojson")
 
@@ -327,8 +330,112 @@ def fetch_ndgain(name: str, valid: set[str]) -> dict[str, list]:
     return A.parse_wide_rows(rows, iso_col="ISO3", valid=valid)
 
 
+_m49_cache: dict[str, str] | None = None
+
+
+def m49_to_iso3() -> dict[str, str]:
+    """国連 M49 の数字コード → ISO3。ハーバード大 Atlas の国一覧(M49 を拡張したID)を使う。"""
+    global _m49_cache
+    if _m49_cache is None:
+        try:
+            locs = atlas_query("{ locationCountry { countryId iso3Code } }")["locationCountry"]
+            _m49_cache = {x["countryId"].split("-")[-1]: x["iso3Code"] for x in locs}
+        except Exception as e:  # noqa: BLE001  Atlas が落ちていたら Dataverse の ECI 表で代用
+            log(f"M49 map via Atlas failed ({e}); using Harvard Dataverse table")
+            fetch_harvard("eci_hs92", set())
+            _m49_cache = {r["country_id"]: r["country_iso3_code"] for r in (_harvard_cache or [])}
+    return _m49_cache
+
+
+def fetch_unsdg(code: str, valid: set[str]) -> dict[str, list]:
+    """国連統計部 SDG Global Database API から1系列を取り、区分(男女計など)で絞り込む。"""
+    series, filters = A.parse_sdg_code(code)
+    rows: list[dict] = []
+    page, size = 1, 5000
+    while True:
+        q = urllib.parse.urlencode({"seriesCode": series, "pageSize": size, "page": page})
+        d = http_json(f"https://unstats.un.org/sdgapi/v1/sdg/Series/Data?{q}", timeout=180)
+        rows.extend(d.get("data") or [])
+        if page * size >= int(d.get("totalElements") or 0) or not d.get("data"):
+            break
+        page += 1
+    return A.parse_unsdg_rows(rows, filters, m49_to_iso3(), valid)
+
+
+def fetch_uis(indicator: str, valid: set[str]) -> dict[str, list]:
+    """UNESCO 統計研究所(UIS)の Data API から1指標を全ての国について取る。"""
+    q = urllib.parse.urlencode({"indicator": indicator})
+    d = http_json(f"https://api.uis.unesco.org/api/public/data/indicators?{q}", timeout=180)
+    out: dict[str, list] = {}
+    for r in d.get("records", []):
+        iso3, v = r.get("geoUnit"), A._num(r.get("value"))
+        if iso3 in valid and v is not None and r.get("year") is not None:
+            out.setdefault(iso3, []).append([int(r["year"]), v])
+    for k in out:
+        out[k].sort()
+    return out
+
+
 FETCHERS = {"wb": fetch_wb, "unhcr": fetch_unhcr, "undp": fetch_undp, "owid": fetch_owid,
-            "harvard": fetch_harvard, "epi": fetch_epi, "ndgain": fetch_ndgain}
+            "harvard": fetch_harvard, "epi": fetch_epi, "ndgain": fetch_ndgain,
+            "unsdg": fetch_unsdg, "uis": fetch_uis}
+
+
+def atlas_query(query: str) -> dict:
+    """ハーバード大 Atlas of Economic Complexity の GraphQL API を呼ぶ。"""
+    req = urllib.request.Request(  # noqa: S310 (固定の https URL)
+        ATLAS_GRAPHQL, data=json.dumps({"query": query}).encode("utf-8"),
+        headers={"User-Agent": UA, "Content-Type": "application/json"},
+    )
+    last: Exception | None = None
+    for k in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:  # noqa: S310
+                d = json.loads(r.read().decode("utf-8"))
+            if d.get("errors"):
+                raise RuntimeError(str(d["errors"])[:200])
+            return d["data"]
+        except Exception as e:  # noqa: BLE001
+            last = e
+            # 429(回数制限)のときは長めに待つ
+            time.sleep((8 if "429" in str(e) else 2) * (k + 1))
+    raise RuntimeError(f"Atlas GraphQL failed: {last}")
+
+
+def fetch_exports(valid: set[str]) -> dict:
+    """国ごとの主な輸出品目(HS 2桁+サービス)と分野別の割合(ハーバード大 Growth Lab Atlas)。"""
+    prods = atlas_query(
+        "{ productHs92(productLevel: 2) { productId code topParent { nameShortEn } } }"
+    )["productHs92"]
+    products = {
+        p["productId"]: {
+            "code": p["code"], "sector": (p.get("topParent") or {}).get("nameShortEn") or "Other",
+        }
+        for p in prods
+    }
+    locs = atlas_query("{ locationCountry { countryId iso3Code } }")["locationCountry"]
+    ids = {x["iso3Code"]: int(x["countryId"].split("-")[-1]) for x in locs if x["iso3Code"] in valid}
+    y1 = datetime.now(timezone.utc).year
+    q = ("{ countryProductYear(countryId: %d, productClass: HS92, productLevel: 2, yearMin: %d, yearMax: %d) "
+         "{ productId year exportValue } }")
+
+    def one(item):
+        iso3, cid = item
+        try:
+            rows = atlas_query(q % (cid, y1 - 4, y1))["countryProductYear"]
+            return iso3, A.summarize_exports(rows, products)
+        except Exception as e:  # noqa: BLE001
+            log(f"exports skip {iso3}: {e}")
+            return iso3, None
+
+    out = {}
+    with ThreadPoolExecutor(max_workers=2) as ex:  # Atlas API の回数制限に配慮して同時2本まで
+        for iso3, summ in ex.map(one, sorted(ids.items())):
+            if summ:
+                out[iso3] = summ
+    if not out:
+        raise RuntimeError("no export data")
+    return {"source": "Harvard Growth Lab, Atlas of Economic Complexity (HS92)", "countries": out}
 
 
 def fetch_refugee_flows(valid: set[str], top: int = 80) -> dict:
@@ -496,8 +603,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--only", default="",
-                    help="更新する指標ソース(カンマ区切り: wb,unhcr,undp,owid,harvard,epi,ndgain)")
-    ap.add_argument("--skip", default="", help="省略する付帯ソース(カンマ区切り: factbook,wiki,geo,flows)")
+                    help="更新する指標ソース(カンマ区切り: wb,unhcr,undp,owid,harvard,epi,ndgain,unsdg,uis)")
+    ap.add_argument("--skip", default="",
+                    help="省略する付帯ソース(カンマ区切り: factbook,wiki,geo,flows,exports)")
     args = ap.parse_args(argv)
 
     errs = validate_catalog()
@@ -553,6 +661,16 @@ def main(argv: list[str] | None = None) -> int:
             status["geo"] = {"ok": False, "error": str(e)[:300], "at": now}
             log(f"geo FAILED: {e}")
 
+    if "exports" not in skip:
+        try:
+            ex_data = fetch_exports(valid)
+            write_json(out / "exports.json", ex_data)
+            status["exports"] = {"ok": True, "count": len(ex_data["countries"]), "at": now}
+            log(f"exports: {len(ex_data['countries'])}")
+        except Exception as e:  # noqa: BLE001
+            status["exports"] = {"ok": False, "error": str(e)[:300], "at": now}
+            log(f"exports FAILED: {e}")
+
     if "flows" not in skip:
         try:
             fl = fetch_refugee_flows(valid)
@@ -584,10 +702,15 @@ def main(argv: list[str] | None = None) -> int:
             log(f"{ind['id']} FAILED: {e}")
 
     write_latest(out)
+    # CIA 原文の日本語要約(人の確認フロー付き)を付ける
+    ja_path = HERE / "factbook_ja.json"
+    if ja_path.exists():
+        merge_translations(countries, json.loads(ja_path.read_text(encoding="utf-8")))
     write_json(out / "countries.json", {"countries": countries})
     write_json(out / "catalog.json", {
         "categories": CATEGORIES, "indicators": INDICATORS, "sdg_goals": SDG_GOALS,
         "forecast_year": FORECAST_YEAR,
+        "products": {"hs2": HS2_JA, "sectors": SECTOR_JA, "sector_colors": SECTOR_COLOR},
     })
     shutil.copyfile(HERE / "timeline_ja.json", out / "timeline.json")
     ok = sum(1 for v in status.values() if v.get("ok"))

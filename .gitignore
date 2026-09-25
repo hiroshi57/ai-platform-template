@@ -19,3 +19,6 @@ pricing.json
 # frontend
 node_modules/
 dist/
+
+# Vercel のローカル設定(プロジェクト紐付け)
+.vercel

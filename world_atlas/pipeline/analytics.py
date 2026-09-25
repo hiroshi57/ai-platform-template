@@ -291,3 +291,86 @@ def parse_independence_year(text: str | None) -> int | None:
         if any(k in note for k in _INDEP_KEYWORDS):
             return int(m.group(1))
     return None
+
+
+def summarize_exports(rows: Iterable[dict], products: dict[str, dict], top: int = 8) -> dict | None:
+    """Atlas の countryProductYear の行から、最新年の上位品目と分野別の割合をまとめる。
+
+    products: {productId: {"code": HS2 コード, "sector": 分野名}}
+    戻り値: {"year", "total", "top": [[code, value, share], ...], "sectors": {sector: share}}
+    """
+    rows = [r for r in rows if r.get("productId") in products and _num(r.get("exportValue"))]
+    if not rows:
+        return None
+    year = max(int(r["year"]) for r in rows)
+    cur = [r for r in rows if int(r["year"]) == year]
+    total = sum(float(r["exportValue"]) for r in cur)
+    if total <= 0:
+        return None
+    items = sorted(cur, key=lambda r: -float(r["exportValue"]))
+    top_items = [[products[r["productId"]]["code"], float(r["exportValue"]),
+                  round(float(r["exportValue"]) / total, 4)] for r in items[:top]]
+    sectors: dict[str, float] = {}
+    for r in cur:
+        s = products[r["productId"]]["sector"]
+        sectors[s] = sectors.get(s, 0.0) + float(r["exportValue"])
+    return {
+        "year": year,
+        "total": total,
+        "top": top_items,
+        "sectors": {k: round(v / total, 4) for k, v in sorted(sectors.items(), key=lambda kv: -kv[1])},
+    }
+
+
+# ---------------------------------------------------------------- Phase 3: 国連 SDG Global Database
+def parse_sdg_code(code: str) -> tuple[str, dict[str, list[str]]]:
+    """"SERIES|Dim=A/B;Dim2=C" を (系列コード, {区分: [許す値(優先順)]}) にする。"""
+    series, _, rest = code.partition("|")
+    filters: dict[str, list[str]] = {}
+    for part in filter(None, rest.split(";")):
+        k, _, v = part.partition("=")
+        filters[k] = v.split("/")
+    return series, filters
+
+
+def _sdg_value(v) -> float | None:
+    if v is None:
+        return None
+    s = str(v).strip().lstrip("<>").strip()
+    n = _num(s)
+    return None if n is None or n != n else n  # NaN を除く
+
+
+def parse_unsdg_rows(rows: Iterable[dict], filters: dict[str, list[str]], m49_to_iso3: dict[str, str],
+                     valid: set[str]) -> dict[str, list]:
+    """SDG API の Series/Data の行を {ISO3: [[year, value], ...]} にする。
+
+    - filters の区分がすべて許す値の行だけを使う(例: 男女計・全地域)。
+    - 同じ国・年に複数行あるときは、filters に先に書いた値の行を優先する。
+    - geoAreaCode "1" は世界全体(WLD)。
+    """
+    best: dict[tuple[str, int], tuple[int, float]] = {}
+    for r in rows:
+        code = str(r.get("geoAreaCode", ""))
+        iso3 = "WLD" if code == "1" else m49_to_iso3.get(code)
+        if not iso3 or (iso3 != "WLD" and iso3 not in valid):
+            continue
+        dims = r.get("dimensions") or {}
+        rank = 0
+        ok = True
+        for dim, allowed in filters.items():
+            val = dims.get(dim)
+            if val not in allowed:
+                ok = False
+                break
+            rank += allowed.index(val)
+        v = _sdg_value(r.get("value"))
+        if not ok or v is None or r.get("timePeriodStart") is None:
+            continue
+        key = (iso3, int(float(r["timePeriodStart"])))
+        if key not in best or rank < best[key][0]:
+            best[key] = (rank, v)
+    out: dict[str, list] = {}
+    for (iso3, y), (_, v) in sorted(best.items()):
+        out.setdefault(iso3, []).append([y, v])
+    return out

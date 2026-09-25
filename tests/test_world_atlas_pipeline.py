@@ -212,3 +212,89 @@ def test_parse_independence_year():
     assert A.parse_independence_year("none") is None
     assert A.parse_independence_year("1 January 1804 (from France)") == 1804
     assert A.parse_independence_year("") is None
+
+
+def test_summarize_exports_top_items_and_sectors():
+    products = {
+        "p87": {"code": "87", "sector": "Vehicles"},
+        "p84": {"code": "84", "sector": "Machinery"},
+        "p27": {"code": "27", "sector": "Minerals"},
+        "ptr": {"code": "travel", "sector": "Services"},
+    }
+    rows = [
+        {"productId": "p87", "year": 2024, "exportValue": 60.0},
+        {"productId": "p84", "year": 2024, "exportValue": 30.0},
+        {"productId": "p27", "year": 2024, "exportValue": 10.0},
+        {"productId": "ptr", "year": 2024, "exportValue": None},
+        {"productId": "p87", "year": 2023, "exportValue": 999.0},  # 古い年は無視
+        {"productId": "zzz", "year": 2024, "exportValue": 5.0},  # 未知の品目は無視
+    ]
+    out = A.summarize_exports(rows, products, top=2)
+    assert out["year"] == 2024
+    assert out["total"] == 100.0
+    assert out["top"] == [["87", 60.0, 0.6], ["84", 30.0, 0.3]]
+    assert out["sectors"] == {"Vehicles": 0.6, "Machinery": 0.3, "Minerals": 0.1}
+
+
+def test_summarize_exports_empty():
+    assert A.summarize_exports([], {}) is None
+
+
+def test_products_ja_covers_all_hs_chapters():
+    from world_atlas.pipeline.products_ja import HS2_JA, SECTOR_JA
+
+    chapters = [f"{i:02d}" for i in range(1, 98) if i != 77]  # HS に 77 類は存在しない
+    assert all(c in HS2_JA for c in chapters)
+    assert len(SECTOR_JA) == 11
+
+
+def test_parse_sdg_code():
+    assert A.parse_sdg_code("SH_TBS_INCD") == ("SH_TBS_INCD", {})
+    assert A.parse_sdg_code("AG_PRD_FIESMS|Age=ALLAGE/15+;Sex=BOTHSEX") == (
+        "AG_PRD_FIESMS", {"Age": ["ALLAGE", "15+"], "Sex": ["BOTHSEX"]})
+
+
+def test_parse_unsdg_rows_filters_dimensions_and_maps_m49():
+    m49 = {"392": "JPN", "4": "AFG"}
+    rows = [
+        {"geoAreaCode": "392", "timePeriodStart": 2020.0, "value": "10", "dimensions": {"Sex": "BOTHSEX", "Age": "15+"}},
+        {"geoAreaCode": "392", "timePeriodStart": 2020.0, "value": "11", "dimensions": {"Sex": "BOTHSEX", "Age": "ALLAGE"}},
+        {"geoAreaCode": "392", "timePeriodStart": 2020.0, "value": "99", "dimensions": {"Sex": "MALE", "Age": "ALLAGE"}},
+        {"geoAreaCode": "392", "timePeriodStart": 2021.0, "value": "NaN", "dimensions": {"Sex": "BOTHSEX", "Age": "ALLAGE"}},
+        {"geoAreaCode": "4", "timePeriodStart": 2019.0, "value": "<5", "dimensions": {"Sex": "BOTHSEX", "Age": "ALLAGE"}},
+        {"geoAreaCode": "1", "timePeriodStart": 2020.0, "value": "30", "dimensions": {"Sex": "BOTHSEX", "Age": "ALLAGE"}},
+        {"geoAreaCode": "999", "timePeriodStart": 2020.0, "value": "1", "dimensions": {"Sex": "BOTHSEX", "Age": "ALLAGE"}},
+    ]
+    out = A.parse_unsdg_rows(rows, {"Sex": ["BOTHSEX"], "Age": ["ALLAGE", "15+"]}, m49, valid={"JPN", "AFG"})
+    assert out["JPN"] == [[2020, 11.0]]  # 同じ年は、先に書いた区分(ALLAGE)を優先
+    assert out["AFG"] == [[2019, 5.0]]  # "<5" は 5 として扱う
+    assert out["WLD"] == [[2020, 30.0]]
+
+
+def test_factbook_ja_merge_marks_stale_when_source_changes():
+    from world_atlas.pipeline import factbook_ja as F
+
+    countries = {"JPN": {"factbook": {"background": "old text"}}, "USA": {"factbook": {"background": "x"}}}
+    ja = {"JPN": {"background_ja": "要約", "source_sha1": F.source_hash("old text"), "reviewed": True, "reviewer": "先生"}}
+    out = F.merge_translations(countries, ja)
+    assert out["JPN"]["factbook_ja"]["stale"] is False
+    assert out["JPN"]["factbook_ja"]["reviewed"] is True
+    assert "factbook_ja" not in out["USA"]
+    countries["JPN"]["factbook"]["background"] = "new text"
+    assert F.merge_translations(countries, ja)["JPN"]["factbook_ja"]["stale"] is True
+
+
+def test_factbook_ja_review_requires_reviewer_and_updates_hash():
+    import pytest
+
+    from world_atlas.pipeline import factbook_ja as F
+
+    countries = {"JPN": {"factbook": {"background": "v2"}}}
+    ja = {"JPN": {"background_ja": "要約", "source_sha1": F.source_hash("v1"), "reviewed": False}}
+    with pytest.raises(ValueError):
+        F.review(ja, "JPN", " ", countries)
+    with pytest.raises(KeyError):
+        F.review(ja, "USA", "先生", countries)
+    F.review(ja, "JPN", "山田(社会科)", countries)
+    assert ja["JPN"]["reviewed"] is True and ja["JPN"]["source_sha1"] == F.source_hash("v2")
+    assert F.status_rows(ja, countries) == [("JPN", "確認済み(山田(社会科))")]

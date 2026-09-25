@@ -13,6 +13,8 @@
 - source="harvard": ハーバード大 Growth Lab「Growth Projections and Complexity Rankings」(Harvard Dataverse)
 - source="epi"    : イェール大 環境パフォーマンス指数(EPI)結果 xlsx(code は列名 例 "EPI.new")
 - source="ndgain" : ノートルダム大 ND-GAIN Country Index(code は指標名 例 "gain")
+- source="unsdg"  : 国連統計部 SDG Global Database API(code は "系列コード|区分=値/値;区分=値")
+- source="uis"    : UNESCO 統計研究所(UIS)Data API(code は指標コード 例 "CR.2")
 
 better:
 - "high" … 大きいほど望ましい(例: 平均寿命)
@@ -134,13 +136,15 @@ INDICATORS = [
        "その年の平均気温が、1991〜2020年の平均より何℃高いか(マイナスは低い)。地球温暖化の進み方がわかる。",
        better="low", sdg=(13,), decimals=2, org="Copernicus(EU)/ Our World in Data"),
     _i("epi", "epi", "EPI.new", "climate", "環境パフォーマンス指数(EPI)", "点",
-       "空気や水のきれいさ、生き物のすみか、気候変動対策など約50の指標から、国の環境への取り組みを0〜100点で評価したもの。",
+       "空気や水のきれいさ、生き物のすみか、気候変動対策など約50の指標から、"
+       "国の環境への取り組みを0〜100点で評価したもの。",
        better="high", sdg=(6, 11, 13, 14, 15), forecast=False, org="イェール大学・コロンビア大学 EPI"),
     _i("nd_gain", "ndgain", "gain", "climate", "気候変動への備え(ND-GAIN)", "点",
        "気候変動の影響の受けやすさと、それに備える力を合わせた指数(0〜100)。高いほど気候変動に強い。",
        better="high", sdg=(13,), org="ノートルダム大学 ND-GAIN"),
     _i("nd_vuln", "ndgain", "vulnerability", "climate", "気候変動への弱さ(ND-GAIN)", "",
-       "食料・水・健康・住まい・インフラ・生態系が、気候変動でどれだけ被害を受けやすいか(0〜1)。低いほど強い。",
+       "食料・水・健康・住まい・インフラ・生態系が、"
+       "気候変動でどれだけ被害を受けやすいか(0〜1)。低いほど強い。",
        better="low", sdg=(13,), decimals=3, org="ノートルダム大学 ND-GAIN"),
 
     # --- 生き物・自然(生物学) ---
@@ -161,7 +165,8 @@ INDICATORS = [
        "自国の海のうち保護区になっている割合。国際目標は2030年までに30%。", better="high", sdg=(14,)),
 
     _i("epi_bdh", "epi", "BDH.new", "nature", "生物多様性と生息地(EPI)", "点",
-       "保護区の広さや質、生き物のすみかの守られ方などから、生物多様性を守る取り組みを0〜100点で評価したもの。",
+       "保護区の広さや質、生き物のすみかの守られ方などから、"
+       "生物多様性を守る取り組みを0〜100点で評価したもの。",
        better="high", sdg=(14, 15), forecast=False, org="イェール大学・コロンビア大学 EPI"),
     _i("epi_eco", "epi", "ECO.new", "nature", "生態系の活力(EPI)", "点",
        "森林・漁業・農業・水資源などの生態系が健全に保たれているかを0〜100点で評価したもの。",
@@ -190,7 +195,8 @@ INDICATORS = [
        "家で電気を使える人の割合。電気がないと夜の勉強や医療が難しくなる。", better="high", sdg=(7,)),
 
     _i("eci", "harvard", "eci_hs92", "economy", "経済の複雑さ(ECI)", "",
-       "その国がどれだけ多くの種類の、つくるのが難しい製品を輸出しているか。知識や技術の蓄積の目安(0が世界平均)。",
+       "その国がどれだけ多くの種類の、つくるのが難しい製品を輸出しているか。"
+       "知識や技術の蓄積の目安(0が世界平均)。",
        better="high", sdg=(8, 9), decimals=2, org="ハーバード大学 Growth Lab"),
     _i("growth_proj", "harvard", "growth_proj", "economy", "今後10年の成長見通し", "%/年",
        "経済の複雑さと今の豊かさから、ハーバード大学が予測した今後10年間の年平均の経済成長率。",
@@ -294,6 +300,85 @@ INDICATORS = [
        "1人あたりCO₂排出の歴史", "t/人",
        "1750年からの1人あたりCO₂排出量。産業革命でどの国から排出が増えたかがわかる。",
        better="low", sdg=(13,), decimals=2, forecast=False, org="Global Carbon Project / Our World in Data"),
+
+    # --- 国連 SDG Global Database(公式 SDG 指標)---
+    _i("un_social_prot", "unsdg", "SI_COV_BENFTS|Sex=BOTHSEX", "economy", "社会保障を受けられる人の割合", "%",
+       "年金・子ども手当・失業手当など、少なくとも1つの社会保障を受けられる人の割合(SDG 1.3.1)。",
+       better="high", sdg=(1,), org="国連 SDG Global Database(ILO)"),
+    _i("un_food_insec", "unsdg", "AG_PRD_FIESMS|Age=ALLAGE/15+;Location=ALLAREA;Sex=BOTHSEX", "health",
+       "食べ物が足りない不安がある人の割合", "%",
+       "お金などが足りず、十分な食べ物を手に入れられない不安がある"
+       "(中程度〜重度の食料不安)人の割合(SDG 2.1.2)。",
+       better="low", sdg=(2,), org="国連 SDG Global Database(FAO)"),
+    _i("un_tb", "unsdg", "SH_TBS_INCD", "health", "結核にかかる人の数", "人/10万人",
+       "1年間に新しく結核にかかる人の数(人口10万人あたり)。"
+       "結核は今も世界で多くの人が亡くなる感染症(SDG 3.3.2)。",
+       better="low", sdg=(3,), decimals=0, scale="log", org="国連 SDG Global Database(WHO)"),
+    _i("un_preprimary", "unsdg", "SE_PRE_PARTN|Sex=BOTHSEX", "education",
+       "小学校入学前の教育を受ける子どもの割合", "%",
+       "小学校に入る1年前に、幼稚園・保育所などで学んでいる子どもの割合(SDG 4.2.2)。",
+       better="high", sdg=(4,), org="国連 SDG Global Database(UNESCO)"),
+    _i("un_child_marriage", "unsdg", "SP_DYN_MRBF18", "people", "18歳未満で結婚した女性の割合", "%",
+       "20〜24歳の女性のうち、18歳になる前に結婚した人の割合"
+       "(SDG 5.3.1)。子どもの結婚は教育や健康の機会をうばう。",
+       better="low", sdg=(5,), org="国連 SDG Global Database(UNICEF)"),
+    _i("un_safe_sanitation", "unsdg", "SH_SAN_SAFE|Location=ALLAREA", "health",
+       "安全に管理されたトイレを使える人の割合", "%",
+       "排せつ物が安全に処理されるトイレを使える人の割合(SDG 6.2.1)。「基本的なトイレ」より厳しい基準。",
+       better="high", sdg=(6,), org="国連 SDG Global Database(WHO・UNICEF)"),
+    _i("un_clean_cooking", "unsdg", "EG_EGY_CLEAN|Location=ALLAREA", "climate",
+       "きれいな燃料で料理できる人の割合", "%",
+       "ガスや電気など、けむりの少ない燃料で料理できる人の割合(SDG 7.1.2)。まきや炭のけむりは健康に悪い。",
+       better="high", sdg=(7,), org="国連 SDG Global Database(WHO)"),
+    _i("un_neet", "unsdg", "SL_TLF_NEET|Age=15-24;Sex=BOTHSEX", "economy",
+       "学校にも仕事にも行っていない若者の割合", "%",
+       "15〜24歳のうち、学校にも仕事にも職業訓練にも行っていない人の割合(SDG 8.6.1)。",
+       better="low", sdg=(8,), org="国連 SDG Global Database(ILO)"),
+    _i("un_4g", "unsdg", "IT_MOB_4GNTWK", "economy", "4Gの電波が届く人の割合", "%",
+       "少なくとも4Gの携帯電話の電波が届く場所に住む人の割合(SDG 9.c.1)。",
+       better="high", sdg=(9,), org="国連 SDG Global Database(ITU)"),
+    _i("un_slum", "unsdg", "EN_LND_SLUM|Location=URBAN", "people", "スラムに住む都市人口の割合", "%",
+       "都市に住む人のうち、安全な水やトイレ、しっかりした家がない地域(スラム)に住む人の割合(SDG 11.1.1)。",
+       better="low", sdg=(11,), org="国連 SDG Global Database(UN-Habitat)"),
+    _i("un_material", "unsdg", "EN_MAT_DOMCMPC|Type of product=ALP", "climate",
+       "1人あたりの資源消費量", "t/人",
+       "1人あたり1年間に国内で使われる資源(食料・木材・金属・鉱物・化石燃料)の量(SDG 12.2.2)。",
+       better="low", sdg=(12,), scale="log", org="国連 SDG Global Database(UNEP)"),
+    _i("un_disaster", "unsdg", "VC_DSR_MTMP", "geo", "災害による死者・行方不明者", "人/10万人",
+       "自然災害で亡くなったり行方不明になったりした人の数(人口10万人あたり)(SDG 13.1.1)。",
+       better="low", sdg=(1, 11, 13), decimals=2, scale="log", forecast=False,
+       org="国連 SDG Global Database(UNDRR)"),
+    _i("un_marine_kba", "unsdg", "ER_MRN_MPA", "nature", "海の重要な生物多様性地域の保護率", "%",
+       "海の「生物多様性にとって重要な地域(KBA)」のうち、"
+       "保護区で守られている面積の平均的な割合(SDG 14.5.1)。",
+       better="high", sdg=(14,), org="国連 SDG Global Database(UNEP-WCMC)"),
+    _i("un_redlist", "unsdg", "ER_RSK_LST", "nature", "レッドリスト指数", "",
+       "その国の生き物が、どれだけ絶滅の危機にあるかを表す指数"
+       "(0〜1)。1なら絶滅のおそれがない、0ならすべて絶滅(SDG 15.5.1)。",
+       better="high", sdg=(15,), decimals=3, org="国連 SDG Global Database(IUCN)"),
+    _i("un_birth_reg", "unsdg", "SG_REG_BRTH|Age=<5Y", "peace", "出生が登録された子どもの割合", "%",
+       "5歳未満の子どものうち、生まれたことが役所に登録されている割合"
+       "(SDG 16.9.1)。登録がないと学校や医療を受けにくい。",
+       better="high", sdg=(16,), org="国連 SDG Global Database(UNICEF)"),
+    _i("un_broadband", "unsdg", "IT_NET_BBND|Type of speed=ANYS", "economy",
+       "固定ブロードバンドの契約数", "件/100人",
+       "光回線など、家庭の高速インターネット回線の契約数(100人あたり)(SDG 17.6.1)。",
+       better="high", sdg=(17,), org="国連 SDG Global Database(ITU)"),
+
+    # --- UNESCO 統計研究所(教育)---
+    _i("uis_out_of_school", "uis", "ROFST.MOD.1", "education", "学校に通えていない子どもの割合(小学校)", "%",
+       "小学校に通う年齢なのに、学校に通えていない子どもの割合(推計)。",
+       better="low", sdg=(4,), org="UNESCO 統計研究所"),
+    _i("uis_cr_lsec", "uis", "CR.2", "education", "中学校の修了率", "%",
+       "中学校(前期中等教育)を修了する年齢の少し上の人のうち、実際に修了した人の割合(SDG 4.1.2)。",
+       better="high", sdg=(4,), org="UNESCO 統計研究所"),
+    _i("uis_cr_lsec_poor", "uis", "CR.2.Q1", "education", "中学校の修了率(最も貧しい20%の家庭)", "%",
+       "所得がいちばん低い20%の家庭の子どもの中学校修了率。"
+       "「最も豊かな20%」とくらべると、国の中の格差がわかる。",
+       better="high", sdg=(4, 10), forecast=False, org="UNESCO 統計研究所"),
+    _i("uis_cr_lsec_rich", "uis", "CR.2.Q5", "education", "中学校の修了率(最も豊かな20%の家庭)", "%",
+       "所得がいちばん高い20%の家庭の子どもの中学校修了率。",
+       better="high", sdg=(4,), forecast=False, org="UNESCO 統計研究所"),
 ]
 
 INDICATOR_BY_ID = {x["id"]: x for x in INDICATORS}
@@ -318,7 +403,7 @@ def validate_catalog() -> list[str]:
         for n in ind["sdg"]:
             if n not in goal_ns:
                 errors.append(f"{ind['id']}: unknown SDG goal {n}")
-        if ind["source"] not in ("wb", "unhcr", "undp", "owid", "harvard", "epi", "ndgain"):
+        if ind["source"] not in ("wb", "unhcr", "undp", "owid", "harvard", "epi", "ndgain", "unsdg", "uis"):
             errors.append(f"{ind['id']}: unknown source {ind['source']}")
         if ind["source"] == "owid" and ":" not in ind["code"]:
             errors.append(f"{ind['id']}: owid code must be '<slug>:<column>'")
