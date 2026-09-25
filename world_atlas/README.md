@@ -96,6 +96,13 @@ node --test world_atlas/site/js/analytics.test.mjs world_atlas/site/js/quiz.test
 
 `world_atlas/site` がそのまま静的サイトです(`vercel.json` 同梱・ビルド不要)。
 
+| 項目 | 値 |
+|---|---|
+| Vercel プロジェクト | takizawahiroshi-gmailcoms-projects / sekai-3d-zukan |
+| URL | https://sekai-3d-zukan.vercel.app (2026-09-25 時点で認証なしの一般公開。扱いは Task-lists T4-1 参照) |
+
+プレビュー(staging)デプロイ:
+
 ```bash
 vercel deploy world_atlas/site --scope takizawahiroshi-gmailcoms-projects
 ```
