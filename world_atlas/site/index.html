@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js"></script>
 </head>
 <body>
+  <a class="skip" href="#main">本文へ移動</a>
   <header class="topbar">
     <div class="brand">
       <span class="logo">🌏</span>
@@ -28,6 +29,7 @@
       <button data-mode="sources">📚 出典</button>
     </nav>
     <div class="tools">
+      <button id="cvd" class="cvd-btn" aria-pressed="false" title="色の見分けにくさに配慮した配色に切りかえ">🎨 見やすい色</button>
       <input id="search" list="country-list" placeholder="国をさがす(例: ブラジル)" autocomplete="off" aria-label="国をさがす">
       <datalist id="country-list"></datalist>
       <span class="badge" id="updated" title="データの更新日">更新 —</span>
@@ -40,7 +42,7 @@
       <div class="ind-box" id="ind-box"></div>
     </aside>
 
-    <main class="main" id="main">
+    <main class="main" id="main" tabindex="-1">
       <section class="view" id="view-globe">
         <div class="globe-slot" id="globe-slot-main">
           <div id="globe-wrap">
@@ -85,7 +87,7 @@
       <section class="view" id="view-print" hidden></section>
     </main>
 
-    <aside class="dex" id="dex" aria-label="図鑑ページ"></aside>
+    <aside class="dex" id="dex" aria-label="図鑑ページ" aria-live="polite"></aside>
   </div>
 
   <footer class="foot">

@@ -23,6 +23,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 JA_PATH = HERE / "factbook_ja.json"
+# API キーはリポジトリに入れない。このファイル(.gitignore 済み)か環境変数で渡す
+ENV_FILE = HERE / ".env.local"
 COUNTRIES_PATH = HERE.parent / "site" / "data" / "countries.json"
 
 PROMPT = (
@@ -93,10 +95,22 @@ def status_rows(ja: dict, countries: dict) -> list[tuple[str, str]]:
     return rows
 
 
+def load_env_file(path: Path = ENV_FILE) -> None:
+    """KEY=VALUE 形式のファイルを読み、未設定の環境変数だけを補う(値は表示しない)。"""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
 def draft_with_claude(name: str, text: str) -> str:
     key, model = os.environ.get("ANTHROPIC_API_KEY"), os.environ.get("ANTHROPIC_MODEL")
     if not key or not model:
-        raise RuntimeError("ANTHROPIC_API_KEY と ANTHROPIC_MODEL を環境変数に設定してください")
+        raise RuntimeError(f"ANTHROPIC_API_KEY と ANTHROPIC_MODEL を環境変数か {ENV_FILE} に設定してください")
     body = json.dumps({
         "model": model, "max_tokens": 1200,
         "messages": [{"role": "user", "content": PROMPT.format(name=name, text=text)}],
@@ -118,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--draft", nargs="*", metavar="ISO3")
     ap.add_argument("--draft-missing", type=int, metavar="N")
     args = ap.parse_args(argv)
+    load_env_file()
 
     countries = json.loads(COUNTRIES_PATH.read_text(encoding="utf-8"))["countries"]
     ja = json.loads(JA_PATH.read_text(encoding="utf-8")) if JA_PATH.exists() else {}
@@ -127,14 +142,21 @@ def main(argv: list[str] | None = None) -> int:
     targets = list(args.draft or [])
     if args.draft_missing:
         targets += [k for k, st in status_rows(ja, countries) if st == "未作成"][: args.draft_missing]
-    for iso3 in targets:
+    for i, iso3 in enumerate(targets, 1):
         en = countries[iso3]["factbook"]["background"]
+        try:
+            text = draft_with_claude(countries[iso3]["name_ja"], en)
+        except Exception as e:  # noqa: BLE001  1か国の失敗で全体を止めない
+            print(f"draft FAILED: {iso3}: {str(e)[:200]}", file=sys.stderr)
+            continue
         ja[iso3] = {
-            "background_ja": draft_with_claude(countries[iso3]["name_ja"], en),
+            "background_ja": text,
             "source_sha1": source_hash(en), "by": f"AI 下書き({os.environ.get('ANTHROPIC_MODEL')})",
             "at": date.today().isoformat(), "reviewed": False, "reviewer": None,
         }
-        print(f"draft: {iso3}", file=sys.stderr)
+        # 途中で止まっても作成済みの分を失わないよう、1か国ごとに保存する
+        JA_PATH.write_text(json.dumps(ja, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"draft {i}/{len(targets)}: {iso3}", file=sys.stderr)
     if args.review or targets:
         JA_PATH.write_text(json.dumps(ja, ensure_ascii=False, indent=1), encoding="utf-8")
     if args.status or not (args.review or targets):

@@ -21,6 +21,9 @@ const RATE_COLOR = { S: "#2b8a3e", A: "#5c940d", B: "#e8a200", C: "#e8590c", D: 
 // 色覚の多様性に配慮した配色(ColorBrewer RdYlBu / YlGnBu)
 const PAL_GOOD = ["#d73027", "#f46d43", "#fdae61", "#fee090", "#abd9e9", "#74add1", "#4575b4"]; // 悪い→良い
 const PAL_SIZE = ["#ffffcc", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#0c2c84"]; // 小→大
+// 色覚サポート(viridis): 明るさが一方向に変わるため、色の区別がつきにくくても濃淡で読める
+const PAL_CVD = ["#440154", "#443983", "#31688e", "#21918c", "#35b779", "#90d743", "#fde725"];
+let cvd = localStorage.getItem("atlas-cvd") === "1";
 const REGION_COLOR = { EAS: "#e8590c", ECS: "#1c7ed6", LCN: "#2f9e44", MEA: "#f59f00", NAC: "#7048e8", SAS: "#d6336c", SSF: "#0c8599" };
 const NO_DATA = "rgba(190,196,210,0.45)";
 
@@ -123,7 +126,10 @@ function colorizer(snap, ind) {
   const log = ind.scale === "log";
   const tv = (v) => (log ? Math.log10(Math.max(v, 1e-9)) : v);
   const breaks = A.quantileBreaks(vals.filter((v) => !log || v > 0).map(tv), 7);
-  const pal = ind.better === "low" ? [...PAL_GOOD].reverse() : ind.better === "high" ? PAL_GOOD : PAL_SIZE;
+  const base = cvd ? PAL_CVD : null;
+  const pal = base
+    ? (ind.better === "low" ? [...base].reverse() : base)
+    : ind.better === "low" ? [...PAL_GOOD].reverse() : ind.better === "high" ? PAL_GOOD : PAL_SIZE;
   const color = (v) => (Number.isFinite(v) ? pal[A.binOf(tv(v), breaks)] : NO_DATA);
   const q = (v) => (Number.isFinite(v) ? A.binOf(tv(v), breaks) / 6 : 0);
   const raw = breaks.map((b) => (log ? Math.pow(10, b) : b));
@@ -200,8 +206,10 @@ function initGlobe() {
     labelThreshold = thresholdFor(pov.altitude);
     if (!labelRaf) labelRaf = requestAnimationFrame(() => { labelRaf = 0; applyLabelVisibility(); });
   });
-  globe.controls().autoRotate = true;
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  globe.controls().autoRotate = !reduce;
   globe.controls().autoRotateSpeed = 0.35;
+  if (reduce) { $("#rotate").checked = false; globe.polygonsTransitionDuration(0); }
   globe.pointOfView({ lat: 25, lng: 135, altitude: 2.3 });
   el.addEventListener("pointerdown", () => { globe.controls().autoRotate = false; $("#rotate").checked = false; });
   new ResizeObserver(() => sizeGlobe()).observe($("#globe-wrap"));
@@ -295,7 +303,7 @@ async function paintGlobe() {
   // 凡例は左が小さい値。少ないほど良い指標(better=low)は左が「良い」になる
   const lbl = ind.better === "high" ? ["課題が大きい", "良い"] : ind.better === "low" ? ["良い(少ない)", "課題が大きい"] : ["小さい", "大きい"];
   const br = cz.breaks;
-  $("#legend").innerHTML = tl ? "" : `<div>${esc(ind.name)}${ind.better ? "(青いほど望ましい)" : ""}</div>
+  $("#legend").innerHTML = tl ? "" : `<div>${esc(ind.name)}${ind.better ? (cvd ? "(黄色いほど望ましい)" : "(青いほど望ましい)") : ""}</div>
     <div class="legend-bar">${cz.pal.map((c) => `<i style="background:${c}"></i>`).join("")}</div>
     <div class="legend-lbl"><span>${lbl[0]}</span><span>${br.length ? `${fmtV(ind, br[0])} … ${fmtV(ind, br[br.length - 1])}` : ""}</span><span>${lbl[1]}</span></div>
     <div class="legend-lbl"><span><i style="display:inline-block;width:10px;height:10px;background:${NO_DATA}"></i> データなし</span>${S.viz !== "flat" ? "<span>高さ = 値の大きさの順位</span>" : ""}</div>
@@ -381,7 +389,7 @@ async function dexChapter(iso3) {
     const row = rowFor(iso3, ind);
     if (!row) return `<div class="stat"><div class="nm">${esc(ind.name)}</div><div class="val"><small>データなし</small></div></div>`;
     const s = sers[k]?.countries?.[iso3]?.s || [];
-    return `<div class="stat${ind.id === S.ind ? " on" : ""}" data-ind="${ind.id}">
+    return `<div class="stat${ind.id === S.ind ? " on" : ""}" data-ind="${ind.id}" role="button" tabindex="0">
       <div class="nm">${row.label ? `<span class="rate ${row.label}" title="${A.RATE_TEXT[row.label]}">${row.label}</span> ` : ""}${esc(ind.name)}</div>
       <div class="val">${fmtV(ind, row.value)}<small>${esc(unitOf(ind))}</small></div>
       <div class="meta"><span>${A.fmtYear(row.year)}</span>${row.rank ? `<span>${row.n}か国中 <b>${row.rank}位</b></span>` : ""}${diffHTML(row)}${trendHTML(row)}
@@ -455,7 +463,7 @@ function dexOverview(iso3) {
     <div class="legend-row">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}<span><i class="dash"></i>世界の真ん中(50点)</span></div>
     <div class="comment"><p>【得意な分野】${esc(best.join("・") || "—")}</p><p>【課題のある分野】${esc(worst.join("・") || "—")}</p>
       <p>【考えてみよう】得意な分野と課題のある分野は、地理や歴史とどんな関係があるでしょうか。</p></div>
-    ${sc.map((x) => `<div class="stat" data-cat="${x.cat.id}"><div class="nm">${x.cat.icon} ${esc(x.cat.name)}</div><div class="val">${x.score == null ? "<small>—</small>" : `${x.score.toFixed(0)}<small>点</small> <span class="rate ${A.rateLabel(x.score / 100)}">${A.rateLabel(x.score / 100)}</span>`}</div></div>`).join("")}
+    ${sc.map((x) => `<div class="stat" data-cat="${x.cat.id}" role="button" tabindex="0"><div class="nm">${x.cat.icon} ${esc(x.cat.name)}</div><div class="val">${x.score == null ? "<small>—</small>" : `${x.score.toFixed(0)}<small>点</small> <span class="rate ${A.rateLabel(x.score / 100)}">${A.rateLabel(x.score / 100)}</span>`}</div></div>`).join("")}
     <h3>🎯 SDGs 17目標のスコア</h3>
     <div class="sdg-mini">${sdg.map(({ g, s }) => `<div style="background:${g.color}" title="目標${g.n} ${esc(g.name)}">${g.n}<small>${s == null ? "—" : s.toFixed(0)}</small></div>`).join("")}</div>
     <h3>🧩 データが似ている国</h3>
@@ -500,7 +508,7 @@ async function dexHistory(iso3) {
   const iy = c.factbook?.independence_year;
   return `${iy ? `<div class="kpis"><div class="kpi" style="grid-column:1/-1"><div class="l">🎌 独立・建国(CIA World Factbook)</div><div class="v">${A.fmtYear(iy)}</div><small>いまから${new Date().getFullYear() - iy}年前</small></div></div>` : ""}
     <h3>📜 ${esc(c.name_ja)}の年表(${evs.length}件)</h3>
-    ${evs.length ? [...evs].sort((a, b) => a.y - b.y).map((e) => `<div class="tl-mini" data-event="${D.timeline.events.indexOf(e)}">${e.p?.length ? characterSVG(e.p[0], 34) : e.auto ? `<span style="font-size:22px">🎌</span>` : `<span style="font-size:22px">📌</span>`}<div><b>${A.fmtYear(e.y)}</b> ${esc(e.t)}</div></div>`).join("") : "<p class='muted'>この国が登場する出来事はまだ年表にありません。</p>"}
+    ${evs.length ? [...evs].sort((a, b) => a.y - b.y).map((e) => `<div class="tl-mini" role="button" tabindex="0" data-event="${D.timeline.events.indexOf(e)}">${e.p?.length ? characterSVG(e.p[0], 34) : e.auto ? `<span style="font-size:22px">🎌</span>` : `<span style="font-size:22px">📌</span>`}<div><b>${A.fmtYear(e.y)}</b> ${esc(e.t)}</div></div>`).join("") : "<p class='muted'>この国が登場する出来事はまだ年表にありません。</p>"}
     <h3>⏳ 数百年のデータで見る歴史</h3>${charts || "<p class='muted'>長期データがありません。</p>"}
     ${historyJaHTML(c)}
     ${c.factbook?.background ? `<details class="en-orig" ${c.factbook_ja ? "" : "open"}><summary>🗒️ 歴史の背景(CIA World Factbook・英語原文)</summary><div class="fact" style="white-space:pre-line">${esc(c.factbook.background)}</div></details>` : ""}`;
@@ -553,8 +561,8 @@ async function renderWorldDex() {
     <div class="comment">${lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div>
     ${ser?.world?.length ? `<h3>📈 世界全体の移り変わり</h3>${lineChart([{ name: "世界全体", color: "#1c64d6", points: ser.world, width: 3 }], { log: ind.scale === "log", decimals: ind.decimals, height: 170 })}` : ""}
     <h3>🗺️ 地域ごとの中央値</h3>${barRows(regRows, { decimals: ind.decimals, log: ind.scale === "log" })}
-    <div class="grid2" style="margin-top:10px"><div><h3>🔝 上位5か国</h3>${top.map((k, i) => `<div class="tl-mini" data-country="${k}">${i + 1}. ${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div>
-      <div><h3>🔚 下位5か国</h3>${bottom.map((k) => `<div class="tl-mini" data-country="${k}">${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div></div>
+    <div class="grid2" style="margin-top:10px"><div><h3>🔝 上位5か国</h3>${top.map((k, i) => `<div class="tl-mini" role="button" tabindex="0" data-country="${k}">${i + 1}. ${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div>
+      <div><h3>🔚 下位5か国</h3>${bottom.map((k) => `<div class="tl-mini" role="button" tabindex="0" data-country="${k}">${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div></div>
     <div class="note">「上位」は値が${ind.better === "low" ? "小さい(望ましい)" : "大きい"}順です。${esc(ind.org || sourceName(ind.source))}のデータ。</div>`;
 }
 
@@ -637,7 +645,7 @@ async function renderClassify() {
   const strips = Object.entries(groups).map(([g, arr]) => ({ g, arr, med: A.median(arr.map((a) => a.v)) }))
     .sort((a, b) => (ind.better === "low" ? a.med - b.med : b.med - a.med))
     .map(({ g, arr, med }) => `<div class="strip"><b>${esc(g)} <small>(${arr.length})</small></b>
-      <div class="strip-track">${arr.map((a) => `<i class="sdot${a.k === S.country ? " me" : ""}" data-id="${a.k}" style="left:${X(a.v)}%;background:${cz.color(a.v)}" title="${esc(cname(a.k))}: ${esc(fmtV(ind, a.v))}"></i>`).join("")}
+      <div class="strip-track">${arr.map((a) => `<i class="sdot${a.k === S.country ? " me" : ""}" role="button" tabindex="0" aria-label="${esc(cname(a.k))}" data-id="${a.k}" style="left:${X(a.v)}%;background:${cz.color(a.v)}" title="${esc(cname(a.k))}: ${esc(fmtV(ind, a.v))}"></i>`).join("")}
         <i class="smed" style="left:${X(med)}%"></i></div>
       <span>中央値 <b>${fmtV(ind, med)}</b></span></div>`).join("");
   const opts = (sel) => D.catalog.categories.map((c) => `<optgroup label="${c.icon} ${esc(c.name)}">${indsOf(c.id).map((i) => `<option value="${i.id}" ${i.id === sel ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</optgroup>`).join("");
@@ -746,7 +754,7 @@ async function renderTimeline() {
     if (top + cardH > H - 40) continue; // 表示しきれない分は省略(フィルタで絞れる)
     const col = catColor(e.cat);
     html += `<div class="tl-stem" style="left:${cx}px;top:${top + cardH}px;background:${col}"></div>
-      <div class="tl-card${S.tlEvent === e ? " on" : ""}" data-event="${i}" style="left:${left}px;top:${top}px;--c:${col}" title="${esc(e.t)}">
+      <div class="tl-card${S.tlEvent === e ? " on" : ""}" role="button" tabindex="0" aria-label="${esc(A.fmtYear(e.y) + " " + e.t)}" data-event="${i}" style="left:${left}px;top:${top}px;--c:${col}" title="${esc(e.t)}">
         <div class="ch">${e.p?.length ? charactersFor({ p: e.p.slice(0, 2) }, 40) : e.auto && flag(e.c[0]) ? `<img class="tl-flag" src="${flag(e.c[0])}" alt="">` : `<span class="ico">${{ politics: "🏛️", war: "⚔️", science: "🔬", biology: "🧬", environment: "🌱", economy: "⚙️", culture: "🎨" }[e.cat] || "📌"}</span>`}</div>
         <div class="tx"><div class="yr">${A.fmtYear(e.y)}${e.approx ? "頃" : ""}${e.y2 ? `〜${e.y2}` : ""}</div><div class="tt">${esc(e.t)}</div></div></div>`;
   }
@@ -858,6 +866,7 @@ function renderSources() {
       <div class="card"><b>🇺🇳 国連・国際機関</b><p class="fact">国連統計部 SDG Global Database(公式 SDG 指標を API で直接取得)/ UNESCO 統計研究所(教育)/ UNDP(人間開発報告書)/ UNHCR(難民)/ 世界銀行(WHO・FAO・ILO・IEA・IUCN・SIPRI などのデータを集約)/ UN Data Commons(参照)</p></div>
       <div class="card"><b>🎓 世界の大学・研究機関</b><p class="fact">オックスフォード大学 Our World in Data / フローニンゲン大学 Maddison Project / ヨーテボリ大学 V-Dem 研究所 / ウプサラ大学 紛争データ計画(UCDP) / ハーバード大学 Growth Lab(経済の複雑さ)/ イェール大学・コロンビア大学 環境パフォーマンス指数(EPI)/ ノートルダム大学 ND-GAIN(気候変動への備え)</p></div>
       <div class="card"><b>🗂️ そのほか</b><p class="fact">CIA World Factbook(国の基本情報)/ Wikipedia 日本語版(CC BY-SA 4.0)/ Natural Earth(国境・パブリックドメイン)/ 国旗画像 flagcdn.com</p></div></div>
+    ${updateReportHTML()}
     <h3>付帯データ</h3><table class="src"><thead><tr><th>データ</th><th>状態</th><th>件数</th></tr></thead><tbody>${aux}</tbody></table>
     <h3>指標一覧(${D.catalog.indicators.length})</h3>
     <table class="src"><thead><tr><th>指標</th><th>出典</th><th>コード</th><th>期間</th><th>国数</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>
@@ -964,6 +973,18 @@ async function renderPrint() {
       <div class="print-sec"><h3>✏️ 考えてみよう</h3><p>① ${esc(c.name_ja)}の強みと課題を1つずつ書こう。② 日本とくらべて、同じところ・ちがうところは? ③ SDGs のどの目標に取り組むとよいと思う?</p><div class="ws-lines"></div></div>
       <p class="note">評価(S〜D)・章スコア・SDGsスコアは、データのある国の中での順位から本図鑑が計算した目安です。数値は各機関の公表値・推計で、年は国によって異なります。出典: 国連(UNDP・UNHCR・SDG Global Database)・世界銀行・UNESCO・CIA World Factbook・世界の大学の研究データ。</p>
     </article>`;
+}
+
+function updateReportHTML() {
+  const r = D.updateReport;
+  if (!r) return "";
+  const names = Object.fromEntries(D.catalog.indicators.map((i) => [i.id, i.name]));
+  const changed = r.indicators.filter((x) => x.status !== "unchanged");
+  const failed = Object.entries(D.meta.sources || {}).filter(([, v]) => !v.ok);
+  return `<h3>🆕 今回の更新で新しくなったデータ(${esc((r.generated_at || "").slice(0, 10))})</h3>
+    ${changed.length ? `<table class="src"><thead><tr><th>指標</th><th>最新の年</th><th>国の数</th><th>更新された国</th></tr></thead><tbody>${changed.map((x) => `<tr><td>${esc(names[x.id] || x.id)}${x.status === "new" ? " <b>(新規)</b>" : ""}</td><td>${x.year_from !== x.year_to && x.year_from != null ? `${x.year_from} → ` : ""}${x.year_to ?? "—"}</td><td>${x.countries_from} → ${x.countries_to}</td><td>${x.updated}</td></tr>`).join("")}</tbody></table>`
+      : `<p class="muted">前回の更新から、新しい年や国のデータはありませんでした(各機関の公表を待っています)。</p>`}
+    ${failed.length ? `<p class="ng">⚠️ 取得に失敗したソース ${failed.length}件(前回のデータを表示しています): ${failed.map(([k]) => esc(k)).join(", ")}</p>` : ""}`;
 }
 
 // ---------------------------------------------------------------- 画面切りかえ
@@ -1075,6 +1096,19 @@ function bind() {
     if (d.country) return selectCountry(d.country);
     if (d.id && D.countries[d.id]) return selectCountry(d.id);
   });
+  document.addEventListener("keydown", (ev) => {
+    if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.('[role="button"]')) {
+      ev.preventDefault();
+      ev.target.click();
+    }
+  });
+  $("#cvd").addEventListener("click", () => {
+    cvd = !cvd;
+    localStorage.setItem("atlas-cvd", cvd ? "1" : "0");
+    $("#cvd").setAttribute("aria-pressed", String(cvd));
+    $("#cvd").classList.toggle("on", cvd);
+    renderAll();
+  });
   document.addEventListener("change", (ev) => {
     const t = ev.target;
     if (t.id === "rank-region") { S.rankRegion = t.value; renderRank(); }
@@ -1134,6 +1168,7 @@ async function main() {
     Object.assign(D, { catalog, countries: countries.countries, latest, meta, geo, timeline });
     D.flows = await getJSON("data/flows/refugees.json").catch(() => null);
     D.exports = await getJSON("data/exports.json").catch(() => null);
+    D.updateReport = await getJSON("data/update_report.json").catch(() => null);
     addIndependenceEvents();
   } catch (e) {
     $("#loading").textContent = `データを読み込めませんでした(${e.message})。README の手順でローカルサーバーから開いてください。`;
@@ -1152,6 +1187,8 @@ async function main() {
   if (["extrude", "bars", "flat"].includes(h.get("v"))) { S.viz = h.get("v"); $("#viz").value = S.viz; }
   if (+h.get("q") > 0) S.quizSeed = +h.get("q");
   bind();
+  $("#cvd").setAttribute("aria-pressed", String(cvd));
+  $("#cvd").classList.toggle("on", cvd);
   if (typeof Globe === "function") initGlobe();
   else $("#globe").innerHTML = `<div class="empty" style="color:#fff">3D地球儀ライブラリを読み込めませんでした(インターネット接続を確認してください)。ほかの画面は使えます。</div>`;
   await setupYears();

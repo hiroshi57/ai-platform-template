@@ -22,3 +22,6 @@ dist/
 
 # Vercel のローカル設定(プロジェクト紐付け)
 .vercel
+
+# 図鑑の日本語要約用 API キー(絶対にコミットしない)
+world_atlas/pipeline/.env.local

@@ -588,14 +588,17 @@ def fetch_geo(valid: set[str]) -> dict:
     return {"type": "FeatureCollection", "features": feats}
 
 
-def write_latest(out: Path) -> None:
-    """series/*.json(今回更新しなかった指標も含む)から latest.json を作る。"""
+def write_latest(out: Path) -> dict:
+    """series/*.json(今回更新しなかった指標も含む)から latest.json を作り、前回との差分を返す。"""
+    prev = out / "latest.json"
+    old = json.loads(prev.read_text(encoding="utf-8")) if prev.exists() else {}
     latest = {}
     for ind in INDICATORS:
         f = out / "series" / f"{ind['id']}.json"
         if f.exists():
             latest[ind["id"]] = A.summarize_series(json.loads(f.read_text(encoding="utf-8")))
     write_json(out / "latest.json", latest)
+    return A.diff_latest(old, latest)
 
 
 # ---------------------------------------------------------------- main
@@ -604,6 +607,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--only", default="",
                     help="更新する指標ソース(カンマ区切り: wb,unhcr,undp,owid,harvard,epi,ndgain,unsdg,uis)")
+    ap.add_argument("--report", default="", help="差分レポート(Markdown)の出力先")
     ap.add_argument("--skip", default="",
                     help="省略する付帯ソース(カンマ区切り: factbook,wiki,geo,flows,exports)")
     args = ap.parse_args(argv)
@@ -701,7 +705,7 @@ def main(argv: list[str] | None = None) -> int:
             status[key] = {"ok": False, "error": str(e)[:300], "at": now}
             log(f"{ind['id']} FAILED: {e}")
 
-    write_latest(out)
+    diff = write_latest(out)
     # CIA 原文の日本語要約(人の確認フロー付き)を付ける
     ja_path = HERE / "factbook_ja.json"
     if ja_path.exists():
@@ -715,6 +719,11 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copyfile(HERE / "timeline_ja.json", out / "timeline.json")
     ok = sum(1 for v in status.values() if v.get("ok"))
     write_json(meta_path, {"generated_at": now, "sources": status, "ok": ok, "total": len(status)})
+    # 更新の差分レポート(画面の「出典」と、週次ワークフローの PR 本文・失敗通知に使う)
+    write_json(out / "update_report.json", {"generated_at": now, **diff})
+    if args.report:
+        names = {i["id"]: i["name"] for i in INDICATORS}
+        Path(args.report).write_text(A.update_report_markdown(diff, status, names, now), encoding="utf-8")
     log(f"done: {ok}/{len(status)} sources ok -> {out}")
     failed = [k for k, v in status.items() if not v.get("ok")]
     if failed:

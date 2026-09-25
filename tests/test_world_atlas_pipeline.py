@@ -298,3 +298,38 @@ def test_factbook_ja_review_requires_reviewer_and_updates_hash():
     F.review(ja, "JPN", "山田(社会科)", countries)
     assert ja["JPN"]["reviewed"] is True and ja["JPN"]["source_sha1"] == F.source_hash("v2")
     assert F.status_rows(ja, countries) == [("JPN", "確認済み(山田(社会科))")]
+
+
+def test_diff_latest_reports_new_years_and_country_changes():
+    old = {
+        "life_exp": {"w": [2023, 73.0], "c": {"JPN": [2023, 84.0, 2013, 83, None], "USA": [2023, 77.0, 2013, 78, None]}},
+        "gone": {"w": None, "c": {"JPN": [2020, 1.0, 2010, 1, None]}},
+    }
+    new = {
+        "life_exp": {"w": [2024, 73.3], "c": {"JPN": [2024, 84.1, 2014, 83, None], "USA": [2023, 77.0, 2013, 78, None],
+                                                "IND": [2024, 72.0, 2014, 69, None]}},
+        "added": {"w": None, "c": {"JPN": [2025, 5.0, 2015, 4, None]}},
+    }
+    rep = A.diff_latest(old, new)
+    by = {r["id"]: r for r in rep["indicators"]}
+    assert by["life_exp"]["year_from"] == 2023 and by["life_exp"]["year_to"] == 2024
+    assert by["life_exp"]["countries_from"] == 2 and by["life_exp"]["countries_to"] == 3
+    assert by["life_exp"]["updated"] == 2  # JPN(年が進んだ)+ IND(新規)
+    assert by["added"]["status"] == "new"
+    assert rep["removed"] == ["gone"]
+    assert "unchanged" not in {r["status"] for r in rep["indicators"] if r["id"] == "life_exp"}
+
+
+def test_diff_latest_marks_unchanged():
+    same = {"x": {"w": None, "c": {"JPN": [2020, 1.0, 2010, 1, None]}}}
+    rep = A.diff_latest(same, same)
+    assert rep["indicators"][0]["status"] == "unchanged"
+    assert rep["changed_count"] == 0
+
+
+def test_update_report_markdown_lists_failures_and_changes():
+    rep = A.diff_latest({}, {"x": {"w": None, "c": {"JPN": [2020, 1.0, 2010, 1, None]}}})
+    md = A.update_report_markdown(rep, {"wb:X": {"ok": False, "error": "timeout"}, "geo": {"ok": True}},
+                                  names={"x": "指標X"}, generated_at="2026-09-25T00:00:00+00:00")
+    assert "取得に失敗したソース" in md and "wb:X" in md and "timeout" in md
+    assert "指標X" in md

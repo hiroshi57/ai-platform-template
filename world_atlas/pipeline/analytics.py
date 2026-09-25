@@ -374,3 +374,60 @@ def parse_unsdg_rows(rows: Iterable[dict], filters: dict[str, list[str]], m49_to
     for (iso3, y), (_, v) in sorted(best.items()):
         out.setdefault(iso3, []).append([y, v])
     return out
+
+
+# ---------------------------------------------------------------- 運用: 更新の差分レポート
+def _max_year(summary: dict) -> int | None:
+    ys = [v[0] for v in (summary.get("c") or {}).values()]
+    return max(ys) if ys else None
+
+
+def diff_latest(old: dict, new: dict) -> dict:
+    """前回と今回の latest.json をくらべ、指標ごとの変化をまとめる。
+
+    status: new(新しい指標) / updated(新しい年や国のデータが入った) / unchanged
+    updated = 最新の年が進んだ国 + 新しくデータが入った国 の数
+    """
+    rows = []
+    for iid, n in new.items():
+        o = old.get(iid)
+        nc = n.get("c") or {}
+        if o is None:
+            rows.append({"id": iid, "status": "new", "year_from": None, "year_to": _max_year(n),
+                         "countries_from": 0, "countries_to": len(nc), "updated": len(nc)})
+            continue
+        oc = o.get("c") or {}
+        updated = sum(1 for k, v in nc.items() if k not in oc or v[0] > oc[k][0])
+        rows.append({
+            "id": iid, "status": "updated" if updated or len(nc) != len(oc) else "unchanged",
+            "year_from": _max_year(o), "year_to": _max_year(n),
+            "countries_from": len(oc), "countries_to": len(nc), "updated": updated,
+        })
+    rows.sort(key=lambda r: ({"new": 0, "updated": 1, "unchanged": 2}[r["status"]], -r["updated"]))
+    return {
+        "indicators": rows,
+        "removed": sorted(k for k in old if k not in new),
+        "changed_count": sum(1 for r in rows if r["status"] != "unchanged"),
+    }
+
+
+def update_report_markdown(report: dict, sources: dict, names: dict[str, str], generated_at: str) -> str:
+    """PR 本文・Issue 用の Markdown。取得失敗と、新しくなったデータを一覧にする。"""
+    failed = {k: v for k, v in sources.items() if not v.get("ok")}
+    lines = [f"## せかい3Dデジタル図鑑 データ更新レポート({generated_at[:16].replace('T', ' ')} UTC)", ""]
+    lines.append(f"- 取得成功 {len(sources) - len(failed)} / {len(sources)} ソース")
+    lines.append(f"- データが新しくなった指標 {report['changed_count']} / {len(report['indicators'])}")
+    if failed:
+        lines += ["", "### ⚠️ 取得に失敗したソース(前回のデータを表示し続けています)", ""]
+        lines += [f"- `{k}`: {str(v.get('error', ''))[:200]}" for k, v in sorted(failed.items())]
+    changed = [r for r in report["indicators"] if r["status"] != "unchanged"]
+    if changed:
+        lines += ["", "### 🆕 新しくなったデータ", ""]
+        lines += ["| 指標 | 最新の年 | 国の数 | 更新された国 |", "|---|---|---|---|"]
+        for r in changed:
+            yr = f"{r['year_from']} → {r['year_to']}" if r["year_from"] != r["year_to"] else f"{r['year_to']}"
+            label = names.get(r["id"], r["id"]) + ("(新規)" if r["status"] == "new" else "")
+            lines.append(f"| {label} | {yr} | {r['countries_from']} → {r['countries_to']} | {r['updated']} |")
+    if report["removed"]:
+        lines += ["", "### 🗑️ なくなった指標", ""] + [f"- {k}" for k in report["removed"]]
+    return "\n".join(lines) + "\n"

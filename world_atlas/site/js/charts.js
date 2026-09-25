@@ -147,7 +147,7 @@ export function barRows(rows, opts = {}) {
   const hi = Math.max(...vals.map(tr), opts.ref != null ? tr(opts.ref) : -Infinity);
   const pct = (v) => Math.max(0, Math.min(100, ((tr(v) - lo) / (hi - lo || 1)) * 100));
   const refPos = opts.ref != null && Number.isFinite(opts.ref) ? pct(opts.ref) : null;
-  return rows.map((r, i) => `<div class="bar-row${r.highlight ? " hl" : ""}" data-id="${esc(r.id)}">
+  return rows.map((r, i) => `<div class="bar-row${r.highlight ? " hl" : ""}" data-id="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.label)} ${fmtNum(r.value, opts.decimals ?? 1)}">
       <span class="bar-rank">${r.rank ?? i + 1}</span>
       <span class="bar-label" title="${esc(r.label)}">${esc(r.label)}</span>
       <span class="bar-track">${refPos != null ? `<i class="bar-ref" style="left:${refPos}%" title="世界全体"></i>` : ""}<i class="bar-fill" style="width:${pct(r.value)}%;background:${r.color}"></i></span>
