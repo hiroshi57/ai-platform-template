@@ -1,10 +1,10 @@
 // せかい3Dデジタル図鑑: オフライン対応(サービスワーカー)
 // 一度開いた画面・データ・3D地球儀のライブラリを保存し、通信が弱い教室でも使えるようにする。
 // データは「保存した分をすぐ表示し、裏で最新版に更新する」(stale-while-revalidate)。
-const VERSION = "atlas-v6";
+const VERSION = "atlas-v7";
 const SHELL = [
   "./", "index.html", "style.css",
-  "js/app.js", "js/analytics.js", "js/charts.js", "js/characters.js", "js/quiz.js",
+  "js/app.js", "js/analytics.js", "js/charts.js", "js/characters.js", "js/quiz.js", "js/plan.js",
   "data/catalog.json", "data/countries.json", "data/latest.json", "data/meta.json",
   "data/geo/countries.json", "data/timeline.json", "data/glossary.json",
   "data/flows/refugees.json", "data/exports.json", "data/update_report.json",

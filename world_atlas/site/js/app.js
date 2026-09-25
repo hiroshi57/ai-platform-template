@@ -3,6 +3,7 @@ import * as A from "./analytics.js";
 import { lineChart, sparkline, radar, scatter, barRows } from "./charts.js";
 import { characterSVG, charactersFor } from "./characters.js";
 import { makeQuiz } from "./quiz.js";
+import { PLAN, isPaidFromStorage, canUseIndicator, canUseMode, canUseFeature } from "./plan.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -190,7 +191,7 @@ function altOf(iso, cz) {
 // 3D棒グラフ表示: 各国の首都の位置に、値の順位に応じた高さの柱を立てる
 function barAlt(iso, cz) { return snapNow[iso] ? 0.02 + cz.q(snapNow[iso][1]) * 0.45 : 0; }
 const REFUGEE_INDS = new Set(["refugees_out", "refugees_in"]);
-const arcsOn = () => (S.arcs == null ? REFUGEE_INDS.has(S.ind) : S.arcs) && D.flows?.flows?.length;
+const arcsOn = () => PAID && (S.arcs == null ? REFUGEE_INDS.has(S.ind) : S.arcs) && D.flows?.flows?.length;
 function initGlobe() {
   const el = $("#globe");
   globe = Globe()(el)
@@ -324,7 +325,7 @@ function renderChapters() {
     const inds = indsOf(c.id);
     const open = c.id === S.cat;
     return `<button class="chap${open ? " on" : ""}" style="--c:${c.color}" data-cat="${c.id}"><span class="ic">${c.icon}</span>${esc(c.name)}<span class="n">${inds.length}</span></button>
-      ${open ? `<div class="inds" style="--c:${c.color}">${inds.map((i) => `<button class="ind${i.id === S.ind ? " on" : ""}" data-ind="${i.id}">${esc(i.name)}<span class="sdg-dots">${i.sdg.slice(0, 2).map((n) => `<span class="sdg-dot" style="background:${D.catalog.sdg_goals[n - 1].color}" title="SDGs 目標${n}">${n}</span>`).join("")}</span></button>`).join("")}</div>` : ""}`;
+      ${open ? `<div class="inds" style="--c:${c.color}">${inds.map((i) => `<button class="ind${i.id === S.ind ? " on" : ""}${canUseIndicator(i.id, PAID) ? "" : " locked"}" data-ind="${i.id}">${canUseIndicator(i.id, PAID) ? "" : "🔒 "}${esc(i.name)}<span class="sdg-dots">${i.sdg.slice(0, 2).map((n) => `<span class="sdg-dot" style="background:${D.catalog.sdg_goals[n - 1].color}" title="SDGs 目標${n}">${n}</span>`).join("")}</span></button>`).join("")}</div>` : ""}`;
   }).join("");
   $("#chapter-list").innerHTML = `<div class="muted" style="margin:0 0 6px 4px">📖 章をえらぶ</div>${list}`;
   renderIndBox();
@@ -355,7 +356,7 @@ async function renderDex() {
   el.innerHTML = `<div class="dex-head">${f ? `<img class="flag" src="${f}" alt="">` : ""}
       <div><h2>${esc(c.name_ja)}</h2><div class="en">${esc(c.name_en)}${c.capital ? `・首都 ${esc(c.capital)}` : ""}</div></div></div>
     <div class="chips"><span class="chip">🗺️ ${esc(c.region_ja)}</span><span class="chip">💴 ${esc(c.income_ja)}</span>
-      ${S.country !== "JPN" ? `<button class="chip jp-cmp" data-act="vs-japan">🇯🇵 日本とくらべる</button>` : `<button class="chip jp-cmp" data-act="vs-similar">🧩 日本と似ている国とくらべる</button>`}<button class="chip" data-act="cmp-add">⚖️ くらべるに追加</button><button class="chip" data-act="world">🌍 世界全体を見る</button><button class="chip" data-act="print">🖨️ 印刷用ページ</button></div>
+      ${S.country !== "JPN" ? `<button class="chip jp-cmp" data-act="vs-japan">🗾 日本とくらべる${lock("compare")}</button>` : `<button class="chip jp-cmp" data-act="vs-similar">🧩 日本と似ている国とくらべる${lock("compare")}</button>`}<button class="chip" data-act="cmp-add">⚖️ くらべるに追加${lock("compare")}</button><button class="chip" data-act="world">🌍 世界全体を見る</button><button class="chip" data-act="print">🖨️ 印刷用ページ${lock("print")}</button></div>
     <div class="tabs">${[["chapter", "この章"], ["overview", "全体像"], ["profile", "プロフィール"], ["history", "歴史"]].map(([k, l]) => `<button data-tab="${k}" class="${S.dexTab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <div id="dex-body"><div class="empty">読み込み中…</div></div>`;
   const body = $("#dex-body");
@@ -393,7 +394,9 @@ function diffHTML(row) {
 
 async function dexChapter(iso3) {
   const cat = CAT(S.cat);
-  const inds = indsOf(S.cat);
+  const allInds = indsOf(S.cat);
+  const inds = allInds.filter((i) => canUseIndicator(i.id, PAID)); // 無料版は無料の指標だけで総評・スコアを出す
+  const hidden = allInds.length - inds.length;
   const sers = await Promise.all(inds.map((i) => loadSeries(i.id)));
   const rows = inds.map((ind) => rowFor(iso3, ind)).filter(Boolean);
   const stats = inds.map((ind, k) => {
@@ -404,7 +407,7 @@ async function dexChapter(iso3) {
       <div class="nm">${row.label ? `<span class="rate ${row.label}" title="${A.RATE_TEXT[row.label]}">${row.label}</span> ` : ""}${esc(ind.name)}</div>
       <div class="val">${fmtV(ind, row.value)}<small>${esc(unitOf(ind))}</small></div>
       <div class="meta"><span>${A.fmtYear(row.year)}</span>${row.rank ? `<span>${row.n}か国中 <b>${row.rank}位</b></span>` : ""}${diffHTML(row)}${trendHTML(row)}
-        ${row.forecast != null ? `<span>🔮 2030年予測 ${fmtV(ind, row.forecast)}</span>` : ""}<span style="margin-left:auto">${sparkline(s.slice(-30), cat.color)}</span></div></div>`;
+        ${row.forecast != null ? (PAID ? `<span>🔮 2030年予測 ${fmtV(ind, row.forecast)}</span>` : `<span class="lk" title="完全版で表示">🔮 2030年予測 🔒</span>`) : ""}<span style="margin-left:auto">${sparkline(s.slice(-30), cat.color)}</span></div></div>`;
   }).join("");
   // 選択中の指標の推移グラフ(国・地域の中央値・世界)
   const ind = IND(S.ind).category === S.cat ? IND(S.ind) : inds[0];
@@ -419,18 +422,18 @@ async function dexChapter(iso3) {
       { name: `${D.countries[iso3].region_ja}の中央値`, color: "#adb5bd", points: regionSeries, dashed: true },
     ];
     if (ser.world?.length) lines.push({ name: "世界全体", color: "#495057", points: ser.world });
-    const fc = me.f && ind.forecast !== false ? [{ color: cat.color, from: me.s[me.s.length - 1], to: [me.f.year, me.f.value] }] : [];
+    const fc = PAID && me.f && ind.forecast !== false ? [{ color: cat.color, from: me.s[me.s.length - 1], to: [me.f.year, me.f.value] }] : [];
     chart = `<h3>📈 ${esc(ind.name)}の移り変わり</h3>${lineChart(lines, { log: ind.scale === "log", decimals: ind.decimals, forecast: fc, height: 200 })}
       ${me.f ? `<div class="note">点線は過去${me.f.n}年の傾向をそのまま伸ばした場合の${me.f.year}年の見込み(決定係数 R²=${me.f.r2.toFixed(2)}。1に近いほど直線的な変化)。政策や出来事で大きく変わることがあります。</div>` : ""}`;
   }
   const score = scoreFor(iso3, inds);
   const lines = A.commentary(cname(iso3), rows, cat.name);
-  const exportsBox = (S.cat === "economy" ? exportsHTML(iso3) : "") + (iso3 !== "JPN" ? vsJapanHTML(iso3, inds) : "");
+  const exportsBox = (S.cat === "economy" ? (PAID ? exportsHTML(iso3) : lockedCard("exports")) : "") + (iso3 !== "JPN" ? vsJapanHTML(iso3, inds) : "");
   return `${exportsBox}<div class="kpis"><div class="kpi"><div class="l">${esc(cat.name)}の章スコア</div><div class="v">${score == null ? "—" : `${score.toFixed(0)}点`}</div>${score == null ? "<small>良し悪しで測らない章</small>" : ""}</div>
       <div class="kpi"><div class="l">評価</div><div class="v">${score == null ? "—" : `<span class="rate ${A.rateLabel(score / 100)}">${A.rateLabel(score / 100)}</span> ${A.RATE_TEXT[A.rateLabel(score / 100)]}`}</div></div>
       <div class="kpi"><div class="l">データのある指標</div><div class="v">${rows.length}/${inds.length}</div></div></div>
     <div class="comment">${lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div>
-    ${stats}${chart}
+    ${stats}${hidden ? `<div class="card locked-card"><b>🔒 この章のほか${hidden}指標</b><p class="muted">完全版(買い切り)で、この章のすべての指標と総評・スコアを見られます。</p><button class="chip" data-up="allIndicators">くわしく見る</button></div>` : ""}${chart}
     <div class="note">評価(S〜D)は、データのある国の中での順位(パーセンタイル)から決めています。S=上位10%、A=上位30%、B=真ん中、C=下位40〜15%、D=下位15%。良し悪しで測らない指標(面積・人口など)には付けていません。章スコアは「良し悪しのある指標」の順位の平均です(50点が世界の真ん中)。</div>`;
 }
 // 主な輸出品目(ハーバード大 Growth Lab Atlas)。分野別の割合の帯グラフ + 上位品目
@@ -456,11 +459,15 @@ function vsJapanHTML(iso3, inds) {
   const better = rows.filter((x) => x.a.goodness > x.j.goodness + 0.05).map((x) => x.ind.name);
   const worse = rows.filter((x) => x.a.goodness < x.j.goodness - 0.05).map((x) => x.ind.name);
   const name = cname(iso3);
-  return `<div class="card vsjp"><b>🇯🇵 日本とくらべると(この章)</b>
+  return `<div class="card vsjp"><b>🗾 日本とくらべると(この章)</b>
     ${better.length ? `<p>⬆️ <b>${esc(name)}のほうが良い</b>: ${esc(better.slice(0, 4).join("、"))}</p>` : ""}
     ${worse.length ? `<p>⬇️ <b>日本のほうが良い</b>: ${esc(worse.slice(0, 4).join("、"))}</p>` : ""}
     ${!better.length && !worse.length ? "<p>この章では、日本とほぼ同じくらいです。</p>" : ""}
     <button class="chip jp-cmp" data-act="vs-japan">⚖️ グラフでくらべる</button></div>`;
+}
+function lockedCard(key) {
+  return `<div class="card locked-card"><b>🔒 ${esc(PLAN.paidFeatures[key] || "完全版の機能")}</b>
+    <p class="muted">完全版(買い切り)で見られます。</p><button class="chip" data-up="${key}">くわしく見る</button></div>`;
 }
 function regionMedianSeries(ser, region) {
   const byYear = {};
@@ -533,8 +540,8 @@ async function dexHistory(iso3) {
   return `${iy ? `<div class="kpis"><div class="kpi" style="grid-column:1/-1"><div class="l">🎌 独立・建国(CIA World Factbook)</div><div class="v">${A.fmtYear(iy)}</div><small>いまから${new Date().getFullYear() - iy}年前</small></div></div>` : ""}
     <h3>📜 ${esc(c.name_ja)}の年表(${evs.length}件)</h3>
     ${evs.length ? [...evs].sort((a, b) => a.y - b.y).map((e) => `<div class="tl-mini" role="button" tabindex="0" data-event="${D.timeline.events.indexOf(e)}">${e.p?.length ? characterSVG(e.p[0], 34) : e.auto ? `<span style="font-size:22px">🎌</span>` : `<span style="font-size:22px">📌</span>`}<div><b>${A.fmtYear(e.y)}</b> ${esc(e.t)}</div></div>`).join("") : "<p class='muted'>この国が登場する出来事はまだ年表にありません。</p>"}
-    <h3>⏳ 数百年のデータで見る歴史</h3>${charts || "<p class='muted'>長期データがありません。</p>"}
-    ${historyJaHTML(c)}
+    <h3>⏳ 数百年のデータで見る歴史</h3>${PAID ? (charts || "<p class='muted'>長期データがありません。</p>") : lockedCard("history")}
+    ${PAID ? historyJaHTML(c) : c.factbook_ja ? lockedCard("factbookJa") : ""}
     ${c.factbook?.background ? `<details class="en-orig" ${c.factbook_ja ? "" : "open"}><summary>🗒️ 歴史の背景(CIA World Factbook・英語原文)</summary><div class="fact" style="white-space:pre-line">${esc(c.factbook.background)}</div></details>` : ""}`;
 }
 
@@ -873,6 +880,9 @@ function renderSDG() {
   const ranks = A.rankAll(snap, "high");
   const order = Object.keys(ranks).sort((a, b) => ranks[a].rank - ranks[b].rank);
   const rows = inds.map((ii) => {
+    if (!canUseIndicator(ii.id, PAID)) {
+      return `<tr><td><button class="chip" data-up="allIndicators">🔒 ${esc(ii.name)}</button></td><td class="lk">完全版</td>${iso3 ? `<td class="lk">完全版</td>` : ""}</tr>`;
+    }
     const w = D.latest[ii.id]?.w, r = iso3 ? rowFor(iso3, ii) : null;
     return `<tr><td><button class="chip" data-ind="${ii.id}">${esc(ii.name)}</button><br><small>${esc(ii.explain)}</small></td><td>${w ? `${fmtV(ii, w[1])}<br><small>${w[0]}年</small>` : "—"}</td>
       ${iso3 ? `<td>${r ? `${fmtV(ii, r.value)} ${r.label ? `<span class="rate ${r.label}">${r.label}</span>` : ""}<br><small>${r.n ? `${r.n}か国中${r.rank}位` : ""} ${trendHTML(r)}</small>` : "—"}</td>` : ""}</tr>`;
@@ -920,7 +930,7 @@ let quizCache = { seed: null, qs: [] };
 function currentQuiz() {
   if (S.quizSeed == null) S.quizSeed = Math.floor(Math.random() * 9000) + 1000;
   if (quizCache.seed !== S.quizSeed) {
-    quizCache = { seed: S.quizSeed, qs: makeQuiz({ catalog: D.catalog, countries: D.countries, latest: D.latest, timeline: D.timeline }, S.quizSeed, 10) };
+    quizCache = { seed: S.quizSeed, qs: makeQuiz({ catalog: D.catalog, countries: D.countries, latest: D.latest, timeline: D.timeline }, S.quizSeed, PAID ? 10 : PLAN.freeQuizQuestions) };
   }
   return quizCache.qs;
 }
@@ -1085,10 +1095,54 @@ function teacherGuideHTML() {
   </div>`;
 }
 
+// ---------------------------------------------------------------- 無料版・有料版(買い切り)
+const PAID = isPaidFromStorage(localStorage, location);
+const lock = (key) => (canUseFeature(key, PAID) ? "" : " 🔒");
+function upsell(key) {
+  const m = $("#upsell");
+  const what = PLAN.paidFeatures[key] || "この機能";
+  m.innerHTML = `<div class="up-box" role="dialog" aria-modal="true" aria-labelledby="up-t">
+    <button class="up-x" data-act="up-close" aria-label="閉じる">✕</button>
+    <div class="up-badge">🔒 完全版の機能</div>
+    <h2 id="up-t">${esc(what)}</h2>
+    <p class="muted">この機能は「${esc(PLAN.name)}」(買い切り)で使えます。一度買えば、追加料金なしでずっと使えます。</p>
+    <ul class="up-list">${Object.values(PLAN.paidFeatures).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+    <div class="up-price">${PLAN.price ? `買い切り <b>${PLAN.price.toLocaleString("ja-JP")}円</b>(税込)` : "価格・購入方法は準備中です"}</div>
+    <div class="toolbar"><button class="tb on" data-act="up-plans">無料版と完全版をくらべる</button><button class="tb" data-act="up-close">閉じる</button></div>
+  </div>`;
+  m.hidden = false;
+  m.querySelector(".up-x").focus();
+}
+function guard(key) {
+  if (canUseFeature(key, PAID)) return true;
+  upsell(key);
+  return false;
+}
+function renderPlans() {
+  const rows = [
+    ["🌐 3D地球儀・国名・ランキング", true, true],
+    ["📘 国の図鑑ページ(基本情報・順位・評価・総評)", true, true],
+    ["📜 ビジュアル年表・人物キャラクター", true, true],
+    ["🎯 SDGs 17目標", true, true],
+    ["📖 使い方・用語集", true, true],
+    ["📊 指標の数", "27指標", "98指標(全10章)"],
+    ["🧠 クイズ", `${PLAN.freeQuizQuestions}問`, "10問+ワークシート印刷"],
+    ...Object.entries(PLAN.paidFeatures).filter(([k]) => !["allIndicators", "quizFull"].includes(k)).map(([, v]) => [v, false, true]),
+  ];
+  const cell = (v) => (v === true ? "✅" : v === false ? "—" : esc(v));
+  $("#view-plans").innerHTML = `<h2>💎 無料版と完全版</h2>
+    <p class="muted">無料版はだれでもすぐ使えます。完全版は<b>買い切り</b>で、一度買えば追加料金なしでずっと使え、データの更新も受け取れます。</p>
+    <div class="up-price big">${PLAN.price ? `完全版 買い切り <b>${PLAN.price.toLocaleString("ja-JP")}円</b>(税込)` : "完全版の価格・購入方法は準備中です"}</div>
+    <table class="cmp plans"><thead><tr><th>できること</th><th>無料版</th><th>完全版</th></tr></thead>
+    <tbody>${rows.map(([n, f, p]) => `<tr><td>${esc(n)}</td><td>${cell(f)}</td><td>${cell(p)}</td></tr>`).join("")}</tbody></table>
+    <p class="note">いまお使いの版: <b>${PAID ? "完全版" : "無料版"}</b></p>`;
+}
+
 // ---------------------------------------------------------------- 画面切りかえ
 function setMode(mode) {
+  if (!canUseMode(mode, PAID)) return upsell(mode);
   S.mode = mode;
-  document.body.classList.toggle("wide", mode === "quiz" || mode === "print" || mode === "guide");
+  document.body.classList.toggle("wide", ["quiz", "print", "guide", "plans"].includes(mode));
   document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${mode}`));
   // 地球儀は「地球儀」「年表」で共有(DOM を移動)
@@ -1113,10 +1167,12 @@ async function renderAll() {
   if (m === "quiz") renderQuiz();
   if (m === "print") await renderPrint();
   if (m === "guide") renderGuide();
-  if (m !== "quiz" && m !== "print" && m !== "guide") await renderDex();
+  if (m === "plans") renderPlans();
+  if (!["quiz", "print", "guide", "plans"].includes(m)) await renderDex();
   syncHash();
 }
 async function setIndicator(id) {
+  if (!canUseIndicator(id, PAID)) return upsell(IND(id)?.category === "history" ? "history" : "allIndicators");
   S.ind = id;
   S.arcs = null;
   const ind = IND(id);
@@ -1148,6 +1204,7 @@ let playTimer = null;
 function stopPlay() { clearInterval(playTimer); playTimer = null; $("#play").textContent = "▶"; }
 function togglePlay() {
   if (playTimer) return stopPlay();
+  if (!guard("years")) return;
   if (!yearStops.length) return;
   if (S.yearIdx >= yearStops.length) S.yearIdx = 0;
   $("#play").textContent = "⏸";
@@ -1173,18 +1230,25 @@ function bind() {
     if (d.cat && t.classList.contains("stat")) { S.cat = d.cat; S.dexTab = "chapter"; return setIndicator(indsOf(d.cat)[0].id); }
     if (d.tab) { S.dexTab = d.tab; return renderDex(); }
     if (d.act === "world") { S.country = null; return renderAll(); }
-    if (d.act === "print") return setMode("print");
+    if (d.act === "print") return guard("print") && setMode("print");
+    if (d.up) return upsell(d.up);
     if (d.gtab) { S.guideTab = d.gtab; return renderGuide(); }
     if (d.gind) { S.ind = d.gind; S.cat = IND(d.gind).category; return setupYears().then(() => setMode("globe")); }
     if (d.gterm) { S.guideTab = "glossary"; S.glossQ = d.gterm; return setMode("guide"); }
     if (d.act === "print-now") return window.print();
     if (d.act === "back") return setMode("globe");
     if (d.act === "quiz-new") { S.quizSeed = Math.floor(Math.random() * 9000) + 1000; S.quizAns = {}; return renderQuiz(); }
+    if (d.act === "quiz-print" && !guard("quizFull")) return;
     if (d.act === "quiz-print") { document.body.classList.add("print-ws"); window.print(); document.body.classList.remove("print-ws"); return; }
     if (d.qi != null && d.ci != null) { if (S.quizAns[d.qi] == null) S.quizAns[d.qi] = +d.ci; return renderQuiz(); }
     if (d.qlink != null) return followQuizLink(+d.qlink);
+    if (d.act === "up-close") { $("#upsell").hidden = true; return; }
+    if (d.act === "up-plans") { $("#upsell").hidden = true; return setMode("plans"); }
+    if (d.act === "vs-japan" && !guard("compare")) return;
     if (d.act === "vs-japan") { S.compare = [S.country, "JPN"]; return setMode("compare"); }
+    if (d.act === "vs-similar" && !guard("compare")) return;
     if (d.act === "vs-similar") { S.compare = ["JPN", ...similarCountries("JPN", 3).map((x) => x.iso3)]; return setMode("compare"); }
+    if (d.act === "cmp-add" && !guard("compare")) return;
     if (d.act === "cmp-add") { if (!S.compare.includes(S.country)) S.compare = [...S.compare, S.country].slice(-4); return setMode("compare"); }
     if (d.rm) { S.compare = S.compare.filter((k) => k !== d.rm); return renderCompare(); }
     if (d.order) { S.rankOrder = d.order; return renderRank(); }
@@ -1228,14 +1292,15 @@ function bind() {
     if (ev.key === "ArrowRight") { ev.preventDefault(); stepEvent(1); }
   });
   $("#year").addEventListener("input", async (ev) => {
+    if (!guard("years")) { ev.target.value = yearStops.length; return; }
     S.yearIdx = +ev.target.value;
     $("#year-label").textContent = yearLabel();
     await paintGlobe();
     if (S.mode === "rank") renderRank();
   });
   $("#play").addEventListener("click", togglePlay);
-  $("#viz").addEventListener("change", (ev) => { S.viz = ev.target.value; paintGlobe(); });
-  $("#arcs").addEventListener("change", (ev) => { S.arcs = ev.target.checked; paintGlobe(); });
+  $("#viz").addEventListener("change", (ev) => { if (ev.target.value !== "extrude" && !guard("viz")) { ev.target.value = "extrude"; return; } S.viz = ev.target.value; paintGlobe(); });
+  $("#arcs").addEventListener("change", (ev) => { if (ev.target.checked && !guard("viz")) { ev.target.checked = false; return; } S.arcs = ev.target.checked; paintGlobe(); });
   $("#labels").addEventListener("change", (ev) => { S.labels = ev.target.checked; paintGlobe(); });
   $("#rotate").addEventListener("change", (ev) => { if (globe) globe.controls().autoRotate = ev.target.checked; });
   $("#search").addEventListener("change", (ev) => {
@@ -1301,6 +1366,7 @@ function setupOffline() {
   if (localStorage.getItem("atlas-offline-saved") === (D.meta.generated_at || "1")) $("#save-offline").innerHTML = '✅<span class="lbl"> 保存済み</span>';
 }
 async function saveOffline() {
+  if (!guard("offline")) return;
   const reg = await navigator.serviceWorker?.ready;
   if (!reg?.active) return;
   const urls = D.catalog.indicators.map((i) => `data/series/${i.id}.json`);
@@ -1335,6 +1401,7 @@ async function main() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.get("i") && (IND(h.get("i")))) { S.ind = h.get("i"); S.cat = IND(S.ind).category === "sdg" ? S.cat : IND(S.ind).category; }
   if (h.get("c") && D.countries[h.get("c")]) S.country = h.get("c");
+  if (!canUseIndicator(S.ind, PAID)) { S.ind = "population"; S.cat = "people"; }
   if (["extrude", "bars", "flat"].includes(h.get("v"))) { S.viz = h.get("v"); $("#viz").value = S.viz; }
   if (+h.get("q") > 0) S.quizSeed = +h.get("q");
   bind();
@@ -1346,7 +1413,8 @@ async function main() {
   else $("#globe").innerHTML = `<div class="empty" style="color:#fff">3D地球儀ライブラリを読み込めませんでした(インターネット接続を確認してください)。ほかの画面は使えます。</div>`;
   await setupYears();
   $("#loading").hidden = true;
-  setMode(h.get("m") || "globe");
+  setMode(canUseMode(h.get("m") || "globe", PAID) ? h.get("m") || "globe" : "globe");
+  document.body.classList.toggle("paid", PAID);
   if (h.get("e") != null && D.timeline.events[+h.get("e")]) selectEvent(+h.get("e"));
   if (h.get("t")) { S.dexTab = h.get("t"); renderDex(); }
   if (h.get("g")) { S.guideTab = h.get("g"); if (S.mode === "guide") renderGuide(); }

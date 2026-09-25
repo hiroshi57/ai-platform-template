@@ -31,13 +31,14 @@
     <nav class="modes" id="modes" aria-label="見せ方">
       <button data-mode="globe" class="on">🌐 地球儀</button>
       <button data-mode="rank">🏆 ランキング</button>
-      <button data-mode="compare">⚖️ くらべる</button>
-      <button data-mode="classify">🧩 分類</button>
+      <button data-mode="compare">⚖️ くらべる<span class="lk-m"> 🔒</span></button>
+      <button data-mode="classify">🧩 分類<span class="lk-m"> 🔒</span></button>
       <button data-mode="timeline">📜 ビジュアル年表</button>
       <button data-mode="sdg">🎯 SDGs</button>
       <button data-mode="quiz">🧠 クイズ</button>
       <button data-mode="guide">📖 使い方・用語集</button>
       <button data-mode="sources">📚 出典</button>
+      <button data-mode="plans" class="plans-btn">💎 完全版</button>
     </nav>
     <div class="tools">
       <button id="share" class="cvd-btn" title="いま見ている画面(国・指標・モード)の URL をコピーします">🔗<span class="lbl"> 共有</span></button>
@@ -100,6 +101,7 @@
       <section class="view" id="view-quiz" hidden></section>
       <section class="view" id="view-print" hidden></section>
       <section class="view" id="view-guide" hidden></section>
+      <section class="view" id="view-plans" hidden></section>
     </main>
 
     <aside class="dex" id="dex" aria-label="図鑑ページ" aria-live="polite"></aside>
@@ -110,6 +112,7 @@
     数値は各機関の公表値・推計で、予測は過去10年の傾向を伸ばした参考値です。
   </footer>
 
+  <div class="upsell" id="upsell" hidden></div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script type="module" src="js/app.js"></script>
 </body>

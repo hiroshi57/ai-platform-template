@@ -485,3 +485,21 @@ html, body { overflow-x: hidden; }
 .chip.jp-cmp { background: #fff0f0; color: #c92a2a; font-weight: 700; }
 .vsjp { margin: 10px 0; border-color: #ffc9c9; background: #fff8f8; font-size: 13px; }
 .vsjp p { margin: 5px 0; line-height: 1.6; }
+
+/* 無料版・完全版 */
+body.paid .lk-m { display: none; }
+.ind.locked { color: #9aa1ad; }
+.lk { color: #9aa1ad; }
+.modes .plans-btn { background: linear-gradient(90deg, #f59f00, #e8590c); border-color: transparent; font-weight: 800; }
+body.paid .modes .plans-btn { display: none; }
+.locked-card { margin: 10px 0; background: repeating-linear-gradient(135deg, #fafbfd 0 10px, #f3f5f9 10px 20px); border-style: dashed; }
+.locked-card p { margin: 4px 0 8px; }
+.upsell { position: fixed; inset: 0; z-index: 300; background: rgba(11, 16, 32, .55); display: grid; place-items: center; padding: 16px; }
+.up-box { position: relative; background: #fff; border-radius: 16px; padding: 22px 24px; max-width: 520px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.35); max-height: 90vh; overflow: auto; }
+.up-x { position: absolute; right: 12px; top: 10px; border: 0; background: none; font-size: 18px; }
+.up-badge { display: inline-block; background: #fff4e6; color: #d9480f; font-weight: 800; font-size: 12px; border-radius: 999px; padding: 3px 10px; }
+.up-box h2 { margin: 8px 0 4px; }
+.up-list { font-size: 13px; line-height: 1.8; padding-left: 1.2em; margin: 10px 0; }
+.up-price { background: #fff9db; border-radius: 10px; padding: 8px 12px; font-size: 14px; margin: 8px 0; }
+.up-price.big { font-size: 16px; display: inline-block; }
+table.plans td:not(:first-child), table.plans th:not(:first-child) { text-align: center; width: 22%; }
