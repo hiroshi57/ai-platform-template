@@ -76,6 +76,9 @@ function hat(h, trim, cloth) {
     case "kanmuri": return `<rect x="36" y="18" width="28" height="12" rx="3" fill="#212529"/><rect x="45" y="10" width="10" height="10" rx="2" fill="#212529"/><path d="M60 22 Q78 10 84 2" stroke="#212529" stroke-width="3" fill="none"/>`;
     case "egypt": return `<rect x="26" y="28" width="48" height="5" rx="2" fill="${gold}"/><path d="M50 28 Q46 20 50 16 Q54 20 50 28 Z" fill="${gold}"/><circle cx="50" cy="30.5" r="2" fill="#1c7ed6"/>`;
     case "scarf": return `<path d="M22 56 Q18 22 50 20 Q82 22 78 56 Q78 70 72 80 L66 80 Q72 64 70 50 Q66 32 50 32 Q34 32 30 50 Q28 64 34 80 L28 80 Q22 70 22 56 Z" fill="${cloth}"/>`;
+    case "feather": return `<rect x="27" y="28" width="46" height="6" rx="3" fill="${trim}"/>${[-18, -9, 0, 9, 18].map((dx, i) => `<ellipse cx="${50 + dx}" cy="${16 - (2 - Math.abs(i - 2)) * 3}" rx="3.2" ry="11" fill="${["#2f9e44", "#1c7ed6", "#e03131", "#1c7ed6", "#2f9e44"][i]}" transform="rotate(${dx * 1.2} ${50 + dx} 28)"/>`).join("")}`;
+    case "fur": return `<path d="M24 38 Q22 14 50 12 Q78 14 76 38 Q64 30 50 30 Q36 30 24 38 Z" fill="#8a6a4a"/><path d="M24 38 Q36 28 50 28 Q64 28 76 38" stroke="#f1e3c8" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+    case "peci": return `<path d="M32 30 L34 16 Q50 12 66 16 L68 30 Q50 26 32 30 Z" fill="#212529"/>`;
     case "space": return `<circle cx="50" cy="50" r="33" fill="rgba(165,216,255,.25)" stroke="#dee2e6" stroke-width="4"/><path d="M26 30 Q34 22 44 20" stroke="#fff" stroke-width="3" fill="none" opacity=".8"/>`;
     default: return "";
   }

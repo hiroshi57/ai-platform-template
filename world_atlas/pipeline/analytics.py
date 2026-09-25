@@ -176,3 +176,118 @@ def summarize_series(series: dict, window: int = 10, ndigits: int = 6) -> dict:
         f = (c.get("f") or {}).get("value")
         out["c"][iso3] = [ly, r(lv), base[0], r(base[1]), r(f)]
     return out
+
+
+# ---------------------------------------------------------------- Phase 2: 表形式データの読み取り
+_XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+
+
+def _col_index(ref: str) -> int:
+    n = 0
+    for ch in ref:
+        if not ch.isalpha():
+            break
+        n = n * 26 + (ord(ch.upper()) - 64)
+    return n - 1
+
+
+def read_xlsx_sheet(data: bytes, sheet_name: str) -> list[list[str | None]]:
+    """xlsx(bytes)の指定シートを行の list にする(標準ライブラリのみ・値は文字列)。
+
+    workbook.xml のシート順で worksheets/sheetN.xml を対応づける(r:id が無い簡易ファイルにも対応)。
+    """
+    import io
+    import xml.etree.ElementTree as ET  # noqa: S405 (信頼できる公開統計の xlsx のみを読む)
+    import zipfile
+
+    z = zipfile.ZipFile(io.BytesIO(data))
+    wb = ET.fromstring(z.read("xl/workbook.xml"))  # noqa: S314
+    sheets = [s.get("name") for s in wb.iter(f"{_XLSX_NS}sheet")]
+    if sheet_name not in sheets:
+        raise KeyError(f"sheet not found: {sheet_name} (have {sheets})")
+    path = f"xl/worksheets/sheet{sheets.index(sheet_name) + 1}.xml"
+    strings: list[str] = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        sst = ET.fromstring(z.read("xl/sharedStrings.xml"))  # noqa: S314
+        strings = [
+            "".join(t.text or "" for t in si.iter(f"{_XLSX_NS}t")) for si in sst.findall(f"{_XLSX_NS}si")
+        ]
+    out: list[list[str | None]] = []
+    root = ET.fromstring(z.read(path))  # noqa: S314
+    for row in root.iter(f"{_XLSX_NS}row"):
+        vals: list[str | None] = []
+        for c in row.findall(f"{_XLSX_NS}c"):
+            idx = _col_index(c.get("r", "")) if c.get("r") else len(vals)
+            while len(vals) < idx:
+                vals.append(None)
+            v = c.find(f"{_XLSX_NS}v")
+            if v is None:
+                is_ = c.find(f"{_XLSX_NS}is")
+                val = "".join(t.text or "" for t in is_.iter(f"{_XLSX_NS}t")) if is_ is not None else None
+            elif c.get("t") == "s":
+                val = strings[int(v.text)]
+            else:
+                val = v.text
+            vals.append(val)
+        out.append(vals)
+    return out
+
+
+def parse_wide_rows(rows: list[list], iso_col: str, valid: set[str]) -> dict[str, list]:
+    """横持ち(列=年)の表を {ISO3: [[year, value], ...]} にする。
+
+    年の列名は "2001" や "BER.ind.2001" のように末尾が4桁の年であればよい。
+    """
+    header = [str(h or "") for h in rows[0]]
+    ic = header.index(iso_col)
+    year_cols = [
+        (i, int(h[-4:])) for i, h in enumerate(header) if len(h) >= 4 and h[-4:].isdigit() and i != ic
+    ]
+    out: dict[str, list] = {}
+    for r in rows[1:]:
+        if ic >= len(r) or r[ic] not in valid:
+            continue
+        pts = []
+        for i, y in year_cols:
+            v = _num(r[i]) if i < len(r) and r[i] not in ("NA", "N/A") else None
+            if v is not None:
+                pts.append([y, v])
+        if pts:
+            out[r[ic]] = sorted(pts)
+    return out
+
+
+def parse_long_rows(rows: Iterable[dict], iso_key: str, year_key: str, value_key: str,
+                    valid: set[str]) -> dict[str, list]:
+    """縦持ち(1行=国×年)の表を {ISO3: [[year, value], ...]} にする。"""
+    out: dict[str, list] = {}
+    for r in rows:
+        iso3 = r.get(iso_key)
+        v = _num(r.get(value_key))
+        if iso3 not in valid or v is None:
+            continue
+        out.setdefault(iso3, []).append([int(r[year_key]), v])
+    for k in out:
+        out[k].sort()
+    return out
+
+
+_INDEP_KEYWORDS = ("from", "declared", "independence", "established", "unification", "unified", "founded",
+                   "recognized", "proclaimed")
+_MONTHS = ("January|February|March|April|May|June|July|August|September|October|November|December")
+
+
+def parse_independence_year(text: str | None) -> int | None:
+    """CIA Factbook の Independence 欄から独立(建国)年を取り出す。
+
+    直後の括弧書きに独立を示す語(from / declared / established など)がある最初の日付だけを採用する。
+    憲法の制定日しか書かれていない国(日本など)は None。
+    """
+    if not text:
+        return None
+    for m in re.finditer(rf"\b\d{{1,2}} (?:{_MONTHS}) (\d{{3,4}})\b(?:\s*\(([^)]*)\))?", text):
+        note = (m.group(2) or "").lower()
+        if any(k in note for k in _INDEP_KEYWORDS):
+            return int(m.group(1))
+    return None

@@ -128,3 +128,87 @@ def test_summarize_series_keeps_latest_base_and_forecast():
     assert out["c"]["JPN"] == [2020, 5.0, 2012, 3.0, 7.123457]
     assert out["c"]["USA"] == [2020, 9.0, 2020, 9.0, None]
     assert "EMP" not in out["c"]
+
+
+# ---------------------------------------------------------------- Phase 2 データソース
+def _make_xlsx(rows):
+    """テスト用の最小 xlsx(sharedStrings + sheet2='data')を作る。"""
+    import io
+    import zipfile
+
+    strings: list[str] = []
+
+    def cell(v, ref):
+        if isinstance(v, str):
+            if v not in strings:
+                strings.append(v)
+            return f'<c r="{ref}" t="s"><v>{strings.index(v)}</v></c>'
+        return f'<c r="{ref}"><v>{v}</v></c>'
+
+    body = "".join(
+        f'<row r="{i + 1}">' + "".join(cell(v, f"{chr(65 + j)}{i + 1}") for j, v in enumerate(r)) + "</row>"
+        for i, r in enumerate(rows)
+    )
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    rel = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("xl/workbook.xml", f'<workbook {ns} {rel}><sheets><sheet name="README" sheetId="1" r:id="rId1"/>'
+                                      f'<sheet name="data" sheetId="2" r:id="rId2"/></sheets></workbook>')
+        z.writestr("xl/sharedStrings.xml", f"<sst {ns}>" + "".join(f"<si><t>{s}</t></si>" for s in strings) + "</sst>")
+        z.writestr("xl/worksheets/sheet1.xml", f"<worksheet {ns}><sheetData/></worksheet>")
+        z.writestr("xl/worksheets/sheet2.xml", f"<worksheet {ns}><sheetData>{body}</sheetData></worksheet>")
+    return buf.getvalue()
+
+
+def test_read_xlsx_sheet_by_name():
+    data = _make_xlsx([["iso", "EPI.new"], ["JPN", 61.5], ["AFG", "NA"]])
+    rows = A.read_xlsx_sheet(data, "data")
+    assert rows[0] == ["iso", "EPI.new"]
+    assert rows[1] == ["JPN", "61.5"]
+    assert rows[2] == ["AFG", "NA"]
+
+
+def test_read_xlsx_keeps_column_positions_with_gaps():
+    import io
+    import zipfile
+
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("xl/workbook.xml", f'<workbook {ns}><sheets><sheet name="data" sheetId="1"/></sheets></workbook>')
+        z.writestr("xl/worksheets/sheet1.xml",
+                   f'<worksheet {ns}><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="C1"><v>3</v></c></row>'
+                   f"</sheetData></worksheet>")
+    assert A.read_xlsx_sheet(buf.getvalue(), "data") == [["1", None, "3"]]
+
+
+def test_parse_wide_rows():
+    rows = [["ISO3", "Name", "2000", "2001", "2002"], ["JPN", "Japan", "1.5", "", "NA"], ["XXX", "x", "1", "2", "3"]]
+    out = A.parse_wide_rows(rows, iso_col="ISO3", valid={"JPN"})
+    assert out == {"JPN": [[2000, 1.5]]}
+
+
+def test_parse_wide_rows_with_prefixed_year_columns():
+    rows = [["code", "iso", "country", "BER.ind.1996", "BER.ind.1997"], ["4", "AFG", "Afghanistan", "NA", "51.6"]]
+    assert A.parse_wide_rows(rows, iso_col="iso", valid={"AFG"}) == {"AFG": [[1997, 51.6]]}
+
+
+def test_parse_long_rows():
+    rows = [
+        {"country_iso3_code": "JPN", "year": "2020", "eci_hs92": "2.1"},
+        {"country_iso3_code": "JPN", "year": "2019", "eci_hs92": "2.2"},
+        {"country_iso3_code": "JPN", "year": "2021", "eci_hs92": ""},
+        {"country_iso3_code": "ZZZ", "year": "2021", "eci_hs92": "1"},
+    ]
+    assert A.parse_long_rows(rows, "country_iso3_code", "year", "eci_hs92", {"JPN"}) == {"JPN": [[2019, 2.2], [2020, 2.1]]}
+
+
+def test_parse_independence_year():
+    assert A.parse_independence_year("15 August 1947 (from the UK)") == 1947
+    assert A.parse_independence_year("4 July 1776 (declared); 3 September 1783 (recognized by Great Britain)") == 1776
+    assert A.parse_independence_year("3 May 1947 (current constitution adopted as amendment); notable earlier dates: "
+                                     "11 February 660 B.C. (mythological date)") is None
+    assert A.parse_independence_year("none") is None
+    assert A.parse_independence_year("1 January 1804 (from France)") == 1804
+    assert A.parse_independence_year("") is None

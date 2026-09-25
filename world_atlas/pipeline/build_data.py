@@ -24,11 +24,13 @@ import argparse
 import csv
 import io
 import json
+import re
 import shutil
 import sys
 import time
 import urllib.parse
 import urllib.request
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,7 +40,8 @@ from .indicators import CATEGORIES, INDICATORS, SDG_GOALS, validate_catalog
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUT = HERE.parent / "site" / "data"
-UA = "WorldAtlasBuilder/0.1 (educational digital atlas; https://github.com/hiroshi57)"
+# 一部の大学サイト(ND-GAIN・EPI)は一般的なブラウザ形式でない UA を 403 で拒否するため、互換形式にする
+UA = "Mozilla/5.0 (compatible; WorldAtlasBuilder/0.1; educational digital atlas; +https://github.com/hiroshi57)"
 FORECAST_YEAR = 2030
 MIN_YEAR = 1960  # 近年指標(wb/undp/unhcr)の下限。歴史指標(owid)は制限しない
 
@@ -46,6 +49,11 @@ UNDP_CSV = "https://hdr.undp.org/sites/default/files/2025_HDR/HDR25_Composite_in
 FACTBOOK_API = "https://api.github.com/repos/factbook/factbook.json/contents/"
 FACTBOOK_RAW = "https://raw.githubusercontent.com/factbook/factbook.json/master/"
 WIKI_SUMMARY = "https://ja.wikipedia.org/api/rest_v1/page/summary/"
+HARVARD_DOI = "doi:10.7910/DVN/XTAQMC"  # Growth Projections and Complexity Rankings
+HARVARD_FILE = "growth_proj_eci_rankings.csv"
+EPI_DOWNLOADS = "https://epi.yale.edu/{year}/downloads"  # 版ごとに年が入る(隔年発行)
+EPI_RESULTS_RE = r"/sites/default/files/[^\"']*epi(\d{4})results[^\"']*\.xlsx"
+NDGAIN_DOWNLOADS = "https://gain.nd.edu/our-work/country-index/download-data/"
 NE_GEOJSON = ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
               "ne_110m_admin_0_countries.geojson")
 
@@ -249,7 +257,102 @@ def fetch_owid(code: str, valid: set[str]) -> dict[str, list]:
     return out
 
 
-FETCHERS = {"wb": fetch_wb, "unhcr": fetch_unhcr, "undp": fetch_undp, "owid": fetch_owid}
+_harvard_cache: list[dict] | None = None
+
+
+def fetch_harvard(column: str, valid: set[str]) -> dict[str, list]:
+    """ハーバード大 Growth Lab の ECI ランキング(Harvard Dataverse)から列を取り出す。"""
+    global _harvard_cache
+    if _harvard_cache is None:
+        files = http_json("https://dataverse.harvard.edu/api/datasets/:persistentId/versions/:latest/files"
+                          f"?persistentId={HARVARD_DOI}")["data"]
+        fid = next(f["dataFile"]["id"] for f in files if f["dataFile"].get("filename") == HARVARD_FILE)
+        raw = http_get(f"https://dataverse.harvard.edu/api/access/datafile/{fid}", timeout=120)
+        text = raw.decode("utf-8-sig")
+        _harvard_cache = list(csv.DictReader(io.StringIO(text)))
+    return A.parse_long_rows(_harvard_cache, "country_iso3_code", "year", column, valid)
+
+
+def _find_link(page_url: str, pattern: str) -> str:
+    html_text = http_get(page_url).decode("utf-8", "replace")
+    m = re.search(pattern, html_text)
+    if not m:
+        raise RuntimeError(f"download link not found on {page_url}: {pattern}")
+    return urllib.parse.urljoin(page_url, m.group(0))
+
+
+_epi_cache: tuple[int, list] | None = None
+
+
+def fetch_epi(column: str, valid: set[str]) -> dict[str, list]:
+    """イェール大 EPI の結果 xlsx(最新版)から列を取り出す。年は版の年(例 2026)。"""
+    global _epi_cache
+    if _epi_cache is None:
+        this_year = datetime.now(timezone.utc).year
+        url, last_err = None, None
+        for y in range(this_year, this_year - 4, -1):  # 最新版のページを新しい年から探す
+            try:
+                url = _find_link(EPI_DOWNLOADS.format(year=y), EPI_RESULTS_RE)
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+        if url is None:
+            raise RuntimeError(f"EPI results not found: {last_err}")
+        year = int(re.search(r"epi(\d{4})results", url).group(1))
+        _epi_cache = (year, A.read_xlsx_sheet(http_get(url, timeout=180), "data"))
+    year, rows = _epi_cache
+    header = rows[0]
+    ic, vc = header.index("iso"), header.index(column)
+    out = {}
+    for r in rows[1:]:
+        iso3 = r[ic] if ic < len(r) else None
+        v = A._num(r[vc]) if vc < len(r) and r[vc] not in ("NA", None) else None
+        if iso3 in valid and v is not None:
+            out[iso3] = [[year, v]]
+    return out
+
+
+_ndgain_zip: bytes | None = None
+
+
+def fetch_ndgain(name: str, valid: set[str]) -> dict[str, list]:
+    """ノートルダム大 ND-GAIN Country Index の zip から <name>/<name>.csv(横持ち)を読む。"""
+    global _ndgain_zip
+    if _ndgain_zip is None:
+        url = _find_link(NDGAIN_DOWNLOADS, r"/assets/\d+/ndgain_countryindex_\d+\.zip")
+        _ndgain_zip = http_get(url, timeout=180)
+    z = zipfile.ZipFile(io.BytesIO(_ndgain_zip))
+    member = next(n for n in z.namelist() if n.endswith(f"/{name}/{name}.csv") and "__MACOSX" not in n)
+    rows = list(csv.reader(io.TextIOWrapper(z.open(member), encoding="utf-8-sig")))
+    return A.parse_wide_rows(rows, iso_col="ISO3", valid=valid)
+
+
+FETCHERS = {"wb": fetch_wb, "unhcr": fetch_unhcr, "undp": fetch_undp, "owid": fetch_owid,
+            "harvard": fetch_harvard, "epi": fetch_epi, "ndgain": fetch_ndgain}
+
+
+def fetch_refugee_flows(valid: set[str], top: int = 80) -> dict:
+    """UNHCR: 最新年の「出身国 → 受入国」の難民の流れ上位(地球儀の弧に使う)。"""
+    this_year = datetime.now(timezone.utc).year
+    for year in range(this_year, this_year - 4, -1):
+        items: list[dict] = []
+        page, max_pages = 1, 1
+        while page <= max_pages:
+            q = urllib.parse.urlencode({"limit": 10000, "yearFrom": year, "yearTo": year,
+                                        "coo_all": "true", "coa_all": "true", "page": page})
+            d = http_json(f"https://api.unhcr.org/population/v1/population/?{q}", timeout=120)
+            items.extend(d.get("items", []))
+            max_pages = int(d.get("maxPages", 1))
+            page += 1
+        flows = []
+        for it in items:
+            o, a, n = it.get("coo_iso"), it.get("coa_iso"), A._num(it.get("refugees"))
+            if o in valid and a in valid and o != a and n and n > 0:
+                flows.append([o, a, int(n)])
+        if flows:
+            flows.sort(key=lambda f: -f[2])
+            return {"year": year, "flows": flows[:top], "total_pairs": len(flows)}
+    raise RuntimeError("UNHCR flows: no data in recent years")
 
 
 def build_series(ind: dict, raw: dict[str, list]) -> dict:
@@ -320,6 +423,9 @@ def fetch_factbook(iso2_to_iso3: dict[str, str]) -> dict[str, dict]:
             rec["highest_point"] = A.strip_html((elev.get("highest point") or {}).get("text"))
             rec["lowest_point"] = A.strip_html((elev.get("lowest point") or {}).get("text"))
             rec["source_file"] = p
+            iy = A.parse_independence_year(rec.get("independence"))
+            if iy:
+                rec["independence_year"] = iy
             out[iso3] = {k: v for k, v in rec.items() if v}
     return out
 
@@ -389,8 +495,9 @@ def write_latest(out: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=str(DEFAULT_OUT))
-    ap.add_argument("--only", default="", help="更新する指標ソース(カンマ区切り: wb,unhcr,undp,owid)")
-    ap.add_argument("--skip", default="", help="省略する付帯ソース(カンマ区切り: factbook,wiki,geo)")
+    ap.add_argument("--only", default="",
+                    help="更新する指標ソース(カンマ区切り: wb,unhcr,undp,owid,harvard,epi,ndgain)")
+    ap.add_argument("--skip", default="", help="省略する付帯ソース(カンマ区切り: factbook,wiki,geo,flows)")
     args = ap.parse_args(argv)
 
     errs = validate_catalog()
@@ -445,6 +552,17 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:  # noqa: BLE001
             status["geo"] = {"ok": False, "error": str(e)[:300], "at": now}
             log(f"geo FAILED: {e}")
+
+    if "flows" not in skip:
+        try:
+            fl = fetch_refugee_flows(valid)
+            write_json(out / "flows" / "refugees.json", fl)
+            status["flows"] = {"ok": True, "count": len(fl["flows"]), "years": [fl["year"], fl["year"]],
+                               "at": now}
+            log(f"flows: {len(fl['flows'])} ({fl['year']})")
+        except Exception as e:  # noqa: BLE001
+            status["flows"] = {"ok": False, "error": str(e)[:300], "at": now}
+            log(f"flows FAILED: {e}")
 
     # 指標
     coverage: dict[str, int] = {}

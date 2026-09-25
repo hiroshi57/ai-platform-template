@@ -10,6 +10,9 @@
                    code は "<slug>:<列名>"。列名が "*" のときは数値列の合計。
                    Maddison Project(フローニンゲン大)・V-Dem(ヨーテボリ大)・
                    UCDP(ウプサラ大)等の大学データを再配布している。
+- source="harvard": ハーバード大 Growth Lab「Growth Projections and Complexity Rankings」(Harvard Dataverse)
+- source="epi"    : イェール大 環境パフォーマンス指数(EPI)結果 xlsx(code は列名 例 "EPI.new")
+- source="ndgain" : ノートルダム大 ND-GAIN Country Index(code は指標名 例 "gain")
 
 better:
 - "high" … 大きいほど望ましい(例: 平均寿命)
@@ -87,6 +90,13 @@ INDICATORS = [
     _i("precip", "wb", "AG.LND.PRCP.MM", "geo", "年間降水量", "mm/年",
        "1年間に降る雨や雪の量の平均。砂漠の国は少なく、熱帯雨林の国は多い。", decimals=0),
 
+    _i("disaster_deaths", "owid",
+       "deaths-from-natural-disasters:death_count__age_group_allages__sex_both_sexes__cause_natural_disasters",
+       "geo", "自然災害による死者", "人/年",
+       "地震・洪水・干ばつ・暴風などの自然災害で亡くなった人の推計(WHO 調べ)。"
+       "年によって大きく変わるので推移も見てみよう。",
+       better="low", sdg=(11, 13), decimals=0, scale="log", forecast=False, org="WHO / Our World in Data"),
+
     # --- 人口 ---
     _i("population", "wb", "SP.POP.TOTL", "people", "人口", "人",
        "その国に住んでいる人の数。", decimals=0, scale="log"),
@@ -119,6 +129,20 @@ INDICATORS = [
        "使える淡水のうち、どれだけを実際に取り出して使っているか。高いほど水不足が深刻。",
        better="low", sdg=(6,), scale="log"),
 
+    _i("temp_anomaly", "owid", "annual-temperature-anomalies:temperature_anomaly", "climate",
+       "気温の平年差", "℃",
+       "その年の平均気温が、1991〜2020年の平均より何℃高いか(マイナスは低い)。地球温暖化の進み方がわかる。",
+       better="low", sdg=(13,), decimals=2, org="Copernicus(EU)/ Our World in Data"),
+    _i("epi", "epi", "EPI.new", "climate", "環境パフォーマンス指数(EPI)", "点",
+       "空気や水のきれいさ、生き物のすみか、気候変動対策など約50の指標から、国の環境への取り組みを0〜100点で評価したもの。",
+       better="high", sdg=(6, 11, 13, 14, 15), forecast=False, org="イェール大学・コロンビア大学 EPI"),
+    _i("nd_gain", "ndgain", "gain", "climate", "気候変動への備え(ND-GAIN)", "点",
+       "気候変動の影響の受けやすさと、それに備える力を合わせた指数(0〜100)。高いほど気候変動に強い。",
+       better="high", sdg=(13,), org="ノートルダム大学 ND-GAIN"),
+    _i("nd_vuln", "ndgain", "vulnerability", "climate", "気候変動への弱さ(ND-GAIN)", "",
+       "食料・水・健康・住まい・インフラ・生態系が、気候変動でどれだけ被害を受けやすいか(0〜1)。低いほど強い。",
+       better="low", sdg=(13,), decimals=3, org="ノートルダム大学 ND-GAIN"),
+
     # --- 生き物・自然(生物学) ---
     _i("thr_mammal", "wb", "EN.MAM.THRD.NO", "nature", "絶滅が心配される哺乳類", "種",
        "国際自然保護連合(IUCN)のレッドリストで絶滅危惧とされた哺乳類の種の数。",
@@ -135,6 +159,13 @@ INDICATORS = [
        better="high", sdg=(15,)),
     _i("protected_sea", "wb", "ER.MRN.PTMR.ZS", "nature", "海の保護区の割合", "%",
        "自国の海のうち保護区になっている割合。国際目標は2030年までに30%。", better="high", sdg=(14,)),
+
+    _i("epi_bdh", "epi", "BDH.new", "nature", "生物多様性と生息地(EPI)", "点",
+       "保護区の広さや質、生き物のすみかの守られ方などから、生物多様性を守る取り組みを0〜100点で評価したもの。",
+       better="high", sdg=(14, 15), forecast=False, org="イェール大学・コロンビア大学 EPI"),
+    _i("epi_eco", "epi", "ECO.new", "nature", "生態系の活力(EPI)", "点",
+       "森林・漁業・農業・水資源などの生態系が健全に保たれているかを0〜100点で評価したもの。",
+       better="high", sdg=(2, 14, 15), forecast=False, org="イェール大学・コロンビア大学 EPI"),
 
     # --- 経済・くらし ---
     _i("gdp_pc", "wb", "NY.GDP.PCAP.CD", "economy", "1人あたりGDP", "US$",
@@ -157,6 +188,13 @@ INDICATORS = [
        better="high", sdg=(9, 17)),
     _i("electricity", "wb", "EG.ELC.ACCS.ZS", "economy", "電気を使える人の割合", "%",
        "家で電気を使える人の割合。電気がないと夜の勉強や医療が難しくなる。", better="high", sdg=(7,)),
+
+    _i("eci", "harvard", "eci_hs92", "economy", "経済の複雑さ(ECI)", "",
+       "その国がどれだけ多くの種類の、つくるのが難しい製品を輸出しているか。知識や技術の蓄積の目安(0が世界平均)。",
+       better="high", sdg=(8, 9), decimals=2, org="ハーバード大学 Growth Lab"),
+    _i("growth_proj", "harvard", "growth_proj", "economy", "今後10年の成長見通し", "%/年",
+       "経済の複雑さと今の豊かさから、ハーバード大学が予測した今後10年間の年平均の経済成長率。",
+       sdg=(8,), decimals=2, forecast=False, org="ハーバード大学 Growth Lab"),
 
     # --- 健康・医療 ---
     _i("life_exp", "wb", "SP.DYN.LE00.IN", "health", "平均寿命", "歳",
@@ -280,7 +318,7 @@ def validate_catalog() -> list[str]:
         for n in ind["sdg"]:
             if n not in goal_ns:
                 errors.append(f"{ind['id']}: unknown SDG goal {n}")
-        if ind["source"] not in ("wb", "unhcr", "undp", "owid"):
+        if ind["source"] not in ("wb", "unhcr", "undp", "owid", "harvard", "epi", "ndgain"):
             errors.append(f"{ind['id']}: unknown source {ind['source']}")
         if ind["source"] == "owid" and ":" not in ind["code"]:
             errors.append(f"{ind['id']}: owid code must be '<slug>:<column>'")

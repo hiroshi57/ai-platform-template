@@ -50,7 +50,12 @@
               <button id="play" title="年を進めて再生">▶</button>
               <input type="range" id="year" min="0" max="0" value="0" aria-label="年">
               <span id="year-label">最新</span>
-              <label class="chk"><input type="checkbox" id="height" checked> 高さで表示</label>
+              <select id="viz" aria-label="3Dの表し方" title="3Dの表し方">
+                <option value="extrude">🧱 国を立体に</option>
+                <option value="bars">📊 3D棒グラフ</option>
+                <option value="flat">🗺️ 平らな地図</option>
+              </select>
+              <label class="chk" title="UNHCR の難民の流れ(出身国→受入国)を弧で表示"><input type="checkbox" id="arcs"> 難民の流れ</label>
               <label class="chk"><input type="checkbox" id="labels" checked> 国名</label>
               <label class="chk"><input type="checkbox" id="rotate" checked> 自動回転</label>
             </div>
@@ -81,7 +86,7 @@
   </div>
 
   <footer class="foot">
-    データ: 国連開発計画(UNDP)・国連難民高等弁務官事務所(UNHCR)・世界銀行・CIA World Factbook・Our World in Data(オックスフォード大)・Maddison Project(フローニンゲン大)・V-Dem(ヨーテボリ大)・UCDP(ウプサラ大)・Wikipedia 日本語版(CC BY-SA)・Natural Earth。
+    データ: 国連開発計画(UNDP)・国連難民高等弁務官事務所(UNHCR)・世界銀行・CIA World Factbook・Our World in Data(オックスフォード大)・Maddison Project(フローニンゲン大)・V-Dem(ヨーテボリ大)・UCDP(ウプサラ大)・Growth Lab(ハーバード大)・EPI(イェール大)・ND-GAIN(ノートルダム大)・Wikipedia 日本語版(CC BY-SA)・Natural Earth。
     数値は各機関の公表値・推計で、予測は過去10年の傾向を伸ばした参考値です。
   </footer>
 

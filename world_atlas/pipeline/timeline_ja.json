@@ -38,7 +38,8 @@
   "biology": "生物・医学",
   "environment": "環境・災害",
   "economy": "経済・産業",
-  "culture": "文化・宗教"
+  "culture": "文化・宗教",
+  "independence": "独立・建国(自動)"
  },
  "events": [
   {
@@ -89,6 +90,34 @@
     "PAK",
     "IND"
    ]
+  },
+  {
+   "y": -1754,
+   "approx": true,
+   "t": "ハンムラビ法典",
+   "d": "メソポタミアのバビロン王ハンムラビが、282条の法律を石碑にきざんだ。『目には目を、歯には歯を』で知られる、現存する古い法典の一つ。",
+   "cat": "politics",
+   "c": [
+    "IRQ"
+   ],
+   "p": [
+    {
+     "name": "ハンムラビ王",
+     "role": "古バビロニアの王",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "long",
+      "hairColor": "#1b1b1b",
+      "beard": "long",
+      "beardColor": "#1b1b1b",
+      "hat": "cap",
+      "cloth": "#8a5a3a",
+      "trim": "#f59f00",
+      "item": "📜"
+     }
+    }
+   ],
+   "y2": null
   },
   {
    "y": -1600,
@@ -525,6 +554,36 @@
    ]
   },
   {
+   "y": 1324,
+   "t": "マンサ・ムーサのメッカ巡礼",
+   "d": "西アフリカのマリ帝国の王マンサ・ムーサが、大量の金を持ってメッカへ巡礼した。途中のカイロで金を配り、金の値段が下がったと伝えられる。マリ帝国の都トンブクトゥは学問の中心として栄えた。",
+   "cat": "economy",
+   "c": [
+    "MLI",
+    "EGY",
+    "SAU"
+   ],
+   "p": [
+    {
+     "name": "マンサ・ムーサ",
+     "role": "マリ帝国の王",
+     "look": {
+      "skin": "#6b4226",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "goatee",
+      "beardColor": "#1b1b1b",
+      "hat": "crown",
+      "cloth": "#f59f00",
+      "trim": "#2f9e44",
+      "item": "🪙"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
    "y": 1347,
    "y2": 1351,
    "approx": false,
@@ -538,6 +597,36 @@
     "DEU",
     "ESP"
    ]
+  },
+  {
+   "y": 1438,
+   "approx": true,
+   "t": "インカ帝国の拡大",
+   "d": "南アメリカのアンデス山脈で、皇帝パチャクテクのもとインカ帝国が大きく広がった。都クスコや山の上の都市マチュ・ピチュが築かれ、長い道路網で国を結んだ。",
+   "cat": "politics",
+   "c": [
+    "PER",
+    "BOL",
+    "ECU",
+    "CHL"
+   ],
+   "p": [
+    {
+     "name": "パチャクテク",
+     "role": "インカ帝国の皇帝",
+     "look": {
+      "skin": "#8d5a3b",
+      "hair": "bob",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "feather",
+      "cloth": "#c92a2a",
+      "trim": "#f59f00",
+      "item": "🏔️"
+     }
+    }
+   ],
+   "y2": null
   },
   {
    "y": 1450,
@@ -680,6 +769,34 @@
    ]
   },
   {
+   "y": 1521,
+   "t": "アステカ帝国の滅亡",
+   "d": "スペインのコルテスらが、メキシコのアステカ帝国の都テノチティトランを攻め落とした。最後の皇帝クアウテモックは降伏した。持ちこまれた天然痘の流行も、先住民に大きな被害をあたえた。",
+   "cat": "war",
+   "c": [
+    "MEX",
+    "ESP"
+   ],
+   "p": [
+    {
+     "name": "クアウテモック",
+     "role": "アステカ最後の皇帝",
+     "look": {
+      "skin": "#8d5a3b",
+      "hair": "long",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "feather",
+      "cloth": "#0c8599",
+      "trim": "#f59f00",
+      "item": "🛡️"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
    "y": 1522,
    "y2": null,
    "approx": false,
@@ -736,6 +853,36 @@
      }
     }
    ]
+  },
+  {
+   "y": 1556,
+   "t": "アクバルがムガル帝国の皇帝に",
+   "d": "インドのムガル帝国でアクバルが皇帝になった。宗教のちがう人びとが共にくらせるよう、寛容な政治を行ったことで知られる。",
+   "cat": "politics",
+   "c": [
+    "IND",
+    "PAK",
+    "BGD"
+   ],
+   "p": [
+    {
+     "name": "アクバル",
+     "role": "ムガル帝国の皇帝",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "turban",
+      "cloth": "#2b8a3e",
+      "trim": "#f59f00",
+      "item": "🕌"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
   },
   {
    "y": 1575,
@@ -876,6 +1023,35 @@
    ]
   },
   {
+   "y": 1770,
+   "t": "クックがオーストラリア東海岸に到達",
+   "d": "イギリスのクックがオーストラリア東海岸を探検し、のちにイギリスの植民地となった。その大陸には、先住民アボリジナルの人びとが5万年以上前から暮らしていた。",
+   "cat": "politics",
+   "c": [
+    "AUS",
+    "GBR",
+    "NZL"
+   ],
+   "p": [
+    {
+     "name": "クック",
+     "role": "イギリスの探検家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "wig",
+      "hairColor": "#dee2e6",
+      "beard": "none",
+      "hat": "tricorn",
+      "cloth": "#1864ab",
+      "trim": "#f8f9fa",
+      "item": "🧭"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
    "y": 1776,
    "y2": null,
    "approx": false,
@@ -967,6 +1143,22 @@
    "c": [
     "HTI",
     "FRA"
+   ],
+   "p": [
+    {
+     "name": "トゥーサン・ルーヴェルチュール",
+     "role": "ハイチ革命の指導者",
+     "look": {
+      "skin": "#6b4226",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "bicorne",
+      "cloth": "#1864ab",
+      "trim": "#f59f00",
+      "item": "⛓️"
+     }
+    }
    ]
   },
   {
@@ -987,6 +1179,38 @@
       "hairColor": "#3b2a1a",
       "beard": "none",
       "hat": "bicorne",
+      "cloth": "#1864ab",
+      "trim": "#f59f00",
+      "item": "⚔️"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
+   "y": 1819,
+   "t": "ボリバルと南アメリカの独立",
+   "d": "シモン・ボリバルらの戦いで、南アメリカの国々がスペインから独立していった。1819年には大コロンビア(今のコロンビア・ベネズエラ・エクアドル・パナマなど)がつくられた。",
+   "cat": "politics",
+   "c": [
+    "VEN",
+    "COL",
+    "ECU",
+    "PAN",
+    "PER",
+    "BOL"
+   ],
+   "p": [
+    {
+     "name": "シモン・ボリバル",
+     "role": "南アメリカ独立運動の指導者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "none",
       "cloth": "#1864ab",
       "trim": "#f59f00",
       "item": "⚔️"
@@ -1281,6 +1505,34 @@
    "approx": false
   },
   {
+   "y": 1893,
+   "t": "世界で初めての女性参政権(国全体)",
+   "d": "ニュージーランドで、国全体の選挙で女性が投票できるようになった。世界で最初の例。ケイト・シェパードらの署名運動が大きな力になった。",
+   "cat": "politics",
+   "c": [
+    "NZL"
+   ],
+   "p": [
+    {
+     "name": "ケイト・シェパード",
+     "role": "女性参政権運動の指導者",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "bun",
+      "hairColor": "#6b4a2a",
+      "female": true,
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#f8f9fa",
+      "trim": "#862e9c",
+      "item": "🗳️"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
    "y": 1895,
    "y2": null,
    "approx": false,
@@ -1307,6 +1559,35 @@
      }
     }
    ]
+  },
+  {
+   "y": 1896,
+   "t": "ホセ・リサールとフィリピン革命",
+   "d": "スペインの支配を批判する小説を書いたホセ・リサールが処刑され、フィリピン革命が大きく広がった。リサールはフィリピンの国民的英雄とされている。",
+   "cat": "politics",
+   "c": [
+    "PHL",
+    "ESP"
+   ],
+   "p": [
+    {
+     "name": "ホセ・リサール",
+     "role": "作家・医師",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "parted",
+      "hairColor": "#1b1b1b",
+      "beard": "mustache",
+      "beardColor": "#1b1b1b",
+      "hat": "none",
+      "cloth": "#212529",
+      "trim": "#f8f9fa",
+      "item": "📕"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
   },
   {
    "y": 1898,
@@ -1393,6 +1674,33 @@
      }
     }
    ]
+  },
+  {
+   "y": 1911,
+   "t": "アムンセンが南極点に到達",
+   "d": "ノルウェーのアムンセンの隊が、人類で初めて南極点に到達した。スコットの隊との到達競争としても知られる。",
+   "cat": "science",
+   "c": [
+    "NOR"
+   ],
+   "p": [
+    {
+     "name": "アムンセン",
+     "role": "極地探検家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#adb5bd",
+      "beard": "none",
+      "hat": "fur",
+      "cloth": "#495057",
+      "trim": "#f8f9fa",
+      "item": "🐕"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
   },
   {
    "y": 1914,
@@ -1623,6 +1931,51 @@
    ]
   },
   {
+   "y": 1945,
+   "t": "ベトナムとインドネシアの独立宣言",
+   "d": "第二次世界大戦が終わると、インドネシアではスカルノが(8月17日)、ベトナムではホー・チ・ミンが(9月2日)独立を宣言した。その後も、もとの支配国との戦いが続いた。",
+   "cat": "politics",
+   "c": [
+    "IDN",
+    "VNM",
+    "NLD",
+    "FRA"
+   ],
+   "p": [
+    {
+     "name": "スカルノ",
+     "role": "インドネシア初代大統領",
+     "look": {
+      "skin": "#8d5a3b",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "peci",
+      "cloth": "#f8f9fa",
+      "trim": "#c92a2a",
+      "item": "🇮🇩"
+     }
+    },
+    {
+     "name": "ホー・チ・ミン",
+     "role": "ベトナムの独立運動の指導者",
+     "look": {
+      "skin": "#d9a77a",
+      "hair": "short",
+      "hairColor": "#dee2e6",
+      "beard": "goatee",
+      "beardColor": "#dee2e6",
+      "hat": "none",
+      "cloth": "#8a6a4a",
+      "trim": "#5a4a3a",
+      "item": "⭐"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
    "y": 1947,
    "y2": null,
    "approx": false,
@@ -1743,6 +2096,49 @@
    ]
   },
   {
+   "y": 1953,
+   "t": "エベレスト初登頂",
+   "d": "ニュージーランドのヒラリーと、ネパールのシェルパ、テンジン・ノルゲイが、世界でいちばん高いエベレスト(8,849m)の頂上に初めて立った。",
+   "cat": "science",
+   "c": [
+    "NPL",
+    "NZL",
+    "CHN"
+   ],
+   "p": [
+    {
+     "name": "テンジン・ノルゲイ",
+     "role": "ネパールのシェルパ(登山家)",
+     "look": {
+      "skin": "#8d5a3b",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "fur",
+      "cloth": "#e8590c",
+      "trim": "#f8f9fa",
+      "item": "🏔️"
+     }
+    },
+    {
+     "name": "エドモンド・ヒラリー",
+     "role": "ニュージーランドの登山家",
+     "look": {
+      "skin": "#f1c9a5",
+      "hair": "short",
+      "hairColor": "#8a6a4a",
+      "beard": "none",
+      "hat": "fur",
+      "cloth": "#1c7ed6",
+      "trim": "#f8f9fa",
+      "item": "🧗"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
+  },
+  {
    "y": 1955,
    "y2": 1975,
    "approx": false,
@@ -1764,6 +2160,34 @@
    "c": [
     "RUS"
    ]
+  },
+  {
+   "y": 1957,
+   "t": "ガーナの独立",
+   "d": "ンクルマの指導で、ガーナがイギリスから独立した。サハラ砂漠より南のアフリカで、植民地から独立した最初期の国となり、多くの国の独立を勇気づけた。",
+   "cat": "politics",
+   "c": [
+    "GHA",
+    "GBR"
+   ],
+   "p": [
+    {
+     "name": "ンクルマ",
+     "role": "ガーナ初代首相・大統領",
+     "look": {
+      "skin": "#6b4226",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "beard": "none",
+      "hat": "none",
+      "cloth": "#f59f00",
+      "trim": "#2f9e44",
+      "item": "⭐"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
   },
   {
    "y": 1960,
@@ -2068,6 +2492,35 @@
     "DEU",
     "CHN"
    ]
+  },
+  {
+   "y": 2004,
+   "t": "ワンガリ・マータイがノーベル平和賞",
+   "d": "ケニアで木を植える『グリーンベルト運動』を広げたワンガリ・マータイが、アフリカの女性として初めてノーベル平和賞を受賞した。日本語の『もったいない』を世界に紹介した。",
+   "cat": "environment",
+   "c": [
+    "KEN",
+    "JPN"
+   ],
+   "p": [
+    {
+     "name": "ワンガリ・マータイ",
+     "role": "環境活動家",
+     "look": {
+      "skin": "#6b4226",
+      "hair": "short",
+      "hairColor": "#1b1b1b",
+      "female": true,
+      "beard": "none",
+      "hat": "scarf",
+      "cloth": "#2f9e44",
+      "trim": "#f59f00",
+      "item": "🌳"
+     }
+    }
+   ],
+   "y2": null,
+   "approx": false
   },
   {
    "y": 2008,
