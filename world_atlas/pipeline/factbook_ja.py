@@ -42,6 +42,39 @@ def source_hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()  # noqa: S324 (改訂検知用。安全性は不要)
 
 
+def unmatched_numbers(ja_text: str, en_text: str) -> list[str]:
+    """日本語要約に出てくる3桁以上の数(年・人数など)のうち、英語の原文に無いものを返す。
+
+    AI が年や数字を取り違えていないかを確認する目安(原文そのものの誤りは検出できない)。
+    """
+    import re
+
+    def nums(t: str) -> set[str]:
+        return {n.replace(",", "") for n in re.findall(r"\d{1,3}(?:,\d{3})+|\d{3,}", t)}
+
+    src = nums(en_text)
+    # 「150万人」「2億」のような量(英語の million などを言いかえたもの)と、
+    # 「300年間」「約1000年」のような100の倍数(three centuries など)は対象外にする
+    ja_nums = {
+        m.group(0).replace(",", "")
+        for m in re.finditer(r"\d{1,3}(?:,\d{3})+|\d{3,}", ja_text)
+        if ja_text[m.end():m.end() + 1] not in ("万", "億", "千")
+    }
+    return sorted(n for n in ja_nums if n not in src and int(n) % 100 != 0)
+
+
+def english_words(ja_text: str) -> list[str]:
+    """日本語要約に混じった英語の一般語(小文字で始まる3文字以上)。略語や固有名詞は大文字なので対象外。"""
+    import re
+
+    return re.findall(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])", ja_text)
+
+
+def pending_numbers(t: dict, en_text: str) -> list[str]:
+    """数字チェックの結果から、人(または運用担当)が原文で確認済みの数字を除いたもの。"""
+    return [n for n in unmatched_numbers(t["background_ja"], en_text) if n not in t.get("numbers_ok", [])]
+
+
 def merge_translations(countries: dict, ja: dict) -> dict:
     """countries.json の各国に factbook_ja を付ける。原文が変わっていれば stale=True。"""
     for iso3, c in countries.items():
@@ -57,6 +90,7 @@ def merge_translations(countries: dict, ja: dict) -> dict:
             "reviewed": bool(t.get("reviewed")),
             "reviewer": t.get("reviewer"),
             "stale": t.get("source_sha1") != source_hash(en),
+            "check_numbers": pending_numbers(t, en),
         }
     return countries
 
@@ -91,6 +125,12 @@ def status_rows(ja: dict, countries: dict) -> list[tuple[str, str]]:
             st = f"確認済み({t.get('reviewer')})"
         else:
             st = "AI 下書き(確認前)"
+            bad = pending_numbers(t, en)
+            if bad:
+                st += f" ⚠ 原文に無い数字: {', '.join(bad)}"
+            words = english_words(t["background_ja"])
+            if words:
+                st += f" ⚠ 英単語の混入: {', '.join(words[:5])}"
         rows.append((iso3, st))
     return rows
 
@@ -118,16 +158,29 @@ def draft_with_claude(name: str, text: str) -> str:
     if not key or not model:
         raise RuntimeError(f"ANTHROPIC_API_KEY と ANTHROPIC_MODEL を環境変数か {ENV_FILE} に設定してください")
     body = json.dumps({
-        "model": model, "max_tokens": 1200,
+        "model": model, "max_tokens": 4000,
         "messages": [{"role": "user", "content": PROMPT.format(name=name, text=text)}],
     }).encode("utf-8")
     req = urllib.request.Request(  # noqa: S310 (固定の https URL)
         "https://api.anthropic.com/v1/messages", data=body,
         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=120) as r:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=180) as r:  # noqa: S310
         d = json.loads(r.read().decode("utf-8"))
-    return "".join(b.get("text", "") for b in d.get("content", [])).strip()
+    text = normalize_ja("".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text"))
+    # 上限で打ち切られた・空の応答は下書きとして使わない(途中で切れた文を載せない)
+    if d.get("stop_reason") == "max_tokens" or len(text) < 100:
+        raise RuntimeError(f"不完全な応答(stop_reason={d.get('stop_reason')}, {len(text)}字)")
+    return text
+
+
+def normalize_ja(text: str) -> str:
+    """AI の出力の表記ゆれを整える(Markdown の強調や空行を取り除く)。"""
+    import re
+
+    t = text.replace("**", "").strip()
+    t = re.sub(r"\n{2,}", "\n", t)
+    return t
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--draft", nargs="*", metavar="ISO3")
     ap.add_argument("--draft-missing", type=int, metavar="N")
     args = ap.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):  # Windows のコンソールでも日本語を表示できるように
+        sys.stdout.reconfigure(encoding="utf-8")
     load_env_file()
 
     countries = json.loads(COUNTRIES_PATH.read_text(encoding="utf-8"))["countries"]

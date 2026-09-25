@@ -518,7 +518,8 @@ async function dexHistory(iso3) {
 function jaBadge(t) {
   if (t.stale) return `<span class="jab stale">⚠️ 英語の原文が改訂されたため、要約の再確認が必要です</span>`;
   if (t.reviewed) return `<span class="jab ok">✅ 確認済み(${esc(t.reviewer || "")})</span>`;
-  return `<span class="jab draft">🤖 AI による要約の下書き(先生などの確認前)</span>`;
+  const warn = t.check_numbers?.length ? ` <span class="jab stale" title="要約に出てくる数字のうち、英語の原文に見つからないもの">⚠ 原文に無い数字: ${t.check_numbers.map(esc).join(", ")}</span>` : "";
+  return `<span class="jab draft">🤖 AI による要約の下書き(先生などの確認前)</span>${warn}`;
 }
 function historyJaHTML(c) {
   const t = c.factbook_ja;

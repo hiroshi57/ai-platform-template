@@ -333,3 +333,30 @@ def test_update_report_markdown_lists_failures_and_changes():
                                   names={"x": "指標X"}, generated_at="2026-09-25T00:00:00+00:00")
     assert "取得に失敗したソース" in md and "wb:X" in md and "timeout" in md
     assert "指標X" in md
+
+
+def test_factbook_ja_number_check_flags_numbers_missing_from_source():
+    from world_atlas.pipeline import factbook_ja as F
+
+    en = "Silla allied with China to create the first unified Korean state in 688. Choson dates from 2300 B.C."
+    assert F.unmatched_numbers("新羅は688年に統一。古朝鮮は紀元前2300年頃。", en) == []
+    assert F.unmatched_numbers("新羅は668年に統一した。", en) == ["668"]
+    # 1,000 のような桁区切りや「2度」「3つ」のような小さい数は対象外
+    assert F.unmatched_numbers("約1,000人。3つの国。", "about 1,000 people") == []
+    # 英語の言葉を数字に言いかえたもの(1.5 million→150万、three centuries→300年間)は対象外
+    assert F.unmatched_numbers("約150万人が300年間くらした。", "about 1.5 million people for three centuries") == []
+    # 原文に無い年は検出する
+    assert F.unmatched_numbers("1910年に独立した。", "independence in 1907") == ["1910"]
+
+
+def test_factbook_ja_normalize_removes_markdown_and_blank_lines():
+    from world_atlas.pipeline import factbook_ja as F
+
+    assert F.normalize_ja("**古代**の王国。\n\n近代の独立。\n") == "古代の王国。\n近代の独立。"
+
+
+def test_factbook_ja_english_word_check():
+    from world_atlas.pipeline import factbook_ja as F
+
+    assert F.english_words("抗議activityが起きた。") == ["activity"]
+    assert F.english_words("NATO や EU に加盟した。") == []
