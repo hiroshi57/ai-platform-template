@@ -69,3 +69,24 @@ grep -rEn '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY--
 - 検出しても**自動削除しない**（`memory-curation.md` ルール3）。人間に通知し、人間の指示で伏せ字化する。
 - 伏せ字化した場合は、何を伏せたかをコミットメッセージに残す（`memory-curation.md` 例外規定）。
 - 再発防止は `.claude/rules/secret-isolation.md` ルール6（保存前マスク）で行う。
+
+## 提案7: 判定器（Reviewer / LLM-as-judge）の健全性チェック（arXiv:2608.21766）
+
+> **起源**: 提案 `harness-proposals/2026-09-24-eval-awareness-judge-rubric.md`
+> **承認**: 2026-09-24 人間承認済み
+
+実証結果: 採点スケール・同点時の扱い・アンカーの置き方が違う2つの LLM 判定器は、
+同じ出力に対して Cohen's κ ≤ 0.09 しか一致しなかった。端点しか定義しない判定器は、
+「ペルソナを守る」といった無関係な推論に最高点近くを付けた。
+
+### チェック項目（retro のたびに実施。`/harness-release` 前の必須 retro を含む）
+
+4. **判定器の一致度**: 直近の `review.json` から最低10件をサンプルし、人間（または別系統の判定器）が
+   同じ rubric で再採点する。Cohen's κ < 0.4 なら rubric を見直す（`.claude/rules/judge-rubric.md`）。
+   閾値 0.4 は暫定値。最初の 2〜3 回の retro の実測値で見直す。
+5. **rubric_version の記録漏れ**: `review.json` に `rubric_version` が無いレコードは、集計（再発率・APPROVE 率）から除外する。
+   rubric が異なるレコードの判定を同じ母集団として比較しない。
+
+### 判断（追記）
+
+- 4 が閾値を下回ったら、判定器モデルを強化する前に、まず rubric のアンカー定義とツールセット（提案4）を見直す。
