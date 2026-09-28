@@ -174,6 +174,41 @@ export AI_PLATFORM_PRICING_FILE=./pricing.json
 
 ---
 
+## 型付き判断レイヤ(Choice / Score / Noul)
+
+「JEV ENGINEERING」(2026-09 working note)の設計を、ベンダ非依存で実装したもの(`core/decision.py`)。
+モデルには文章ではなく **確率付きの型付きの答え** を返させ、実行可否はコードが決める。
+
+- 提示していない選択肢は受理しない(`DecisionContractError`)→ ハルシネーションした操作は実行されない
+- 結果の重さ別の閾値 `CONSEQUENCE_GATES`(label 0.70 / handoff 0.80 / action 0.90 / irreversible=常に人間)
+- trace に分布全体・上位2件の差・`schema_version`・state ハッシュを残す(state 本体は既定で残さない)
+- バックエンド: `MockDecisionBackend`(APIキー不要・**未較正**)/ `LLMDecisionBackend.from_router(router)`
+
+業務アプリ(`decisions/`、いずれも **提案を返すだけで実行・入稿・送信はしない**):
+
+| モジュール | 用途 | 形 |
+|---|---|---|
+| `skill_router` | スキル提案(Hermes / Claude Code の `SKILL.md` を読み込み可) | 全件を安くランク → 上位3件だけ詳細を読み独立 Noul。全部却下あり |
+| `ad_ops` | 検索語句の除外候補 / 広告文チェック | 除外語・指名語・CV実績・データ不足はコードで先に振り分け、残りだけ意図 Choice + 関連 Noul。文字数(全角=2)はコード |
+| `insight_scoring` | タスクマッチング / 優先度の示唆 | 観点ごとの Score を1回で評価し、重みはコードで合成。確信不足は `review` へ |
+
+```python
+from core import LLMRouter, RoutingStrategy, build_providers
+from core.decision import LLMDecisionBackend
+from decisions.ad_ops import AdvertiserContext, SearchTerm, triage_search_terms
+
+# 実キー(.env)が必要。mock プロバイダの応答は JSON ではないため DecisionContractError になる
+backend = LLMDecisionBackend.from_router(LLMRouter(providers=build_providers()), RoutingStrategy.COST)
+ctx = AdvertiserContext(offering="法人向け勤怠管理SaaS", brand_terms=["自社名"])
+for d in triage_search_terms(backend, [SearchTerm("勤怠 アルバイト 募集", 200, 20, 3000, 0)], ctx):
+    print(d.action, d.term, d.wasted_cost, d.reason)
+```
+
+> 閾値の既定値は working note の開始値であり、実データで検証していない。バックエンドを替えたら
+> 確率の出方が変わるため、実タスクのラベル付き例で閾値を測り直すこと。
+
+---
+
 ## 既知の制約
 
 コスト統制を謳う以上、精度の限界を明示する。

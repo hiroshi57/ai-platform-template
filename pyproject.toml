@@ -17,7 +17,7 @@ test = ["pytest>=8.0,<9.0", "httpx>=0.27,<1.0"]
 providers = ["anthropic>=0.30", "openai>=1.30", "google-generativeai>=0.7"]
 
 [tool.setuptools]
-packages = ["core", "service", "app_template"]
+packages = ["core", "service", "app_template", "decisions"]
 
 [tool.pytest.ini_options]
 # rootdir を sys.path に入れる。各テストファイル冒頭の
