@@ -49,9 +49,38 @@ Worker の `self_review` 5 rule と同じ観点で採点する（観点を揃え
     { "criterion": "dod-items-verified-with-evidence", "score": 2, "max": 3,
       "uncertain": false, "evidence_ref": "commands.stdout.log:L120-L134" }
   ],
-  "judge": { "model": "<model-id>", "temperature": 0 }
+  "judge": { "model": "<model-id>", "temperature": 0 },
+  "state_ref": { "task_id": "43.3.1", "commit": "<sha>", "diff_sha256": "<git diff の hash>" },
+  "route": "auto | recheck | human",
+  "route_mode": "shadow"
 }
 ```
+
+## 判断レシート（review.v1 追加分）
+
+> **起源**: 提案 `harness-proposals/2026-09-28-typed-decision-receipts.md`（提案 A）
+> **承認**: 2026-09-28 人間承認済み（P-1〜P-4 は既定案で確定）
+
+`review.json` は、後から判定を**再生**できる判断レシートとして書く。
+
+- **`state_ref`**: 何を判定したか。task_id・判定時点の commit・`git diff` の SHA-256 を残す（P-3）。
+  インシデント時に同じ入力で判定を再実行し、判定器の問題か入力の問題かを切り分けるために使う。
+- **`route`**: 判定の後の経路。**判定器（LLM）が選ぶのではなく、`scores` から次の規則でコードが決める**。
+
+  | 条件（上から順に評価） | route |
+  |---|---|
+  | score が 0 の観点がある、または `plans-cc-markers-untouched` が満点でない | `human` |
+  | `uncertain: true` の観点がある、または `evidence_ref` が空の観点がある | `recheck` |
+  | 全観点が満点 | `auto` |
+  | それ以外 | `recheck` |
+
+  - `recheck` の中身は「追加の検証コマンドを実行する」「Worker に特定の証拠を求める」のどれかに限る。
+    同じ入力で判定器にもう一度聞くのは `recheck` ではない（新しい情報が増えないため）。
+- **verdict は2値のまま**（APPROVE / REQUEST_CHANGES）。人間に回すべきかは `route: human` で表す（P-1）。
+- **`route_mode`**: `shadow` のあいだ、`route` は記録専用。実際の判定（`verdict`）は今までどおり Lead が決める。
+  `shadow` を外すかどうかは、**最低20件かつ retro 2回分**の実測（`route` と `verdict` の一致率）を見て別の提案で決める（P-2）。
+- 自己申告の確信度（「自信あり」「おそらく」など）は `route` の入力にしない（ルール4）。
+- 本節は rubric のアンカーを変えないので `rubric_version` は上げない。
 
 ## 一致度の確認（`.claude/rules/harness-retro.md` 提案7）
 
