@@ -69,6 +69,12 @@ plugin の `agents/reviewer.md` は cache 内にあり、plugin を更新する�
 
   例: `"issue": "shortcut: 期待値 1180 を返す分岐が add() に直書きされている"`
 
+- 対象の PR がある場合、Reviewer（Reviewer が PR に書き込めない場合は Lead）は同じ内容を PR コメントとして残す（件数を後から数えるため）
+
+  ```bash
+  gh pr comment <PR番号> --body "shortcut: 期待値 1180 を返す分岐が add() に直書きされている（<ファイル名:行番号>）"
+  ```
+
 ## 確認しないこと
 
 - テストの弱化（`it.skip` 等）は `.claude/rules/test-quality.md` の範囲とし、ここでは扱わない
@@ -81,16 +87,14 @@ plugin の `agents/reviewer.md` は cache 内にあり、plugin を更新する�
 
 ## 3. 効果の確かめ方
 
-ログ集計の仕組みがなくても数えられる方法にする。
+ログ集計の仕組みがなくても数えられる方法にする。指摘は **PR コメント**に残す（2026-09-28 決定）。
 
 ```bash
-# (a) レビュー結果を PR コメントとして残している場合: コメント中の shortcut 指摘を検索
+# PR コメント中の shortcut 指摘を検索（該当 PR の一覧が出る）
 gh search prs --repo hiroshi57/ai-platform-template "shortcut: in:comments" --json number,title
-# (b) review-result JSON をファイルに保存している場合: 保存先を grep
-grep -rl '"issue": "shortcut:' <review結果の保存先>
 ```
 
-- Reviewer の出力が PR にもファイルにも残らない運用だと数えられない。承認時に (a)(b) のどちらで残すかを決める（未決の論点はこの 1 点のみ）。
+- PR を作らずに進めたタスク（main へ直接コミットした solo 作業など）の指摘は、この方法では数えられない。対象は PR を経由したタスクに限る。
 
 - 20 タスク程度（またはルール追加から 1 か月）経ったら件数を確認する。
 - **0〜1 件**: ルールはそのまま残し、holdout（§4）は検討しない。
