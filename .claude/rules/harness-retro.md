@@ -90,3 +90,13 @@ grep -rEn '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY--
 ### 判断（追記）
 
 - 4 が閾値を下回ったら、判定器モデルを強化する前に、まず rubric のアンカー定義とツールセット（提案4）を見直す。
+
+## 提案8: retro には SKILL.state 方式（履歴を捨てる実行）を適用しない（arXiv:2608.26263）
+
+> **起源**: 提案 `harness-proposals/2026-09-28-skill-state-runtime.md`（提案 D）
+> **承認**: 2026-09-28 人間承認済み
+
+- retro は「履歴そのものが目的」のタスクなので、`.claude/rules/skill-state.md` の「状態だけを渡し、履歴を捨てる」
+  方式の対象外とする（同ルール7）。retro には、これまでどおり `harness-logs/` の生ログを逐語で読ませる。
+- Worker の実行プロンプトから推論を外しても、`harness-logs/` への生ログ保存は止めない（同ルール6）。
+  retro の材料が減るためである。

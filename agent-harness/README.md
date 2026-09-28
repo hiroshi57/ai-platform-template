@@ -26,6 +26,20 @@ node agent-harness/src/harness.mjs
 実行すると `state/current.json`（層4）と `runs/traces.jsonl`（層6）、
 `artifacts/export.csv`（成果物）が生成される。
 
+### 状態パッチ（SKILL.state 方式, arXiv:2608.26263）
+
+状態の更新はすべて `src/state-patch.mjs` の `applyPatch` 経由で行う。
+- パッチに書かれていないキーは残る
+- 削除は `null` の明示だけ
+- 型違反や未知のキーを含むパッチは、状態を変えずに差し戻す（rollback）
+
+再試行で同じ修復を繰り返さないよう、試した仮説は `state.tested_hypotheses` に残してコンテキストへ渡す。
+運用ルールは `.claude/rules/skill-state.md`。
+
+```bash
+node --test agent-harness/test/*.test.mjs
+```
+
 ## 案件を自動で「分類 → 6層処理」する（実業務・実ツール・ドライラン）
 
 複雑な案件を **層0の分類器** が type / risk / split に仕分け、種類に応じた6層処理へ
@@ -91,9 +105,11 @@ agent-harness/
 │   ├── gateway.mjs           # 層3 ツール・ゲートウェイ
 │   ├── verify.mjs            # 層5 証拠ゲート
 │   ├── state.mjs             # 層4 永続状態 ＋ 層6 トレース
+│   ├── state-patch.mjs       # 層4 状態パッチの検証・マージ・rollback
 │   └── harness.mjs           # ループ本体
 ├── state/current.json        # 実行で生成
 ├── runs/traces.jsonl         # 実行で生成
 ├── artifacts/export.csv      # 成果物（実行で生成）
+├── test/state-patch.test.mjs  # node --test
 └── lessons/harness-updates.md
 ```
