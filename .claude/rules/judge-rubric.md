@@ -53,7 +53,7 @@ Worker の `self_review` 5 rule と同じ観点で採点する（観点を揃え
 }
 ```
 
-## 一致度の確認（`.claude/rules/harness-retro.md` 提案6）
+## 一致度の確認（`.claude/rules/harness-retro.md` 提案7）
 
 - **retro のたびに**（`/harness-release` 前の必須 retro を含む）、最低10件を人間が同じ rubric で再採点し、Cohen's κ を記録する。
   判定器のモデル・rubric を変えた直後の retro では必ず実施する。
