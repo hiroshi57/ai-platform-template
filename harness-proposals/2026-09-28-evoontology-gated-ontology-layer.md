@@ -4,7 +4,9 @@
 - **slug**: `evoontology-gated-ontology-layer`
 - **起案**: Claude Code (Worker)
 - **ステータス**: **B・C 承認済み（2026-09-28）／D は未承認（保留）**
-  - B → [`docs/di-mcp-ontology/SPEC.md`](../docs/di-mcp-ontology/SPEC.md)（DI-MCP 運用担当への引き渡し用仕様）と [`terms.v1.json`](../docs/di-mcp-ontology/terms.v1.json)（初期定義ストア 10 指標、Mapping はすべて `unverified`）。DI-MCP への実装は運用担当が行う
+  - B → 非公開リポジトリ [hiroshi57/di-kpi-ontology](https://github.com/hiroshi57/di-kpi-ontology)（private）の `SPEC.md`（DI-MCP 運用担当への引き渡し用仕様）と `terms.v1.json`（初期定義ストア 10 指標、store_version `2026-09-28.1`、Mapping はすべて `unverified`）。DI-MCP への実装は運用担当が行う
+    - 当初は本 repo の `docs/di-mcp-ontology/` に置いたが、DI-MCP とダッシュボードの両方から参照するため専用リポジトリへ移した [更新: 2026-09-28]
+    - §7 P-1（定義ストアの置き場所）は、DI-MCP 実装までの暫定として上記リポジトリとする
   - C → `ad-performance-dashboard` のブランチ `feature/kpi-definitions`（commit `3713c4b`、未 push）。CPA の式 2 か所を定義ストア経由に一本化し、変更前後で値が一致（48 ケース・差分 0）、`npm run build` 成功
   - D → `.claude/rules/harness-retro.md` には反映していない
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-28]
