@@ -5,7 +5,9 @@
 - **起案**: Claude Code (Worker)
 - **ステータス**: **承認済み（2026-09-28）** — 提案 A〜E すべて承認。未解決論点 P-1〜P-4 は §5 の既定案で確定。
   - 反映済み（Claude）: A・B・C・E → [`.claude/rules/secret-isolation.md`](../.claude/rules/secret-isolation.md)（新設）、E → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案6
-  - 人間が反映: D（各案件 `.claude/settings.json` の deny）、グローバル CLAUDE.md / AGENTS.md「禁止事項」への追記
+  - 反映済み（人間の明示指示により Claude が実施・2026-09-28）: D → ai-platform-template `.claude/settings.json`（新設）、yosikei-agents `.claude/settings.json`（deny 追記・未コミット）
+  - 人間が反映: グローバル CLAUDE.md / AGENTS.md「禁止事項」への追記
+  - 旧記載: 人間が反映: D（各案件 `.claude/settings.json` の deny）[更新: 2026-09-28]
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-28]
 - **根拠論文**: *Inadvertent Context Leakage in Language Models*
   - Fairoze, Mangaokar, Chaudhuri, Garg, Mahloujifar（Meta FAIR / UC Berkeley / Google DeepMind）— arXiv:2608.19857v1 [cs.LG], 2026-08-20
@@ -131,6 +133,7 @@ CLAUDE.md §7 と memory-curation ルール4は `harness-logs/` の**逐語保�
   ```
 - **理由**: rules（提案 A）はエージェントの遵守に依存する。deny は**ツール層で機械的に止まる**ため、ルールを知らないエージェントや弱いモデルにも効く。
 - **retro ルールとの整合**: `.claude/rules/harness-retro.md` 提案4「モデル強度より先にツールセットを見直す」と同じ考え方（ツールセットで挙動を形作る）。
+- **Bash パターンの補足（反映時）**: Claude Code の Bash ルールは `**` ではなく `*` ワイルドカードで照合するため、反映時は `Bash(cat *secrets.yaml*)`・`Bash(cat *.env*)` とした。[更新: 2026-09-28]
 - **既知の限界**: Bash の deny はパターン回避（`head`、`python -c` 等）が可能で完全ではない。**第一防御は提案 A の運用、D は事故防止の安全網**と位置づける。対象パスは案件ごとに人間が確定する（§5 P-1）。
 
 ### 提案 E: 記憶・生ログへの秘密混入チェックを retro に追加（advisory）
