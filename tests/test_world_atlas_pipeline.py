@@ -468,3 +468,16 @@ def test_split_paid_is_idempotent(tmp_path):
     assert json.loads((pub / "latest.json").read_text(encoding="utf-8")) == {"a": 1}
     assert json.loads((paid / "latest_paid.json").read_text(encoding="utf-8")) == {"b": 2}
     assert json.loads((paid / "factbook_ja.json").read_text(encoding="utf-8")) == {"JPN": {"x": 1}}
+
+
+def test_legal_drafts_are_not_deployed_until_filled():
+    """【要記入】が残る法務ページは、Vercel に上げない(.vercelignore)。埋めたら除外を外す。"""
+    site = _site()
+    ignore = (site / ".vercelignore").read_text(encoding="utf-8").split()
+    pages = sorted((site / "legal").glob("*.html"))
+    assert pages, "legal pages missing"
+    has_todo = any("要記入" in p.read_text(encoding="utf-8") for p in pages)
+    if has_todo:
+        assert "legal/" in ignore, "未記入の法務ページが公開される設定になっています"
+    for p in pages:
+        assert '<meta name="robots" content="noindex">' in p.read_text(encoding="utf-8") or not has_todo

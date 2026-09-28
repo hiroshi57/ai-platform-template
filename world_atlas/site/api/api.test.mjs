@@ -105,19 +105,23 @@ test("POST /api/redeem rejects forged and refunded codes", async () => {
     "checkout/sessions/": [200, PAID], "payment_intents/pi_1": [200, { latest_charge: "ch_1" }], "charges/ch_1": [200, { refunded: true }] }) });
   assert.equal(refunded.statusCode, 402);
 
+  const sessionAsCode = mockRes();
+  await redeem(req("POST", "/api/redeem", { body: { code: sessionToken({ v: 1, sid: "cs_test_abc123", iat: 1 }, env) } }), sessionAsCode, { env, fetchImpl: mockFetch({}) });
+  assert.equal(sessionAsCode.statusCode, 400);
+
   const forged = mockRes();
   await redeem(req("POST", "/api/redeem", { body: { code: "SK1.abc.def" } }), forged, { env, fetchImpl: mockFetch({}) });
   assert.equal(forged.statusCode, 400);
 });
 
 test("GET /api/license and /api/data require a valid cookie", async () => {
-  const code = signLicense({ v: 1, sid: "cs_test_abc123", iat: 1 }, env);
+  const code = sessionToken({ v: 1, sid: "cs_test_abc123", iat: 1 }, env); // 端末のクッキーは期限つき
   const cookie = `foo=1; atlas_lic=${encodeURIComponent(code)}`;
   assert.equal(readCookie({ headers: { cookie } }), code);
 
-  const l1 = mockRes(); license(req("GET", "/api/license"), l1, { env });
+  const l1 = mockRes(); await license(req("GET", "/api/license"), l1, { env });
   assert.equal(l1.json().paid, false);
-  const l2 = mockRes(); license(req("GET", "/api/license", { headers: { cookie } }), l2, { env });
+  const l2 = mockRes(); await license(req("GET", "/api/license", { headers: { cookie } }), l2, { env });
   assert.equal(l2.json().paid, true);
 
   const root = mkdtempSync(path.join(tmpdir(), "paid-"));
@@ -135,4 +139,50 @@ test("GET /api/license and /api/data require a valid cookie", async () => {
     await data(req("GET", `/api/data?f=${encodeURIComponent(f)}`, { headers: { cookie } }), r, { env, root });
     assert.equal(r.statusCode, 400, f);
   }
+});
+
+// ---------------------------------------------------------------- 返金への対応(クッキーは7日ごとに Stripe で確かめ直す)
+import { sessionToken, licenseFromRequest, REFRESH_SECONDS } from "./_lib.js";
+
+const NOW = 1790000000;
+const cookieOf = (tok) => ({ headers: { cookie: `atlas_lic=${encodeURIComponent(tok)}` } });
+const stripeOK = (refunded = false) => mockFetch({
+  "checkout/sessions/": [200, PAID], "payment_intents/pi_1": [200, { latest_charge: "ch_1" }], "charges/ch_1": [200, { refunded }] });
+
+test("session cookie expires and data is refused after expiry", () => {
+  const tok = sessionToken({ v: 1, sid: "cs_test_abc123", iat: 1 }, env, NOW);
+  assert.ok(licenseFromRequest(cookieOf(tok), env, NOW + 10));
+  assert.equal(licenseFromRequest(cookieOf(tok), env, NOW + REFRESH_SECONDS + 1), null);
+  // 期限のない「ライセンスコード」そのものはクッキーとしては使えない
+  const code = signLicense({ v: 1, sid: "cs_test_abc123", iat: 1 }, env);
+  assert.equal(licenseFromRequest(cookieOf(code), env, NOW), null);
+});
+
+test("GET /api/license refreshes an expired cookie after checking Stripe", async () => {
+  const old = sessionToken({ v: 1, sid: "cs_test_abc123", iat: 1 }, env, NOW - REFRESH_SECONDS - 5);
+  const ok = mockRes();
+  await license(req("GET", "/api/license", cookieOf(old)), ok, { env, fetchImpl: stripeOK(false), now: NOW });
+  assert.equal(ok.json().paid, true);
+  assert.match(ok.headers["set-cookie"], /^atlas_lic=/);
+
+  const refunded = mockRes();
+  await license(req("GET", "/api/license", cookieOf(old)), refunded, { env, fetchImpl: stripeOK(true), now: NOW });
+  assert.equal(refunded.json().paid, false);
+  assert.match(refunded.headers["set-cookie"], /Max-Age=0/); // クッキーを消す
+
+  // まだ期限内なら Stripe を呼ばない
+  const fresh = sessionToken({ v: 1, sid: "cs_test_abc123", iat: 1 }, env, NOW);
+  const f = stripeOK(false);
+  const r = mockRes();
+  await license(req("GET", "/api/license", cookieOf(fresh)), r, { env, fetchImpl: f, now: NOW + 60 });
+  assert.equal(r.json().paid, true);
+  assert.equal(f.calls.length, 0);
+});
+
+test("claim sets an expiring session cookie, not the permanent code", async () => {
+  const res = mockRes();
+  await claim(req("GET", "/api/claim?session_id=cs_test_abc123"), res, { env, fetchImpl: mockFetch({ "checkout/sessions/cs_test_abc123": [200, PAID] }), now: NOW });
+  const cookieVal = decodeURIComponent(/atlas_lic=([^;]+)/.exec(res.headers["set-cookie"])[1]);
+  assert.notEqual(cookieVal, res.json().code);
+  assert.ok(licenseFromRequest(cookieOf(cookieVal), env, NOW + 60));
 });

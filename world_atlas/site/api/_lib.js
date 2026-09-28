@@ -49,13 +49,44 @@ export function readCookie(req, name = COOKIE) {
   return null;
 }
 
-export function licenseCookie(code) {
-  return `${COOKIE}=${encodeURIComponent(code)}; Path=/; Max-Age=${TEN_YEARS}; HttpOnly; Secure; SameSite=Lax`;
+// 端末のクッキーは「期限つきのセッション」。7日ごとに Stripe で支払い(返金されていないか)を確かめ直す。
+// ユーザーに見せる「ライセンスコード」は期限なし(別の端末で入力するため)。
+export const REFRESH_SECONDS = 60 * 60 * 24 * 7;
+const nowSec = () => Math.floor(Date.now() / 1000);
+
+/** クッキー用の期限つきトークン */
+export function sessionToken(lic, env, now = nowSec()) {
+  return signLicense({ v: 1, sid: lic.sid, iat: lic.iat, live: lic.live === true, exp: now + REFRESH_SECONDS }, env);
 }
 
-/** リクエストのライセンス(クッキー)を確かめる。有効なら中身、なければ null */
-export function licenseFromRequest(req, env) {
-  return verifyLicense(readCookie(req), env);
+export function licenseCookie(token) {
+  // クッキー自体は長く残し、中の exp で確かめ直しの時期を決める
+  return `${COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${TEN_YEARS}; HttpOnly; Secure; SameSite=Lax`;
+}
+export const clearCookie = () => `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+
+/** 署名が正しいクッキーの中身(期限切れも含む)。確かめ直しに使う */
+export function cookiePayload(req, env) {
+  const p = verifyLicense(readCookie(req), env);
+  return p && typeof p.exp === "number" ? p : null;
+}
+
+/** 有効なライセンス(署名が正しく、期限内)。データの配信はこれで判断する */
+export function licenseFromRequest(req, env, now = nowSec()) {
+  const p = cookiePayload(req, env);
+  return p && p.exp > now ? p : null;
+}
+
+/** Stripe で、支払い済みで返金されていない購入か確かめる */
+export async function checkPurchase(sid, { env, fetchImpl = fetch }) {
+  const s = await stripe(`checkout/sessions/${sid}`, { env, fetchImpl });
+  if (!isPaidSession(s)) return { ok: false, reason: "この購入は有効ではありません", session: s };
+  const pi = s.payment_intent ? await stripe(`payment_intents/${s.payment_intent}`, { env, fetchImpl }) : null;
+  if (pi?.latest_charge) {
+    const ch = await stripe(`charges/${pi.latest_charge}`, { env, fetchImpl });
+    if (ch.refunded) return { ok: false, reason: "この購入は返金済みです", session: s };
+  }
+  return { ok: true, session: s };
 }
 
 /** Stripe API を呼ぶ(form 形式)。fetchImpl はテストで差しかえる */

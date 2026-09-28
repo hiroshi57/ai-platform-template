@@ -1,2 +1,4 @@
 js/*.test.mjs
 api/*.test.mjs
+# 法務ページは【要記入】を埋めて確認するまで公開しない(tests で確認)
+legal/
