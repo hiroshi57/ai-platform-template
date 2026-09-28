@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(**/config/secrets.yaml)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/*credentials*.json)",
+      "Bash(cat *secrets.yaml*)",
+      "Bash(cat *.env*)"
+    ]
+  }
+}

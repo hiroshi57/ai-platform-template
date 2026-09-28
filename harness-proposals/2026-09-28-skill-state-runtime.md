@@ -7,7 +7,7 @@
   - 反映済み（Claude）:
     - B・C → `agent-harness/src/state-patch.mjs`（新設）、`state.mjs` / `context.mjs` / `harness.mjs`、`agent-harness/test/state-patch.test.mjs`（新設）
     - B・C・D → [`.claude/rules/skill-state.md`](../.claude/rules/skill-state.md)（新設）
-    - D → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案8
+    - D → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9
   - 未反映: A（ヨシケイ orchestrator。別リポジトリ `yosikei-agents` のため本 repo からは書き込まない）、E（第三者データの取り込み）
 - **根拠論文**: *SKILL.state: Scalable Long-Horizon Agent Skills*
   - Badhe, Tiwari, Chung（Google LLC / Purdue University）— arXiv:2608.26263v3 [cs.AI], 2026-09-02
@@ -157,7 +157,7 @@ retro の材料が減る方向へ誤って運用される恐れがある。
 ### 提案 D: 適用範囲を明文化する（✅ 反映済み）
 
 - 捨てるのは「次のプロンプトに入れる推論」だけ。`harness-logs/` への生ログ保存は続ける（`skill-state.md` ルール6）。
-- retro・監査・原因追跡・スキーマを決められない探索的なタスクには適用しない（同ルール7、`harness-retro.md` 提案8）。
+- retro・監査・原因追跡・スキーマを決められない探索的なタスクには適用しない（同ルール7、`harness-retro.md` 提案9）。
 - 状態には秘密を書かない。状態は毎ステップ必ずコンテキストに入るため（同ルール5、`secret-isolation.md` と整合）。
 - 観測の取りこぼしが疑われる失敗が出たら、履歴方式に戻すのではなく、スキーマに項目を足す（同ルール8）。
 
