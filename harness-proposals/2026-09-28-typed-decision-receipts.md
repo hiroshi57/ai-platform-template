@@ -6,6 +6,7 @@
 - **ステータス**: **2026-09-28 人間承認済み** — 提案 A〜D すべて承認。§5 の論点 P-1〜P-4 は既定案で確定。
   - 反映済み（Claude）: A → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md)「判断レシート」、B → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案8、C・D → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md)（新設）
   - 人間が反映: diff 4（グローバル CLAUDE.md §7）
+  - [更新: 2026-09-28] diff 4 をグローバル CLAUDE.md §7 に反映済み（ユーザー指示により Claude が反映）。`2026-09-24-eval-awareness-judge-rubric.md` diff 3 と同時に反映し、`review.json` の行は両方の追記を1行に統合
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-28]
 - **根拠資料**: *Jev Engineering for Production Agents — A Practical Handbook on Typed Semantic Decisions*（2026-09, Independent study edition）
   - 入手元: ユーザー共有の Google Drive PDF（https://drive.google.com/file/d/1V8jNU28GRveLAXByn5bkNRhffC54DkiX/view）、全12ページ
