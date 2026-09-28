@@ -1,0 +1,2 @@
+# CSV はフィクスチャ比較に使うため、OS を問わず LF で展開する（core.autocrlf=true 環境で CRLF になり fixture_match が落ちるのを防ぐ）
+*.csv text eol=lf
