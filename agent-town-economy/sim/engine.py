@@ -41,7 +41,9 @@ class Simulation:
         n_agents: int = 100,
         memory_enabled: bool = True,
         places: Optional[List[Place]] = None,
+        memory_factory=None,
     ) -> None:
+        self.memory_factory = memory_factory
         self.condition = condition
         self.policy = policy
         self.seed = seed
@@ -64,11 +66,12 @@ class Simulation:
         priced = self.world.priced_places()
         for aid in range(self.n_agents):
             spot = self.rng.choice(priced) if priced else None
+            mem = self.memory_factory() if self.memory_factory is not None else Memory(enabled=memory_enabled)
             agent = Agent(
                 agent_id=aid,
                 x=spot.x if spot else 0.0,
                 y=spot.y if spot else 0.0,
-                memory=Memory(enabled=memory_enabled),
+                memory=mem,
             )
             self.agents.append(agent)
         # Assign every priced place an owner; the nominal owner gets the price/

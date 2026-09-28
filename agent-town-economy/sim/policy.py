@@ -100,6 +100,71 @@ def _parse_tool_name(text: str) -> Optional[str]:
     return None
 
 
+class WikiPolicy:
+    """Pulls economic levers only when the agent's memory can *reach* them.
+
+    The situation (high demand / business selling / just got paid) is mapped to
+    concepts; the memory is asked which action concepts are reachable. A wiki
+    memory traverses "sold_out -> raise_wage" etc. and the owner raises the wage;
+    a flat memory returns nothing and the agent falls back to the same
+    transmission-failing behaviour as the plain heuristic. Memory representation
+    is therefore the single variable between the two arms.
+    """
+
+    def __init__(self, rng: random.Random, act_prob: float = 0.35,
+                 spend_prob: float = 0.5, high_demand_rate: float = 3.0,
+                 base_mpc: float = 0.035) -> None:
+        self.rng = rng
+        self.act_prob = act_prob
+        self.spend_prob = spend_prob
+        self.high_demand_rate = high_demand_rate
+        self.base_mpc = base_mpc
+        self._last_wallet: Dict[int, int] = {}
+
+    def _situation(self, agent: Agent, sim) -> set:
+        s = set()
+        if sim.condition.rate_at(sim.pulse) >= self.high_demand_rate:
+            s.add("high_demand")
+        if agent.owns_business is not None:
+            place = sim.world.places.get(agent.owns_business)
+            if place is not None and place.n_transactions > 0:
+                s.add("sold_out")
+        w = sim.ledger.balance(money.agent_wallet(agent.agent_id))
+        if w > self._last_wallet.get(agent.agent_id, w):
+            s.add("received_wage")
+        self._last_wallet[agent.agent_id] = w
+        return s
+
+    def choose(self, agent: Agent, sim=None) -> Action:
+        if sim is None:
+            return ("observe_place", {})
+        situation = self._situation(agent, sim)
+        mem = getattr(agent, "memory", None)
+        actions = set()
+        if mem is not None and hasattr(mem, "observe"):
+            mem.observe(sim.pulse, list(situation), text="+".join(sorted(situation)))
+            if hasattr(mem, "retrieve_actions"):
+                actions = mem.retrieve_actions(list(situation))
+        owner = agent.owns_business is not None
+        if owner and "raise_wage" in actions and self.rng.random() < self.act_prob:
+            return ("set_wage", {})
+        if owner and "raise_price" in actions and self.rng.random() < self.act_prob:
+            return ("set_price", {})
+        if "buy_food" in actions and self.rng.random() < self.spend_prob:
+            return ("buy_food", {})
+        # Fallback == plain heuristic behaviour (low baseline MPC, social calls).
+        if self.rng.random() < self.base_mpc:
+            return ("buy_food", {})
+        roll = self.rng.random()
+        if roll < 0.45:
+            return ("start_shift", {})
+        if roll < 0.78:
+            return ("invite_to_talk", {})
+        if roll < 0.9:
+            return ("write_memory", {"text": "note"})
+        return ("observe_place", {})
+
+
 class LLMPolicy:
     """Adapter around an external model. `backend(prompt) -> raw_text`."""
 

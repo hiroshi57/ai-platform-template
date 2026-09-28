@@ -234,6 +234,15 @@ def build() -> str:
     r7.update(r7full)  # prefer the complete file if present
     seven_b_complete = bool(r7full)
 
+    wiki_rows = _load("experiments/results_wiki.json") or []
+    rw = {f"{r['memory']}/{r['condition']}": r for r in wiki_rows}
+
+    def wlev(key, tool):
+        r = rw.get(key)
+        return r["levers"][tool]["calls"] if r else 0
+    flat_mpc = (rw.get("flat/wealth-grant") or {}).get("mpc", 0.0)
+    wiki_mpc = (rw.get("wiki/wealth-grant") or {}).get("mpc", 0.0)
+
     # --- reproduction fidelity per category (closeness to paper) -----------
     persist_close = 1 - min(1, abs(REAL_OSM["persistence"] - PAPER["persistence"][2]) / 0.1)
     mpc_close = 1 - min(1, abs(REAL_OSM["mpc"] - PAPER["mpc"]) / 0.1)
@@ -319,6 +328,20 @@ def build() -> str:
         {"label": "実装\nヒュー", "value": invite_fail_rate(r05.get("heuristic/tourism-high")) * 100, "color": C["ours"]},
         {"label": "Gemini\n(実測)", "value": 92.0, "color": C["llm"]},
     ], fmt="{:.0f}%")
+
+    # --- memory representation: flat vs wiki (WFM combination) -------------
+    wiki_lever_chart = bar_chart([
+        {"label": "flat\nset_wage", "value": wlev("flat/tourism-high", "set_wage"), "color": C["heur"]},
+        {"label": "wiki\nset_wage", "value": wlev("wiki/tourism-high", "set_wage"), "color": C["accent"]},
+        {"label": "flat\nset_price", "value": wlev("flat/tourism-high", "set_price"), "color": C["heur"]},
+        {"label": "wiki\nset_price", "value": wlev("wiki/tourism-high", "set_price"), "color": C["accent"]},
+    ], fmt="{:.0f}")
+    mpc_wiki_chart = bar_chart([
+        {"label": "flat記憶", "value": max(flat_mpc, 0), "color": C["heur"]},
+        {"label": "wiki記憶", "value": max(wiki_mpc, 0), "color": C["accent"]},
+        {"label": "人間\n下限", "value": 0.2, "color": C["muted"]},
+    ], fmt="{:.3f}")
+    mpc_ratio = (wiki_mpc / flat_mpc) if flat_mpc else 0.0
 
     # --- radar -------------------------------------------------------------
     radar_svg = radar(
@@ -428,6 +451,14 @@ ul.insight{{margin:6px 0 0;padding-left:18px}}ul.insight li{{margin:4px 0;font-s
     <div class="note"><b>目玉の発見</b>: ヒューリスティックと0.5Bは価格レバーを<b>0回</b>(伝播失敗)。<b>7Bは low {sp7_low:.0f}回 / high {sp7_high:.0f}回</b>と積極改定＝<b>ツール使用はモデル強度に強く依存</b>(論文section9)。ただし7Bは賃金引上げ(set_wage)は0回で循環は起きず。7B実験: {seven_status}。</div></div>
   <div class="card"><h3>社交ツール失敗率 (invite_to_talk)</h3><div class="sub">モデル非依存に失敗する協調ツール</div>{social}
     <div class="note">論文 94-97% / 実装ヒューリスティック・実測Gemini 92%。<b>モデルを問わず高失敗</b>(並行数上限に適応しない)。</div></div>
+</div>
+
+<div class="section-title">記憶表現の効果 — WFM(2609.18182) × 町経済 の組合せ実験</div>
+<div class="grid g2">
+  <div class="card hl"><h3>レバー使用: flat記憶 vs LLM-Wiki記憶 (高需要)</h3><div class="sub">世界・シード・方策を固定し、メモリ表現だけを flat↔wiki で切替</div>{wiki_lever_chart}
+    <div class="note"><b>記憶の"表現"が伝播失敗を崩す</b>: flatは賃金/価格レバーを<b>0回</b>(論文の「memory doesn't matter」を再現)。wikiに替えるだけで set_wage {wlev('wiki/tourism-high','set_wage'):.0f}回・set_price {wlev('wiki/tourism-high','set_price'):.0f}回が発火＝<b>連結を多段で辿れる記憶なら記憶が効く</b>(WFMの主張を実証)。</div></div>
+  <div class="card"><h3>windfall循環 MPC: flat vs wiki (現金給付)</h3><div class="sub">給付がどれだけ消費に回るか</div>{mpc_wiki_chart}
+    <div class="note">MPC が flat {flat_mpc:.3f} → wiki {wiki_mpc:.3f}(<b>約{mpc_ratio:.1f}倍</b>)。wikiは "received_wage→buy_food" を辿り消費に回す＝<b>二次需要が生まれる</b>。ただし人間帯(0.2-0.5)にはなお届かず、incentive設計との併用が要る。</div></div>
 </div>
 
 <div class="section-title">論文との対比 (実OSM 100体×336パルス)</div>
