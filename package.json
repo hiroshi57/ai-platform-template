@@ -1,0 +1,23 @@
+{
+  "name": "arxiv-paper-translation-710291",
+  "version": "1.0.0",
+  "description": "AI エージェント / RAG アプリを立ち上げるための社内向け AI 基盤テンプレート。\r clone するだけで、認証・レート制限・LLM 切替・観測性・コスト統制が最初から揃う。",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint:text": "textlint \"README.md\" \"pmbok-materials/**/*.md\"",
+    "lint:text:fix": "textlint --fix \"README.md\" \"pmbok-materials/**/*.md\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "textlint": "^15.8.0",
+    "textlint-filter-rule-comments": "^1.3.0",
+    "textlint-rule-preset-ai-words-ja": "^1.2.0"
+  }
+}

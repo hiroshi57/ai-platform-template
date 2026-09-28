@@ -1,0 +1,13 @@
+{
+  "filters": {
+    "comments": true
+  },
+  "rules": {
+    "preset-ai-words-ja": {
+      "no-ai-words": {
+        "dictionaryPath": "./textlint-ai-words.custom.json",
+        "dictionaryMode": "append"
+      }
+    }
+  }
+}
