@@ -26,6 +26,35 @@ node agent-harness/src/harness.mjs
 実行すると `state/current.json`（層4）と `runs/traces.jsonl`（層6）、
 `artifacts/export.csv`（成果物）が生成される。
 
+## 案件を自動で「分類 → 6層処理」する（実業務・実ツール・ドライラン）
+
+複雑な案件を **層0の分類器** が type / risk / split に仕分け、種類に応じた6層処理へ
+自動で振り分ける司令塔。実業務1件（**ヨシケイ CRレポート**）を実ツール
+（`orchestrator.py` / Vercel 読取）に**ドライラン**で接続している。
+
+```bash
+node agent-harness/src/orchestrate.mjs
+```
+
+処理の流れ:
+
+| 層 | 動き | 実装 |
+|---|------|------|
+| 0 分類 | 案件を type=DATA / risk=high / split=9単位 と判定 | `src/classifier.mjs` |
+| 1 契約 | type ごとに done_when を確定 | `src/orchestrate.mjs` |
+| 2 文脈 | 読取専用ツール(`vercel_read`)で環境確認（automatic） | `src/adapters.mjs` |
+| 5 検証 | type 別の証拠ゲート（DATAはドライランで前提条件） | `src/verifiers.mjs` |
+| 3 ゲート | risk=high の破壊的操作は**承認で停止・自動実行しない** | `src/policy.mjs` |
+| 4/6 | `state/cases.json` と `runs/traces.jsonl` に記録 | `src/state.mjs` |
+
+### 安全規則（MUST）
+
+- **`orchestrator.py` は絶対に自動実行しない**（顧客Excelを書き換えるため）。
+  ドライランは「コマンド構築＋入力検証(読取)＋ログ」に限定。実行は人間承認後に人手で。
+- **Vercel は読取専用**（`vercel projects ls` 等）。deploy は本番禁止のため実装しない。
+- **別リポジトリ(`yosikei-agents`)へは一切書き込まない**。
+- 実行させたい場合は、承認後に `state/cases.json` の `planned_command` を人間がコピーして実行する。
+
 ## ★自分で壊して学ぶ
 
 読むだけでは身につかない。1つずつ壊して、なぜ壊れるかを確かめる。

@@ -47,3 +47,78 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
 - 1・2 が崩れた（削除・作り直しが起きた）場合は `.claude/rules/memory-curation.md` の保存ルール違反。
   内容欠落がないか diff で確認する。
 - 3 が悪化した場合、taxonomy を守れる強い管理エージェントに切り替えるか、ツールセット（提案4）を見直す。
+
+## 提案6: 記憶・生ログへの秘密混入チェック（arXiv:2608.19857）
+
+> **起源**: 提案 `harness-proposals/2026-09-25-context-leakage-secret-isolation.md`（提案 E）
+> **承認**: 2026-09-28 人間承認済み
+
+実証結果: コンテキストにある秘密は、モデルが開示を拒否していても無害な出力から統計的に復元されうる。
+生ログを逐語で読ませる retro は、ログに混入した秘密を毎回コンテキストに戻してしまう。
+
+### チェック項目（retro 実行時 / `/harness-release` 前・advisory）
+
+```bash
+# キー形式・秘密鍵ヘッダ・長い Base64 を検出（誤検知前提の advisory）
+grep -rEn '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[A-Za-z0-9+/]{40,}={0,2})' \
+  .claude/agent-memory .claude/harness-logs 2>/dev/null | head
+```
+
+### 判断
+
+- 検出しても**自動削除しない**（`memory-curation.md` ルール3）。人間に通知し、人間の指示で伏せ字化する。
+- 伏せ字化した場合は、何を伏せたかをコミットメッセージに残す（`memory-curation.md` 例外規定）。
+- 再発防止は `.claude/rules/secret-isolation.md` ルール6（保存前マスク）で行う。
+
+## 提案7: 判定器（Reviewer / LLM-as-judge）の健全性チェック（arXiv:2608.21766）
+
+> **起源**: 提案 `harness-proposals/2026-09-24-eval-awareness-judge-rubric.md`
+> **承認**: 2026-09-24 人間承認済み
+
+実証結果: 採点スケール・同点時の扱い・アンカーの置き方が違う2つの LLM 判定器は、
+同じ出力に対して Cohen's κ ≤ 0.09 しか一致しなかった。端点しか定義しない判定器は、
+「ペルソナを守る」といった無関係な推論に最高点近くを付けた。
+
+### チェック項目（retro のたびに実施。`/harness-release` 前の必須 retro を含む）
+
+4. **判定器の一致度**: 直近の `review.json` から最低10件をサンプルし、人間（または別系統の判定器）が
+   同じ rubric で再採点する。Cohen's κ < 0.4 なら rubric を見直す（`.claude/rules/judge-rubric.md`）。
+   閾値 0.4 は暫定値。最初の 2〜3 回の retro の実測値で見直す。
+5. **rubric_version の記録漏れ**: `review.json` に `rubric_version` が無いレコードは、集計（再発率・APPROVE 率）から除外する。
+   rubric が異なるレコードの判定を同じ母集団として比較しない。
+
+### 判断（追記）
+
+- 4 が閾値を下回ったら、判定器モデルを強化する前に、まず rubric のアンカー定義とツールセット（提案4）を見直す。
+
+## 提案8: 不具合の診断順序とインシデントの回帰フィクスチャ化
+
+> **起源**: 提案 `harness-proposals/2026-09-28-typed-decision-receipts.md`（提案 B）
+> **承認**: 2026-09-28 人間承認済み
+
+誤判定・誤実装が起きたら、目に見える最後の失敗ではなく、**最初に間違った境界**を探す。
+モデルの能力を疑うのは最後にする。プロンプトを長くする・モデルを強くする・呼び出しを増やす対処は、
+間違った境界を残したままコストだけを増やす。
+
+### 診断順序（上から順に確認し、最初に該当した層を原因とする）
+
+| # | 層 | 確認すること | 証跡 |
+|---|---|---|---|
+| 1 | 状態 | Worker / 判定器に渡した task・context・files に、必要な証拠があったか。結論（「おそらく十分」）が証拠のふりをして入っていなかったか | `task.json` |
+| 2 | 選択肢 | 取りうる行動（`files` の範囲・許可ツール・`escalated` / stop）が揃っていたか。古くなっていなかったか | `task.json`, `worker-report.json` |
+| 3 | 契約 | DoD・rubric のアンカーが、正解と不正解を区別できる書き方だったか | sprint-contract, `judge-rubric.md` |
+| 4 | 閾値・経路 | スコアから経路への対応（`route`）は正しかったか | `review.json` |
+| 5 | ツールセット | 提案4 | — |
+| 6 | モデル | 1〜5 がすべて正しいときだけ | — |
+
+### インシデントの回帰フィクスチャ化
+
+- APPROVE 後に不具合が見つかったタスクは、`harness-logs/.../<task_id>/` を**そのまま**回帰フィクスチャとして残す
+  （逐語保存。`memory-curation.md` ルール4）。対策の後は、同じ入力（`state_ref`）で判定を再生し、
+  期待する route / verdict になることを確認する。
+- 対策が無関係なケースの判定を悪化させていないかも、直近の `review.json` で確認する。
+
+### チェック項目（retro のたびに実施）
+
+6. **route と verdict の一致率**（`route_mode: shadow` の期間）: `route` が `auto` なのに REQUEST_CHANGES、
+   または `human` なのに APPROVE になったレコードを数え、理由を確認する。
