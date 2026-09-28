@@ -1,7 +1,20 @@
-# agent-harness — 5分で6層すべてを動かす
+# agent-harness — AIエージェントを安全に動かす「ハーネス・エンジニアリング 6層」
 
-依存パッケージゼロの Node.js（v18+）で「ハーネス・エンジニアリング 6層」を最小構成で実装したデモ。
-`AGENTS.md` の対応表を参照。
+> 目標に向けて AI が **「行動し・成果を証明し・失敗から回復する」** ための環境（ハーネス）を、
+> 依存パッケージゼロの Node.js で最小実装したデモ＋教材。
+
+## 使い方（要旨）
+
+```bash
+git clone https://github.com/hiroshi57/ai-platform-template.git
+cd ai-platform-template
+node agent-harness/src/harness.mjs      # ① 6層デモ: 失敗→自動修復→全チェック通過→人間承認で停止
+node agent-harness/src/orchestrate.mjs  # ② 案件を自動分類→6層で処理（ヨシケイ例・ドライランで安全）
+```
+
+- **必要環境**: Node.js v18 以上（追加インストール不要・依存パッケージゼロ）
+- **読む順**: この下の「実行」→ `agent-harness/AGENTS.md`（6層の対応表）→「★自分で壊して学ぶ」
+- **共有資料**: `agent-harness/docs/harness-engineering.pptx`（9スライド）/ `agent-harness/docs/harness-demo.gif`
 
 ## 実行
 
