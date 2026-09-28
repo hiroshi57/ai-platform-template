@@ -3,7 +3,11 @@
 - **日付**: 2026-09-28
 - **slug**: `evoontology-gated-ontology-layer`
 - **起案**: Claude Code (Worker)
-- **ステータス**: 人間承認待ち（DRAFT）
+- **ステータス**: **B・C 承認済み（2026-09-28）／D は未承認（保留）**
+  - B → [`docs/di-mcp-ontology/SPEC.md`](../docs/di-mcp-ontology/SPEC.md)（DI-MCP 運用担当への引き渡し用仕様）と [`terms.v1.json`](../docs/di-mcp-ontology/terms.v1.json)（初期定義ストア 10 指標、Mapping はすべて `unverified`）。DI-MCP への実装は運用担当が行う
+  - C → `ad-performance-dashboard` のブランチ `feature/kpi-definitions`（commit `3713c4b`、未 push）。CPA の式 2 か所を定義ストア経由に一本化し、変更前後で値が一致（48 ケース・差分 0）、`npm run build` 成功
+  - D → `.claude/rules/harness-retro.md` には反映していない
+  - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-28]
 - **根拠論文**: *EvoOntology: A Self-Evolving Ontology Layer for Data Agents*
   - Chong, Zhang, Fan, Du（中国人民大学）— arXiv:2609.15779v1 [cs.AI], 2026-09-14
   - https://arxiv.org/abs/2609.15779 / コード: https://github.com/ruc-datalab/EvoOntology
