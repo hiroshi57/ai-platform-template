@@ -3,7 +3,10 @@
 - **日付**: 2026-09-28
 - **slug**: `typed-decision-receipts`
 - **起案**: Claude Code (Worker)
-- **ステータス**: **人間承認待ち（DRAFT）** — CLAUDE.md §7 の運用どおり、承認前は本体ファイル（CLAUDE.md / `.claude/rules/*` / skills）に反映しない
+- **ステータス**: **2026-09-28 人間承認済み** — 提案 A〜D すべて承認。§5 の論点 P-1〜P-4 は既定案で確定。
+  - 反映済み（Claude）: A → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md)「判断レシート」、B → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案8、C・D → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md)（新設）
+  - 人間が反映: diff 4（グローバル CLAUDE.md §7）
+  - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-28]
 - **根拠資料**: *Jev Engineering for Production Agents — A Practical Handbook on Typed Semantic Decisions*（2026-09, Independent study edition）
   - 入手元: ユーザー共有の Google Drive PDF（https://drive.google.com/file/d/1V8jNU28GRveLAXByn5bkNRhffC54DkiX/view）、全12ページ
   - 元記事: Rari, "Jev Engineering: Stop Using LLMs for Every Decision", X Article, 2026-09-21
@@ -181,7 +184,7 @@
 +
 +> **適用対象**: Lead / Worker / Reviewer、および harness に新しい自動判断を足す人
 +> **起源**: 提案 `harness-proposals/2026-09-28-typed-decision-receipts.md`（提案 C・D）
-+> **承認**: （未承認・DRAFT）
++> **承認**: 2026-09-28 人間承認済み（P-1〜P-4 は既定案で確定）
 +
 +## ルール1: リトライのたびに新しい情報を得る（MUST）
 +
@@ -259,7 +262,7 @@
 
 - 効果が確認できない提案は、その時点で止めて撤回してよい（各提案は独立）。
 
-## 5. 未解決の論点（承認時に決めてほしいこと）
+## 5. 論点の決定（2026-09-28 人間決定済み — 全て既定案で確定）
 
 | # | 論点 | 既定案（決めなければこれで進める） | 他の選択肢 |
 |---|---|---|---|
