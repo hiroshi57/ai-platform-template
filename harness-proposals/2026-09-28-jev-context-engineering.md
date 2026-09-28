@@ -128,7 +128,9 @@
 +## 戻り（Worker → Lead）
 +- Lead は worker-report.v1（summary / self_review evidence / files_changed）をまず読む
 +- 全文 diff を読むのは (a) self_review に verified:false がある (b) Reviewer が指摘した
-+  (c) security-sensitive なときだけ。それ以外は `git diff --stat` とレポートで判断する
++  (c) security-sensitive (d) 生成ファイルを除いた変更行数が 300 行を超える ときだけ。
++  それ以外は `git diff --stat` とレポートで判断する
++- (d) の行数は `git diff --numstat` で数え、*.lock / package-lock.json / dist/ / *.min.* は除く
 +- 生ログは harness-logs に逐語で残す（要約しない）。Lead が「読むか」と「残すか」は別の判断
 +## 振り分けの判断
 +- 安いモデル・サブエージェントに振るかは、トークン単価ではなく「渡す文脈量＋戻りの読み直し量」で見積もる
@@ -196,7 +198,7 @@
 ## 5. 未解決論点（フェーズ着手前に確定）
 
 - **P-1**: B-1 で移す範囲。ヨシケイ節以外に、1案件でしか使わない節（例: AuraSense の備考）も移すか。
-- **P-2**: C の「全文 diff を読む条件」に、変更行数の閾値（例: 300行超）を加えるか。
+- **P-2**: ✅ **確定（2026-09-28）**: 閾値あり・**300行**。生成ファイル（*.lock / package-lock.json / dist/ / *.min.*）は数えない。§4 の「全文 diff 読み込み率」と手戻り率を20タスクほど見て見直す
 - **P-3**: D-1 の tool_usage を Worker の自己申告にするか、フックで自動計測するか（自動計測はフック追加＝設定変更になるので人間判断）。
 - **P-4**: A を ai-platform-template だけで試すか、yosikei-agents にも同時に入れるか。
 
