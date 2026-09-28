@@ -179,7 +179,7 @@ retro の材料が減る方向へ誤って運用される恐れがある。
 
 > 補足（既存の問題）: Windows で `core.autocrlf=true` のとき、`checks/fixture.csv` の作業コピーが CRLF になり、
 > `fixture_match` が `\r` の差で落ちてデモが escalate で終わっていた。
-> [更新: 2026-09-28] リポジトリ直下に `.gitattributes`（`*.csv text eol=lf`）を追加して修正済み（コミット 422ba0f）。修正後は README の期待出力どおり通過する。
+> [更新: 2026-09-28] 本ブランチで直下に `.gitattributes`（`*.csv text eol=lf`）を足したが、main 側の #31（`agent-harness/.gitattributes` と改行非依存の `verify.mjs`）と重複するため取り下げた。main の修正で README の期待出力どおり通過する。
 
 ## 5. 期待効果と測り方
 
