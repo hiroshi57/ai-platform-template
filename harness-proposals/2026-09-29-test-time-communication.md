@@ -3,7 +3,10 @@
 - **日付**: 2026-09-29
 - **slug**: `test-time-communication`
 - **起案**: Claude Code (Worker)
-- **ステータス**: 人間承認待ち（DRAFT）
+- **ステータス**: **2026-09-29 人間承認済み** — 提案 A〜D すべて承認。§5 の論点 P-1〜P-4 は既定案で確定。
+  - 反映済み（Claude）: A・B → [`.claude/rules/parallel-mode-selection.md`](../.claude/rules/parallel-mode-selection.md)（新設・diff 1）、C → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9（diff 2）
+  - 人間が反映: diff 3（plugin 側の Worker 定義）
+  - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠資料**: Park, Kontonis, Garg, Krishnamurthy, Papailiopoulos, *Scaling Discovery through Test-Time Communication*, arXiv:2609.21032v1 [cs.LG], 2026-09-17（UC Berkeley / Microsoft Research）
   - https://arxiv.org/abs/2609.21032
   - 実装・プロンプト・タスク: https://github.com/jerryjonghopark/test-time-communication
@@ -234,7 +237,7 @@ Worker 定義（`claude-code-harness-worker`）は本 repo の管理外なので
 - コストの記録には、既存の `worker-report.v1` の `turns_used` / `tool_usage` を使う。
 - 効果が確認できなければ、B・C を撤回し A（方式の選び方）だけ残してよい。
 
-## 5. 論点（人間が決める）
+## 5. 論点の決定（2026-09-29 人間決定済み — 全て既定案で確定）
 
 | # | 論点 | 既定案（決めなければこれで進める） | 他の選択肢 |
 |---|---|---|---|
