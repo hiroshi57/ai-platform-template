@@ -129,7 +129,7 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
 +}
 +```
 +
-+## 一致度の確認（`.claude/rules/harness-retro.md` 提案6）
++## 一致度の確認（`.claude/rules/harness-retro.md` 提案7）
 +
 +- **retro のたびに**（`/harness-release` 前の必須 retro を含む）、最低10件を人間が同じ rubric で再採点し、Cohen's κ を記録する。
 +  判定器のモデル・rubric を変えた直後の retro では必ず実施する。
@@ -148,7 +148,7 @@ retro は escalation_reason / reason_code の再発を数えるが、**判定そ
    内容欠落がないか diff で確認する。
  - 3 が悪化した場合、taxonomy を守れる強い管理エージェントに切り替えるか、ツールセット（提案4）を見直す。
 +
-+## 提案6: 判定器（Reviewer / LLM-as-judge）の健全性チェック（arXiv:2608.21766）
++## 提案7: 判定器（Reviewer / LLM-as-judge）の健全性チェック（arXiv:2608.21766）
 +
 +実証結果: 採点スケール・同点時の扱い・アンカーの置き方が違う2つの LLM 判定器は、
 +同じ出力に対して Cohen's κ ≤ 0.09 しか一致しなかった。端点しか定義しない判定器は、
