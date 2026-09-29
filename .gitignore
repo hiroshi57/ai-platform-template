@@ -19,3 +19,6 @@ pricing.json
 # frontend
 node_modules/
 dist/
+
+# Claude Code hook の実行時状態（identical-call-guard の呼び出し履歴 hash 等。コミットしない）
+.claude/state/
