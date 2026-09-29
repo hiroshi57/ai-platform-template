@@ -3,7 +3,11 @@
 - **日付**: 2026-09-28
 - **slug**: `harness-components-and-self-evolution`
 - **起案**: Claude Code (Worker)
-- **ステータス**: **人間承認待ち（DRAFT）**。CLAUDE.md §7 の運用に従い、承認までは本体ファイル（CLAUDE.md / `.claude/rules/*` / skills / plugin の agent 定義）へ反映しない
+- **ステータス**: **2026-09-29 人間承認済み** — 提案 A〜E すべて承認。§5 の論点 P-1〜P-4 は既定案で確定。
+  - 反映済み（Claude）: A・C・E → [`.claude/rules/harness-components.md`](../.claude/rules/harness-components.md)（新設）、B → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md) ルール1「機械的な検出」、D → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案11
+  - 人間が反映: diff 4（グローバル CLAUDE.md §7）、diff 5（各案件の settings.json の hook）、diff 6（plugin 側 Worker 定義）
+  - hook スクリプト `identical-call-guard.sh` の実装は別タスク（未着手）
+  - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠論文**:
   1. *An Empirical Study of Harness Design for Coding Agents* — Fan, Zhang, Ma ほか（UMass Amherst / Emory / UNC Charlotte / Zoom）— arXiv:2609.20804v1 [cs.AI], 2026-09-17（以下「論文1」）
   2. *StudyBench: Can Self-Evolution Squeeze Textbooks for Olympiad Capability?* — Chen, Chen, He ほか（清華大学 / 浙江大学）— arXiv:2609.00787v2 [cs.AI], 2026-09-07（以下「論文2」）。コード: https://github.com/thunlp/StudyBench
@@ -294,7 +298,7 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 
 - 効果が確認できない提案は、その時点で止めて撤回してよい（各提案は独立）。
 
-## 5. 論点（人間の決定待ち — 決めなければ既定案で進める）
+## 5. 論点の決定（2026-09-29 人間決定済み — 全て既定案で確定）
 
 | # | 論点 | 既定案 | 他の選択肢 |
 |---|---|---|---|
