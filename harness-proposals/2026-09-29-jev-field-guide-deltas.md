@@ -4,7 +4,8 @@
 - **slug**: `jev-field-guide-deltas`
 - **起案**: Claude Code (Worker)
 - **ステータス**: **2026-09-29 人間承認済み** — 提案 E〜H を承認。§5 の論点 Q-1〜Q-4 は既定案で確定（Q-4 により提案 I は保留）。
-  - 反映済み（Claude）: E・F → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md)、G → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md)「迷いの原因」＋ `route_mode` 3値の追記、H → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9
+  - 反映済み（Claude）: E・F → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md)、G → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md)「迷いの原因」＋ `route_mode` 3値の追記、H → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案10
+  - [更新: 2026-09-29] main に先に「提案9: team モードの健全性チェック」（`2026-09-29-test-time-communication.md`）が入っていたため、本提案 H は **提案10** に、チェック項目 7・8 は **10・11** に番号を振り直して反映した。§3 diff 4 の番号は起案時点のまま
   - 人間が反映: diff 5（グローバル CLAUDE.md §7 の `retries.log` 行）
   - [更新: 2026-09-29] diff 5 をグローバル CLAUDE.md §7 に反映済み（ユーザー指示により Claude が反映）
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]

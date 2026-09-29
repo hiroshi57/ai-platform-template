@@ -80,7 +80,7 @@ Worker の `self_review` 5 rule と同じ観点で採点する（観点を揃え
 - **`route_mode`**: `shadow` のあいだ、`route` は記録専用。実際の判定（`verdict`）は今までどおり Lead が決める。
   `shadow` を外すかどうかは、**最低20件かつ retro 2回分**の実測（`route` と `verdict` の一致率）を見て別の提案で決める（P-2）。
   [更新: 2026-09-29] `route_mode` は `shadow` / `active` / `off` の3値。`off` は「route を使った自動処理を止め、記録は続ける」。
-  `active` にする前提条件は `harness-retro.md` 提案9 を参照（提案 `2026-09-29-jev-field-guide-deltas.md` 提案 H・Q-3）。
+  `active` にする前提条件は `harness-retro.md` 提案10 を参照（提案 `2026-09-29-jev-field-guide-deltas.md` 提案 H・Q-3）。
 - 自己申告の確信度（「自信あり」「おそらく」など）は `route` の入力にしない（ルール4）。
 - 本節は rubric のアンカーを変えないので `rubric_version` は上げない。
 
