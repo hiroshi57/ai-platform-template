@@ -4,7 +4,8 @@
 - **slug**: `self-organizing-teams-named-defects`
 - **起案**: Claude Code (Worker)
 - **ステータス**: **2026-09-29 人間承認済み** — 提案 A・B を承認。§5 の論点 P-1〜P-4 は既定案で確定。
-  - 反映済み（Claude）: A → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md) ルール6〜8・`rubric_version` を v2 に変更、B → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9
+  - 反映済み（Claude）: A → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md) ルール6〜8・`rubric_version` を v2 に変更、B → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案10
+  - [更新: 2026-09-29] main に同日マージされた `2026-09-29-test-time-communication.md` が「提案9」「チェック項目7〜9」を使ったため、本提案 B は **提案10・チェック項目10** に繰り下げて反映した（PR #38 のコンフリクト解消時）。以下の §3 diff 2・diff 3・§4・§5 に残る「提案9」「チェック項目7」は承認時の表記で、実ファイルでは「提案10」「チェック項目10」を指す。グローバル CLAUDE.md の参照も「提案10」に修正済み
   - 人間が反映: diff 3（グローバル CLAUDE.md §7）
   - [更新: 2026-09-29] diff 3 をグローバル CLAUDE.md §7「ログ保存先」の表の直後に反映済み（ユーザー指示により Claude が反映）
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
