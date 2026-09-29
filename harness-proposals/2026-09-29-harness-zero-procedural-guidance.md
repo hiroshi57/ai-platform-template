@@ -3,7 +3,10 @@
 - **日付**: 2026-09-29
 - **slug**: `harness-zero-procedural-guidance`
 - **起案**: Claude Code (Worker)
-- **ステータス**: 人間承認待ち（DRAFT）
+- **ステータス**: **2026-09-29 人間承認済み** — 提案 A〜C すべて承認。§5 の論点 P-1〜P-3 は既定案で確定。
+  - 反映済み（Claude）: A → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9、B → 同 提案10、C → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md)「判定器モデルの下限」＋ `harness-retro.md` 提案7 チェック項目 5a
+  - 人間が反映: diff 5（グローバル CLAUDE.md §7）— 未反映
+  - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠論文**: Ye, Lu, Dong, Su, Song. *Harness-Zero: Harness Distillation via Agent-as-Harness*. arXiv:2609.24974（2026-09-21）
   - https://arxiv.org/abs/2609.24974 ／ コード: https://github.com/metaevo-ai/harness-zero
   - ライセンスは arXiv 標準（non-exclusive distrib）で CC ではない。本文は repo の `evidence/` に**保存しない**。以下の §・表番号は論文のもの
