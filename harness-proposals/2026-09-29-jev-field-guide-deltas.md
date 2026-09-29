@@ -6,6 +6,7 @@
 - **ステータス**: **2026-09-29 人間承認済み** — 提案 E〜H を承認。§5 の論点 Q-1〜Q-4 は既定案で確定（Q-4 により提案 I は保留）。
   - 反映済み（Claude）: E・F → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md)、G → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md)「迷いの原因」＋ `route_mode` 3値の追記、H → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9
   - 人間が反映: diff 5（グローバル CLAUDE.md §7 の `retries.log` 行）
+  - [更新: 2026-09-29] diff 5 をグローバル CLAUDE.md §7 に反映済み（ユーザー指示により Claude が反映）
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠資料**: *2026 Field Guide to Jev and Language Models — How to Use Jev with LLMs*（2026-09、全12ページ。TypeSafe の公開ドキュメントをもとにした独立ガイド、非公式・非承認と明記）
   - 入手元: ユーザー共有の Google Drive PDF（https://drive.google.com/file/d/1naKboOcnXfB_9Zq4pKfeTVtM0UFucM0l/view）
