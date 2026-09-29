@@ -3,8 +3,12 @@
 - **日付**: 2026-09-29
 - **slug**: `regularized-harness-retro`
 - **起案**: Claude Code (Worker)
-- **ステータス**: 人間承認待ち（DRAFT）— CLAUDE.md §7 の運用に従い、承認前は本体ファイル（CLAUDE.md / `.claude/rules/*` / skills）へ反映しない
-  - 2026-09-29 ユーザー指示「承認します」は**本提案書の起案**に対するもの。§3 の diff の反映は、本提案書を読んだうえでの別の承認で行う
+- **ステータス**: **2026-09-29 人間承認済み** — 提案 A〜E すべて承認。§5 の論点 P-1〜P-5 は既定案で確定。
+  - 反映済み（Claude）: A〜D → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9〜12（チェック項目 7〜9）、E → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md) ルール6
+  - 人間が反映: diff 3（グローバル CLAUDE.md §7）
+  - `heldout.json` は運用開始時（最初の retro）に各案件の `harness-logs/<project-slug>/` に作る。本コミットでは作らない
+  - 提案 B のノイズ下限・取り置きとの比較は、SkillAdam 提案 C（受理ゲート・DRAFT）が承認されるまで働かない。それまでは「増える文字数を書く」だけを適用する（§3.6）
+  - 旧ステータス: 人間承認待ち（DRAFT）。2026-09-29 の最初の「承認します」は起案に対するもので、反映の承認は同日の2回目の指示 [更新: 2026-09-29]
 - **根拠資料**:
   1. *RRSI: Regularized Recursive Self-Improvement of Agent Harnesses* — Xia ほか（Google Research）, arXiv:2609.24972, 2026-09-21
      - コード: https://github.com/google-research/rrsi （Apache 2.0）／ プロジェクトページ: https://regularized-rsi.com/
@@ -154,7 +158,7 @@ retro は特定の案件（例: CR レポート）の失敗ログを読んで改
 +## 提案9: 1提案1仮説と仮説タグ（arXiv:2609.24972 — edit budget / edit history）
 +
 +> **起源**: 提案 `harness-proposals/2026-09-29-regularized-harness-retro.md`（提案 A）
-+> **承認**: （未承認・DRAFT）
++> **承認**: 2026-09-29 人間承認済み（P-1〜P-5 は既定案で確定）
 +
 +実証結果: 1つの候補に束ねる変更の数を絞り、過去の変更と仮説を全部見せて否定された仮説を出し直させないと、
 +改善に使っていない集合でも効果が残った。
@@ -171,7 +175,7 @@ retro は特定の案件（例: CR レポート）の失敗ログを読んで改
 +## 提案10: ノイズ下限・コスト規則・取り置きタスク（arXiv:2609.24972 — selection）
 +
 +> **起源**: 同上（提案 B）
-+> **承認**: （未承認・DRAFT）
++> **承認**: 2026-09-29 人間承認済み（P-1〜P-5 は既定案で確定）
 +
 +### ルール
 +
@@ -187,7 +191,7 @@ retro は特定の案件（例: CR レポート）の失敗ログを読んで改
 +## 提案11: 案件専用ルールの点検（arXiv:2609.24972 — critic）
 +
 +> **起源**: 同上（提案 C）
-+> **承認**: （未承認・DRAFT）
++> **承認**: 2026-09-29 人間承認済み（P-1〜P-5 は既定案で確定）
 +
 +### チェック項目（提案書を人間に出す前）
 +
@@ -199,7 +203,7 @@ retro は特定の案件（例: CR レポート）の失敗ログを読んで改
 +## 提案12: 剪定候補と、行き詰まったときの探索先（arXiv:2609.24972 — prune / novelty）
 +
 +> **起源**: 同上（提案 D）
-+> **承認**: （未承認・DRAFT）
++> **承認**: 2026-09-29 人間承認済み（P-1〜P-5 は既定案で確定）
 +
 +### チェック項目（retro のたびに実施）
 +
@@ -222,7 +226,7 @@ retro は特定の案件（例: CR レポート）の失敗ログを読んで改
 +## ルール6: 検証は層に分け、安い層から確かめる（SHOULD）
 +
 +> **起源**: 提案 `harness-proposals/2026-09-29-regularized-harness-retro.md`（提案 E）／根拠 Z.ai「How GLM Built Its Own Inference Infrastructure」
-+> **承認**: （未承認・DRAFT）
++> **承認**: 2026-09-29 人間承認済み（P-1〜P-5 は既定案で確定）
 +
 +- Worker の `validation_commands` は、可能な範囲で `L1 局所`（変更箇所のテスト・型・lint）・`L2 結合`（呼び出し元を含むテスト）・
 +  `L3 全体`（ビルド・全テスト・全体検証）に分ける。
