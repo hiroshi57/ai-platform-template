@@ -5,7 +5,11 @@
 - **起案**: Claude Code (Worker)
 - **ステータス**: **承認済み（2026-09-28）** — 提案 A〜E すべて承認。未解決論点 P-1〜P-4 は §5 の既定案で確定。
   - 反映済み（Claude）: A・B・C・E → [`.claude/rules/secret-isolation.md`](../.claude/rules/secret-isolation.md)（新設）、E → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案6
-  - 人間が反映: D（各案件 `.claude/settings.json` の deny）、グローバル CLAUDE.md / AGENTS.md「禁止事項」への追記
+  - 反映済み（人間の明示指示により Claude が実施・2026-09-28）: D → ai-platform-template `.claude/settings.json`（新設）、yosikei-agents `.claude/settings.json`（deny 追記・未コミット）
+  - 反映済み（人間の明示指示により Claude が実施・2026-09-28）: グローバル CLAUDE.md「❌ 禁止事項」に「秘密をコンテキストに読み込まない」を追記
+  - 未反映: 各案件 AGENTS.md「禁止事項」への追記（必要に応じて人間が判断）
+  - 旧記載: 人間が反映: グローバル CLAUDE.md / AGENTS.md「禁止事項」への追記 [更新: 2026-09-28]
+  - 旧記載: 人間が反映: D（各案件 `.claude/settings.json` の deny）[更新: 2026-09-28]
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-28]
 - **根拠論文**: *Inadvertent Context Leakage in Language Models*
   - Fairoze, Mangaokar, Chaudhuri, Garg, Mahloujifar（Meta FAIR / UC Berkeley / Google DeepMind）— arXiv:2608.19857v1 [cs.LG], 2026-08-20
@@ -29,6 +33,7 @@
 - ✅ §1 の「漏洩経路の分類」を、レビュー観点の共通語彙として採用する
 - ❌ 承認しても本体ファイルへの反映は各提案ごとに**別途レビュー**を経る（一括反映の許可ではない）
 - ❌ 提案 D の settings 変更と、「禁止事項」への追記は**人間が手で反映**する
+  - [更新: 2026-09-28] いずれも人間の明示指示により Claude が反映済み（D: PR #33、禁止事項: グローバル CLAUDE.md）
 
 **却下・保留する場合**: 提案単位で可（A〜E は相互に独立）。
 
@@ -92,6 +97,7 @@ CLAUDE.md §7 と memory-curation ルール4は `harness-logs/` の**逐語保�
   2. 値が必要な処理は、**スクリプトやツールの内部で読み込み、LLM には結果だけを返す**（DI-MCP 方式）。
   3. 秘密ファイルのパスや存在を扱うのはよいが、**中身を表示するコマンドは実行しない**。
 - **「禁止事項」への追記**: 上記1を AGENTS.md / CLAUDE.md の「禁止事項」に入れる場合は、§7 の規定により**人間が反映**する。本提案は文案（付録 A）の提示に留める。
+  - [更新: 2026-09-28] 人間の明示指示により、グローバル CLAUDE.md「❌ 禁止事項」へ追記済み。追記した文言:「**秘密をコンテキストに読み込まない**（認証情報・APIキー・アカウントID・個人情報・クライアント生データ。値はスクリプト/ツール側で読み、LLMには結果だけ渡す。詳細: 各案件の `.claude/rules/secret-isolation.md`／根拠 arXiv:2608.19857）」
 - **論文根拠**: §5「コンテキストを共有する限り出力分布は秘密の情報を持つ」（設計上の問題）。
 
 ### 提案 B: 機密指示の書き方を「値を置かない」に統一
@@ -131,6 +137,7 @@ CLAUDE.md §7 と memory-curation ルール4は `harness-logs/` の**逐語保�
   ```
 - **理由**: rules（提案 A）はエージェントの遵守に依存する。deny は**ツール層で機械的に止まる**ため、ルールを知らないエージェントや弱いモデルにも効く。
 - **retro ルールとの整合**: `.claude/rules/harness-retro.md` 提案4「モデル強度より先にツールセットを見直す」と同じ考え方（ツールセットで挙動を形作る）。
+- **Bash パターンの補足（反映時）**: Claude Code の Bash ルールは `**` ではなく `*` ワイルドカードで照合するため、反映時は `Bash(cat *secrets.yaml*)`・`Bash(cat *.env*)` とした。[更新: 2026-09-28]
 - **既知の限界**: Bash の deny はパターン回避（`head`、`python -c` 等）が可能で完全ではない。**第一防御は提案 A の運用、D は事故防止の安全網**と位置づける。対象パスは案件ごとに人間が確定する（§5 P-1）。
 
 ### 提案 E: 記憶・生ログへの秘密混入チェックを retro に追加（advisory）

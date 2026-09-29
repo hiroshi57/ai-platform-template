@@ -65,9 +65,9 @@ grep -rEn '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY--
 - 検出しても**自動削除しない**（`memory-curation.md` ルール3）。人間に報告し、人間の指示で伏せ字化する。
   伏せ字化した場合は、何を伏せたかをコミットメッセージに残す。
 
-## ツール層の安全網（人間が反映）
+## ツール層の安全網（提案 D・反映済み 2026-09-28）
 
 本ルールはエージェントの遵守に依存する。事故防止の安全網として、各案件の `.claude/settings.json` に
 秘密ファイルの Read を禁止する deny ルールを入れる（提案 D）。セキュリティ設定の変更にあたるため、
-**反映は人間が行う**。対象パス（P-1 確定）: `config/secrets.yaml`・`.env`・`.env.*`・`*.pem`・
+反映は人間の判断による。2026-09-28 に人間の明示指示で ai-platform-template と yosikei-agents に反映済み。他案件へ広げる場合も人間が判断する。対象パス（P-1 確定）: `config/secrets.yaml`・`.env`・`.env.*`・`*.pem`・
 `*credentials*.json`。diff は提案書の提案 D を参照。
