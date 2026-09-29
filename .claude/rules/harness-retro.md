@@ -122,3 +122,19 @@ grep -rEn '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY--
 
 6. **route と verdict の一致率**（`route_mode: shadow` の期間）: `route` が `auto` なのに REQUEST_CHANGES、
    または `human` なのに APPROVE になったレコードを数え、理由を確認する。
+
+## 提案9: team モードの健全性チェック（arXiv:2609.21032）
+
+> **起源**: 提案 `harness-proposals/2026-09-29-test-time-communication.md`（提案 C）
+> **承認**: 2026-09-29 人間承認済み（P-1〜P-4 は既定案で確定）
+
+`parallel_mode: team` のタスクが1件以上あった retro で実施する。
+
+### チェック項目
+
+7. **群がり**: `team/scores.log` の `family` の種類数を、前半と後半で比べる。後半で1種類に潰れていたら、
+   `parallel-mode-selection.md` ルール3の 1・5・6 が守られていない疑い。
+8. **最初のコスト**: team の最良スコアが、同じタスクの independent（または過去の solo）の最良に追いついた時点
+   （ターン・時間・トークン）を記録する。追いつく前に予算が尽きたタスクが多ければ、ルール1の N を上げる。
+9. **スコアの再現**: Lead の取り込み時に再実行したスコアと、`findings.log` の報告値の差を記録する。
+   差が繰り返し出る場合は、`scorer` の決定性（乱数・計測ノイズ）を先に疑う（提案8 の診断順序「契約」の層）。
