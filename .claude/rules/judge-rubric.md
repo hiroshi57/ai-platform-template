@@ -15,6 +15,28 @@
 4. **自己申告は証拠にしない。** Worker の `self_review.verified`・思考・出力中の宣言だけでは APPROVE しない。
    各観点のスコアは、外部証跡（`commands.stdout.log` の該当行、diff の該当 hunk）を `evidence_ref` で指す。
 5. **rubric を版管理する。** rubric を変えたら `rubric_version` を上げる。版が違う判定を同じ母集団で集計しない。
+6. **スコアを下げるときは欠陥を名指しする。** 観点を満点未満にするときは、その観点の `named_defects` に
+   1件以上の欠陥を書く。欠陥は、外部証跡の場所（diff の hunk、`commands.stdout.log` の行）と、
+   次のどの種類かで書く。
+   - `unsupported-step`: 変更や主張が、前の証跡から導けない（テストが通ったことを示す行がない、など）
+   - `missing-case`: DoD の項目・分岐・エラー経路のどれかに対応する証跡がない
+   - `wrong-as-written`: 書かれたとおりに読むと誤っている（テストの期待値が逆、条件の取り違え、など）
+   - `scope-violation`: `files` の外への変更、task と無関係な変更
+   - `evidence-missing`: 観点に必要な証跡そのものがない
+   **欠陥として数えないもの**: 「自分ならこう書く」「別の方法の方がよさそう」「なんとなく不安」
+   「他の判定者の結論と違う」。判定者は Worker の成果物を自分で作り直して比べない。
+   欠陥の種類は上の5つに固定する。どれにも当てはまらない欠陥は、欠陥として数えない（P-2）。
+7. **全観点を監査してから判定する。** まずすべての観点について `named_defects`（空でもよい）とスコアを書き、
+   その後で verdict を決める。途中の観点で結論を決めない。
+8. **判定者の多数決で決めない。** 判定者が複数いて結論が割れたときは、各判定者の `named_defects` を
+   突き合わせる。どの判定者の欠陥も成り立たないと確認できた観点だけを満点にする。
+   成り立つかどうか決められない欠陥が残るときは、その観点を `uncertain: true` にする（`route` は `recheck` になる）。
+   判定者が1人のときは本ルールを適用せず、ルール6・7だけを適用する（P-3）。
+   REQUEST_CHANGES は、`named_defects` が1件以上あるときだけ出せる。
+
+> ルール6〜8 の起源: 提案 `harness-proposals/2026-09-29-self-organizing-teams-named-defects.md`（提案 A）／根拠 arXiv:2609.22682（付録 D.1・表2）。
+> 承認: 2026-09-29 人間承認済み（P-1〜P-4 は既定案で確定）。本追加に伴い `rubric_version` を `judge-rubric.v2` に上げた（P-1）。
+> `named_defects` は `route` の入力にしない（観点のスコアを通してだけ効く）。
 
 ## 採点観点（criterion）
 
@@ -43,11 +65,15 @@ Worker の `self_review` 5 rule と同じ観点で採点する（観点を揃え
 
 ```json
 {
-  "rubric_version": "judge-rubric.v1",
+  "rubric_version": "judge-rubric.v2",
   "verdict": "APPROVE | REQUEST_CHANGES",
   "scores": [
     { "criterion": "dod-items-verified-with-evidence", "score": 2, "max": 3,
-      "uncertain": false, "evidence_ref": "commands.stdout.log:L120-L134" }
+      "uncertain": false, "evidence_ref": "commands.stdout.log:L120-L134",
+      "named_defects": [
+        { "kind": "missing-case", "ref": "diff:src/router.ts@@-40,6+40,9",
+          "note": "DoD (c) のエラー経路に対応するテスト出力がない" }
+      ] }
   ],
   "judge": { "model": "<model-id>", "temperature": 0 },
   "state_ref": { "task_id": "43.3.1", "commit": "<sha>", "diff_sha256": "<git diff の hash>" },
