@@ -23,7 +23,7 @@
 
 - ✅ 提案 A・C・E を §3 の diff 1 どおり `.claude/rules/harness-components.md`（新規）として反映してよい
 - ✅ 提案 B を §3 の diff 2 どおり `.claude/rules/decision-boundaries.md` ルール1に追記してよい
-- ✅ 提案 D を §3 の diff 3 どおり `.claude/rules/harness-retro.md` に提案9として追記してよい
+- ✅ 提案 D を §3 の diff 3 どおり `.claude/rules/harness-retro.md` に提案11として追記してよい
 - ✅ `task.json` に `harness_config`（モデル・ツールセット・計画・コンテキスト方針）を任意項目として追加する
 - ❌ グローバル `C:\Users\hiroshi_takizawa\CLAUDE.md` は本 repo の管理外。diff 4 は**人間が手で反映**する
 - ❌ `.claude/settings.json` への hook 追加（diff 5）と plugin 側 Worker 定義の変更（diff 6）は**人間が反映**する（本 repo に settings.json・agent 定義が無く、hook の追加は実行権限に関わるため）
@@ -138,7 +138,7 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 +- retro の改善案が「skills やルールに手順を書き足す」形になったら、先に次を検討する:
 +  Lead が Worker に渡す context に、**そのタスクに関係するルール・skill・過去ログの該当箇所**を入れれば足りないか。
 +- 手順の蒸留（skills の追加）は、同種のタスクでは効くが、未知の種類のタスクでは効かない、または悪化しうる。
-+  蒸留を足すときは `harness-retro.md` 提案9の Transfer 集合でも確かめる。
++  蒸留を足すときは `harness-retro.md` 提案11の Transfer 集合でも確かめる。
 +- 渡す該当箇所は、結論ではなく原文（逐語）にする（`decision-boundaries.md` ルール5）。
 +
 +## 判断
@@ -183,11 +183,11 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 ```diff
 --- a/.claude/rules/harness-retro.md
 +++ b/.claude/rules/harness-retro.md
-@@ 末尾 @@
- 6. **route と verdict の一致率**（`route_mode: shadow` の期間）: `route` が `auto` なのに REQUEST_CHANGES、
-    または `human` なのに APPROVE になったレコードを数え、理由を確認する。
+@@ 末尾（提案10「判断」の後） @@
+ - 候補カバレッジが低い（正しい候補がそもそもない）ときは、生成側を直す。診断順序の 1（状態）と 2（選択肢）から確認する。
+ - 対象タスクが10件未満の retro では、率ではなく件数と個別の事例だけを記録する（率で判断しない）。
 +
-+## 提案9: 改善案の評価集合を分け、改善案の作成側から隠す（arXiv:2609.00787）
++## 提案11: 改善案の評価集合を分け、改善案の作成側から隠す（arXiv:2609.00787）
 +
 +> **起源**: 提案 `harness-proposals/2026-09-28-harness-components-and-self-evolution.md`（提案 D）
 +
@@ -215,7 +215,7 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 +
 +### チェック項目（retro のたびに実施）
 +
-+7. **頭打ちの検出**: 直近3回の retro で、採用した改善案の Application の改善幅が毎回小さくなっていないか。
++11. **頭打ちの検出**: 直近3回の retro で、採用した改善案の Application の改善幅が毎回小さくなっていないか。
 +   横ばいになったら、retro の回数を増やさず、ループの入力（何のログを読ませるか）や手順を変える提案を出す。
 +
 +### 判断（追記）
@@ -234,8 +234,8 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
 @@ §7 ログ保存先の表 @@
--| `task.json` | Worker Agentへの入力（task/task_id/files/mode/contract） |
-+| `task.json` | Worker Agentへの入力（task/task_id/files/mode/contract）と、実行した構成（`harness_config`: モデル・ツールセット・計画・コンテキスト方針） |
+-| `task.json` | Worker Agentへの入力（task/task_id/files/mode/contract）。メタデータ `purpose`（`validation` / `delivery`）を持つ。`purpose` は Worker へのプロンプトに含めない |
++| `task.json` | Worker Agentへの入力（task/task_id/files/mode/contract）。メタデータ `purpose`（`validation` / `delivery`）と、実行した構成 `harness_config`（モデル・ツールセット・計画・コンテキスト方針）を持つ。`purpose` は Worker へのプロンプトに含めない |
 @@ §7 改善提案のルール @@
  - 提案は必ず `harness-proposals/<date>-<slug>.md` に diff 形式＋根拠ログへのリンク＋期待効果として出力する
 +- 改善案は、根拠ログと同種のタスク（Application）と、根拠ログに含まれないタスク（Transfer）の両方で改善前後を比べてから採用する。評価に使うタスクは、改善案を作るエージェントに読ませない（根拠: arXiv:2609.00787）
@@ -290,7 +290,7 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 | 同じ呼び出しの連続による停止 | hook による注意・停止の回数（導入前は生ログから同じ条件で数える） | 停止までの無駄な試行が減る。停止後のエスカレーションが早くなる |
 | 計画の使い分けの効果 | 弱いモデル・強いモデルの Worker ごとに、計画ありとなしでの成功率とトークン数 | 弱いモデル: 成功率が上がる／強いモデル: トークン数が下がり、成功率はほぼ同じ |
 | 改善案の Transfer での悪化率 | 採用候補の改善案のうち、Transfer 集合で悪化したものの割合 | 可視化（これまで見えていなかった副作用を検出できる） |
-| 改善幅の推移 | retro ごとの、採用した改善案の Application の改善幅 | 横ばいを早く検出できる（チェック項目7） |
+| 改善幅の推移 | retro ごとの、採用した改善案の Application の改善幅 | 横ばいを早く検出できる（チェック項目11） |
 
 - 効果が確認できない提案は、その時点で止めて撤回してよい（各提案は独立）。
 
@@ -306,7 +306,7 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 ## 付録 A: 本提案で diff を出さない項目（既に満たしている）
 
 - **報酬・合否判定にはルールベースの判定を使い、LLM 判定器に任せない**（論文2 §2.2）: decision-boundaries.md ルール2、judge-rubric.md ルール4 で既に満たしている。
-- **汚染対策の考え方**（論文2 §2.3）: 提案9の「回帰フィクスチャの隔離」に取り込んだ。それ以外は diff 不要。
+- **汚染対策の考え方**（論文2 §2.3）: 提案11の「回帰フィクスチャの隔離」に取り込んだ。それ以外は diff 不要。
 - **read-before-write**（論文1 §2.4）: Claude Code の Edit / Write ツールが既に強制している。
 - **ワークスペース外のパスの拒否**（論文1 §2.4）: Claude Code の権限設定と Worker の `files` 制約で既に満たしている。
 
