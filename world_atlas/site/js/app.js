@@ -1,0 +1,1505 @@
+// せかい3Dデジタル図鑑 — 画面本体
+import * as A from "./analytics.js";
+import { lineChart, sparkline, radar, scatter, barRows } from "./charts.js";
+import { characterSVG, charactersFor } from "./characters.js";
+import { makeQuiz } from "./quiz.js";
+import { PLAN, isPaidFromStorage, canUseIndicator, canUseMode, canUseFeature } from "./plan.js";
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------------------------------------------------------------- 状態
+const D = { catalog: null, countries: {}, latest: {}, meta: {}, geo: null, timeline: null, series: {}, flows: null, exports: null };
+const S = {
+  mode: "globe", cat: "people", ind: "population", yearIdx: null, height: true, viz: "extrude", arcs: null,
+  country: null, compare: [], dexTab: "chapter",
+  rankRegion: "all", rankOrder: "top",
+  groupBy: "region", sx: "gdp_pc", sy: "life_exp",
+  tlCats: null, tlEvent: null, sdgGoal: 3, highlight: null, labels: true,
+  quizSeed: null, quizAns: {},
+};
+const RATE_COLOR = { S: "#2b8a3e", A: "#5c940d", B: "#e8a200", C: "#e8590c", D: "#c92a2a" };
+// 色覚の多様性に配慮した配色(ColorBrewer RdYlBu / YlGnBu)
+const PAL_GOOD = ["#d73027", "#f46d43", "#fdae61", "#fee090", "#abd9e9", "#74add1", "#4575b4"]; // 悪い→良い
+const PAL_SIZE = ["#ffffcc", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#0c2c84"]; // 小→大
+// 色覚サポート(viridis): 明るさが一方向に変わるため、色の区別がつきにくくても濃淡で読める
+const PAL_CVD = ["#440154", "#443983", "#31688e", "#21918c", "#35b779", "#90d743", "#fde725"];
+let cvd = localStorage.getItem("atlas-cvd") === "1";
+const REGION_COLOR = { EAS: "#e8590c", ECS: "#1c7ed6", LCN: "#2f9e44", MEA: "#f59f00", NAC: "#7048e8", SAS: "#d6336c", SSF: "#0c8599" };
+const NO_DATA = "rgba(190,196,210,0.45)";
+
+// ---------------------------------------------------------------- データ
+async function getJSON(path) {
+  const r = await fetch(path, { cache: "no-cache" }); // 週次更新のデータを確実に反映(ETag で再検証)
+  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  return r.json();
+}
+async function loadSeries(id) {
+  if (!id || id.startsWith("sdg:")) return null;
+  const url = canUseIndicator(id, false) ? `data/series/${id}.json` : `api/data?f=series/${id}.json`;
+  if (!D.series[id]) D.series[id] = getJSON(url).catch(() => null);
+  return D.series[id];
+}
+const IND = (id) => (id?.startsWith("sdg:") ? sdgVirtual(+id.slice(4)) : D.catalog.indicators.find((i) => i.id === id));
+const CAT = (id) => D.catalog.categories.find((c) => c.id === id);
+const indsOf = (cat) => D.catalog.indicators.filter((i) => i.category === cat);
+const cname = (iso3) => D.countries[iso3]?.name_ja || iso3;
+const flag = (iso3, w = 40) => {
+  const c = D.countries[iso3];
+  return c?.iso2 && /^[A-Z]{2}$/.test(c.iso2) && c.iso2 !== "JG" ? `vendor/flags/w${w <= 40 ? 40 : 160}/${c.iso2.toLowerCase()}.png` : "";
+};
+const unitOf = (ind) => (ind.unit && !ind.levels ? ` ${ind.unit}` : "");
+// 段階の指標(法律の有無など)は、点数ではなく「18歳以上」のような言葉で表示する
+const levelLabel = (ind, v) => (ind.levels?.find((l) => l[0] === Math.round(v)) || [null, "—"])[1];
+const fmtV = (ind, v) => (ind.levels ? (Number.isFinite(v) ? levelLabel(ind, v) : "—") : A.fmtNum(v, ind.decimals ?? 1));
+
+// 最新値スナップショット・順位(キャッシュ)
+const _snapLatest = {}, _ranks = {};
+function latestSnap(id) {
+  if (id.startsWith("sdg:")) return sdgSnap(+id.slice(4));
+  if (!_snapLatest[id]) {
+    const L = D.latest[id]?.c || {};
+    _snapLatest[id] = Object.fromEntries(Object.entries(L).map(([k, v]) => [k, [v[0], v[1]]]));
+  }
+  return _snapLatest[id];
+}
+function ranksLatest(id) {
+  if (!_ranks[id]) _ranks[id] = A.rankAll(latestSnap(id), IND(id)?.better ?? null);
+  return _ranks[id];
+}
+
+// ---- 章スコア・SDGs スコア(良し悪しのある指標の順位パーセンタイル平均)
+function scoreFor(iso3, inds) {
+  const gs = [];
+  for (const ind of inds) {
+    if (!ind.better || !D.latest[ind.id]) continue;
+    const r = ranksLatest(ind.id)[iso3];
+    if (r && r.n >= 20) gs.push(r.goodness);
+  }
+  return gs.length ? (gs.reduce((a, b) => a + b, 0) / gs.length) * 100 : null;
+}
+const _sdgSnap = {};
+function sdgInds(n) { return D.catalog.indicators.filter((i) => i.sdg.includes(n) && i.better); }
+function sdgSnap(n) {
+  if (!_sdgSnap[n]) {
+    const out = {};
+    const inds = sdgInds(n);
+    for (const iso3 of Object.keys(D.countries)) {
+      const s = scoreFor(iso3, inds);
+      if (s != null) out[iso3] = [null, s];
+    }
+    _sdgSnap[n] = out;
+  }
+  return _sdgSnap[n];
+}
+function sdgVirtual(n) {
+  const g = D.catalog.sdg_goals.find((x) => x.n === n);
+  return { id: `sdg:${n}`, name: `SDGs 目標${n}「${g.name}」のスコア`, unit: "点", better: "high", decimals: 0, scale: "linear", category: "sdg",
+    explain: `目標${n}に関係する指標(${sdgInds(n).map((i) => i.name).join("・")})で、各国が世界の中でどのあたりにいるかを0〜100点にしたもの(50点が真ん中)。`, sdg: [n], org: "本図鑑で計算", forecast: false };
+}
+
+// ---------------------------------------------------------------- 年スライダー
+let yearStops = [];
+function gapFor(y) { return y < 0 ? 3000 : y < 1500 ? 300 : y < 1800 ? 60 : y < 1950 ? 15 : 6; }
+async function setupYears() {
+  const ser = await loadSeries(S.ind);
+  const slider = $("#year");
+  if (!ser) { yearStops = []; $("#globe-ctrl").classList.add("no-year"); slider.disabled = true; $("#year-label").textContent = "最新"; $("#play").disabled = true; return; }
+  const ys = new Set();
+  for (const c of Object.values(ser.countries)) for (const p of c.s) ys.add(p[0]);
+  yearStops = [...ys].sort((a, b) => a - b);
+  slider.disabled = false; $("#play").disabled = false;
+  slider.min = 0; slider.max = yearStops.length; // 最後の1つ = 「最新」
+  if (S.yearIdx == null || S.yearIdx > yearStops.length) S.yearIdx = yearStops.length;
+  slider.value = S.yearIdx;
+  $("#year-label").textContent = yearLabel();
+}
+const curYear = () => (S.yearIdx == null || S.yearIdx >= yearStops.length ? null : yearStops[S.yearIdx]);
+const yearLabel = () => (curYear() == null ? "最新" : A.fmtYear(curYear()));
+
+async function currentSnap() {
+  const y = curYear();
+  if (y == null) return latestSnap(S.ind);
+  const ser = await loadSeries(S.ind);
+  return A.snapshot(ser, y, gapFor(y));
+}
+
+// ---------------------------------------------------------------- 色分け
+function colorizer(snap, ind) {
+  if (ind.levels) {
+    const n = ind.levels.length, max = ind.levels[n - 1][0];
+    const pal = cvd ? PAL_CVD : ind.better ? PAL_GOOD : PAL_SIZE;
+    const idx = (v) => Math.round((Math.max(0, Math.min(max, v)) / (max || 1)) * 6);
+    return { color: (v) => (Number.isFinite(v) ? pal[idx(v)] : NO_DATA), q: (v) => (Number.isFinite(v) ? v / (max || 1) : 0), pal, breaks: [], levels: ind.levels.map((l) => ({ label: l[1], color: pal[idx(l[0])] })) };
+  }
+  const vals = Object.values(snap).map((p) => p[1]).filter(Number.isFinite);
+  const log = ind.scale === "log";
+  const tv = (v) => (log ? Math.log10(Math.max(v, 1e-9)) : v);
+  const breaks = A.quantileBreaks(vals.filter((v) => !log || v > 0).map(tv), 7);
+  const base = cvd ? PAL_CVD : null;
+  const pal = base
+    ? (ind.better === "low" ? [...base].reverse() : base)
+    : ind.better === "low" ? [...PAL_GOOD].reverse() : ind.better === "high" ? PAL_GOOD : PAL_SIZE;
+  const color = (v) => (Number.isFinite(v) ? pal[A.binOf(tv(v), breaks)] : NO_DATA);
+  const q = (v) => (Number.isFinite(v) ? A.binOf(tv(v), breaks) / 6 : 0);
+  const raw = breaks.map((b) => (log ? Math.pow(10, b) : b));
+  return { color, q, pal, breaks: raw };
+}
+
+// ---------------------------------------------------------------- 地球儀
+let globe = null, geoFeatures = [], pointCountries = [], colorFn = null, snapNow = {}, labelData = [];
+let labelEls = [], labelThreshold = 3, povNow = { lat: 25, lng: 135, altitude: 2.3 }, labelRaf = 0;
+const RAD = Math.PI / 180;
+// 画面の中心(カメラの真下)からの角度。縁に近い国名は重なって読めないので隠す
+function angleFromCenter(lat, lng) {
+  const c = Math.sin(lat * RAD) * Math.sin(povNow.lat * RAD) + Math.cos(lat * RAD) * Math.cos(povNow.lat * RAD) * Math.cos((lng - povNow.lng) * RAD);
+  return Math.acos(Math.max(-1, Math.min(1, c))) / RAD;
+}
+
+// 国名ラベル(地図帳のように)。優先度 = Natural Earth の LABELRANK と国土面積の大きい方(1 が最優先)
+function buildLabels() {
+  const area = latestSnap("land_area");
+  const areaRank = (iso) => {
+    const a = area[iso]?.[1];
+    if (a == null) return 7;
+    return a > 3e6 ? 1 : a > 1e6 ? 2 : a > 3e5 ? 3 : a > 1e5 ? 4 : a > 3e4 ? 5 : a > 5e3 ? 6 : 7;
+  };
+  labelData = geoFeatures.filter((f) => f.properties.iso3 && f.properties.label_x != null).map((f) => ({
+    type: "label", iso3: f.properties.iso3, lat: f.properties.label_y, lng: f.properties.label_x,
+    rank: Math.max(f.properties.labelrank || 1, areaRank(f.properties.iso3)),
+  }));
+  // 国境ポリゴンの無い小さな国(島国など)は首都の位置に
+  for (const c of pointCountries) labelData.push({ type: "label", iso3: c.iso3, lat: c.lat, lng: c.lng, rank: 7 });
+}
+// カメラの高さに応じて、表示する国名の優先度を変える
+function thresholdFor(alt) { return alt > 2.3 ? 2 : alt > 1.8 ? 3 : alt > 1.35 ? 4 : alt > 0.95 ? 5 : alt > 0.6 ? 6 : 8; }
+function applyLabelVisibility() {
+  // display は地球儀ライブラリが「裏側を隠す」ために使うので、こちらは visibility で出し分ける
+  // 見えている地平線の角度 = acos(1/(1+高さ))。その 75% より外側(縁)の国名は隠す
+  const edge = (Math.acos(1 / (1 + povNow.altitude)) / RAD) * 0.75;
+  // 要素は地球儀ライブラリが後から作るので、毎回集め直す
+  labelEls = document.querySelectorAll("#globe .country-label");
+  for (const el of labelEls) {
+    el.classList.toggle("lh", +el.dataset.rank > labelThreshold || angleFromCenter(+el.dataset.lat, +el.dataset.lng) > edge);
+  }
+}
+function altOf(iso, cz) {
+  const tl = S.mode === "timeline" && S.highlight;
+  if (tl) return S.highlight.has(iso) ? 0.09 : 0.006;
+  const base = S.viz === "extrude" && iso && snapNow[iso] ? 0.008 + cz.q(snapNow[iso][1]) * 0.16 : 0.008;
+  return iso === S.country ? base + (S.viz === "bars" ? 0.012 : 0.06) : base;
+}
+// 3D棒グラフ表示: 各国の首都の位置に、値の順位に応じた高さの柱を立てる
+function barAlt(iso, cz) { return snapNow[iso] ? 0.02 + cz.q(snapNow[iso][1]) * 0.45 : 0; }
+const REFUGEE_INDS = new Set(["refugees_out", "refugees_in"]);
+const arcsOn = () => PAID && (S.arcs == null ? REFUGEE_INDS.has(S.ind) : S.arcs) && D.flows?.flows?.length;
+function initGlobe() {
+  const el = $("#globe");
+  globe = Globe()(el)
+    .globeImageUrl("vendor/img/earth-blue-marble.jpg")
+    .bumpImageUrl("vendor/img/earth-topology.png")
+    .backgroundImageUrl("vendor/img/night-sky.png")
+    .atmosphereColor("#9ecbff").atmosphereAltitude(0.18)
+    .polygonsData(geoFeatures)
+    .polygonSideColor(() => "rgba(20,30,60,0.35)")
+    .polygonStrokeColor(() => "rgba(20,20,30,0.6)")
+    .polygonsTransitionDuration(450)
+    .polygonLabel((f) => tipHTML(f.properties.iso3))
+    .onPolygonClick((f) => f.properties.iso3 && selectCountry(f.properties.iso3, { fly: false }))
+    .onPolygonHover((f) => { el.style.cursor = f?.properties.iso3 ? "pointer" : "grab"; })
+    .pointsData(pointCountries)
+    .pointLat((c) => c.lat).pointLng((c) => c.lng).pointRadius(0.45)
+    .pointLabel((c) => tipHTML(c.iso3))
+    .onPointClick((c) => selectCountry(c.iso3, { fly: false }));
+  globe.onZoom((pov) => {
+    povNow = pov;
+    labelThreshold = thresholdFor(pov.altitude);
+    if (!labelRaf) labelRaf = requestAnimationFrame(() => { labelRaf = 0; applyLabelVisibility(); });
+  });
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  globe.controls().autoRotate = !reduce;
+  globe.controls().autoRotateSpeed = 0.35;
+  if (reduce) { $("#rotate").checked = false; globe.polygonsTransitionDuration(0); }
+  globe.pointOfView({ lat: 25, lng: 135, altitude: 2.3 });
+  el.addEventListener("pointerdown", () => { globe.controls().autoRotate = false; $("#rotate").checked = false; });
+  new ResizeObserver(() => sizeGlobe()).observe($("#globe-wrap"));
+  sizeGlobe();
+}
+function sizeGlobe() {
+  if (!globe) return;
+  const w = $("#globe-wrap");
+  globe.width(w.clientWidth).height(w.clientHeight);
+}
+function tipHTML(iso3) {
+  if (!iso3 || !D.countries[iso3]) return "";
+  const ind = IND(S.ind);
+  const p = snapNow[iso3];
+  const r = p ? A.rankAll(snapNow, ind.better)[iso3] : null;
+  const f = flag(iso3);
+  const hl = S.mode === "timeline" && S.highlight?.has(iso3) ? `<div>📜 この出来事に関係する国</div>` : "";
+  return `<div class="tip"><b>${f ? `<img src="${f}">` : ""}${esc(cname(iso3))}</b>${hl}<div>${esc(ind.name)}</div>
+    <div class="v">${p ? `${fmtV(ind, p[1])}${esc(unitOf(ind))}` : "データなし"}</div>
+    ${p && p[0] != null ? `<small>${A.fmtYear(p[0])}のデータ</small>` : ""}${r ? `<div>${r.n}か国中 <b>${r.rank}位</b></div>` : ""}</div>`;
+}
+async function paintGlobe() {
+  if (!globe) return;
+  const ind = IND(S.ind);
+  snapNow = await currentSnap();
+  const cz = colorizer(snapNow, ind);
+  colorFn = cz.color;
+  const tl = S.mode === "timeline" && S.highlight;
+  const tlColor = "#ffd43b";
+  globe
+    .polygonCapColor((f) => {
+      const iso = f.properties.iso3;
+      if (tl) return S.highlight.has(iso) ? tlColor : "rgba(210,215,228,0.5)";
+      return iso && snapNow[iso] ? cz.color(snapNow[iso][1]) : NO_DATA;
+    })
+    .polygonAltitude((f) => altOf(f.properties.iso3, cz))
+    .pointsData(!tl && S.viz === "bars" ? Object.values(D.countries).filter((c) => c.lat != null && snapNow[c.iso3]) : pointCountries)
+    .pointRadius((c) => (!tl && S.viz === "bars" ? (c.iso3 === S.country ? 0.9 : 0.55) : 0.45))
+    .pointColor((c) => (tl ? (S.highlight.has(c.iso3) ? tlColor : "rgba(230,232,238,.6)") : c.iso3 === S.country && S.viz === "bars" ? "#ffd43b" : snapNow[c.iso3] ? cz.color(snapNow[c.iso3][1]) : NO_DATA))
+    .pointAltitude((c) => (tl ? (S.highlight.has(c.iso3) ? 0.09 : 0.01) : S.viz === "bars" ? barAlt(c.iso3, cz) : S.viz === "extrude" && snapNow[c.iso3] ? 0.01 + cz.q(snapNow[c.iso3][1]) * 0.16 : 0.01));
+  $("#arcs").checked = !!arcsOn();
+  // 難民の流れ(UNHCR: 出身国 → 受入国)を弧で表示
+  const flows = !tl && arcsOn() ? D.flows.flows.filter(([o, a]) => !S.country || o === S.country || a === S.country) : [];
+  const maxN = flows.length ? Math.max(...flows.map((f) => f[2])) : 1;
+  globe
+    .arcsData(flows.map(([o, a, n]) => ({ o, a, n, s: D.countries[o], e: D.countries[a] })).filter((f) => f.s?.lat != null && f.e?.lat != null))
+    .arcStartLat((f) => f.s.lat).arcStartLng((f) => f.s.lng).arcEndLat((f) => f.e.lat).arcEndLng((f) => f.e.lng)
+    .arcColor(() => ["rgba(255,107,107,0.95)", "rgba(255,212,59,0.95)"])
+    .arcStroke((f) => 0.25 + 1.6 * Math.sqrt(f.n / maxN))
+    .arcAltitudeAutoScale(0.45)
+    .arcDashLength(0.4).arcDashGap(0.15).arcDashAnimateTime(2600)
+    .arcLabel((f) => `<div class="tip"><b>${esc(cname(f.o))} → ${esc(cname(f.a))}</b><div class="v">${A.fmtNum(f.n, 0)}人</div><small>${D.flows.year}年・UNHCR(難民の数)</small></div>`);
+  // 年表モード: 関係国に波紋(rings)と、地球儀の上に立つキャラクター(3D の HTML 要素)
+  const tlc = tl ? [...S.highlight].map((k) => D.countries[k]).filter((c) => c?.lat != null)
+    : S.country && D.countries[S.country]?.lat != null ? [D.countries[S.country]] : [];
+  globe
+    .ringsData(tlc).ringLat((c) => c.lat).ringLng((c) => c.lng)
+    .ringColor(() => (t) => `rgba(250,176,5,${Math.max(0, 1 - t)})`).ringMaxRadius(7).ringPropagationSpeed(2.5).ringRepeatPeriod(1100)
+    .htmlElementsData([
+      ...(S.labels && !tl ? labelData.filter((d) => d.iso3 !== S.country) : []),
+      ...tlc.map((c, i) => ({ type: "marker", c, i, lat: c.lat, lng: c.lng })),
+    ])
+    .htmlLat((d) => d.lat).htmlLng((d) => d.lng)
+    .htmlAltitude((d) => (d.type === "label" ? altOf(d.iso3, cz) + 0.004 : tl ? 0.1 : 0.2))
+    .htmlElement((d) => {
+      if (d.type === "label") {
+        const el = document.createElement("div");
+        el.className = `country-label r${Math.min(d.rank, 5)}`;
+        el.dataset.rank = d.rank;
+        el.dataset.lat = d.lat;
+        el.dataset.lng = d.lng;
+        el.textContent = cname(d.iso3);
+        if (d.rank > labelThreshold || angleFromCenter(d.lat, d.lng) > (Math.acos(1 / (1 + povNow.altitude)) / RAD) * 0.75) el.classList.add("lh");
+        return el;
+      }
+      const el = document.createElement("div");
+      el.className = "globe-chara";
+      const people = tl && d.i === 0 && S.tlEvent?.p?.length ? S.tlEvent.p.slice(0, 2).map((p) => characterSVG(p, 46)).join("") : "";
+      const v = !tl && snapNow[d.c.iso3] ? `<b>${fmtV(ind, snapNow[d.c.iso3][1])}${esc(unitOf(ind))}</b>` : "";
+      el.innerHTML = `${people}<span>${tl ? "" : "📍"}${esc(cname(d.c.iso3))}${v ? " " + v : ""}</span>`;
+      el.style.pointerEvents = "auto";
+      el.onclick = () => selectCountry(d.c.iso3);
+      return el;
+    });
+  requestAnimationFrame(applyLabelVisibility);
+  // タイトル・凡例
+  const cat = CAT(ind.category);
+  $("#globe-title").innerHTML = tl && S.tlEvent
+    ? `<div class="t">📜 ${esc(A.fmtYear(S.tlEvent.y))} ${esc(S.tlEvent.t)}</div><div class="s">光っている国がこの出来事に関係する国です</div>`
+    : `<div class="t">${cat ? cat.icon : "🎯"} ${esc(ind.name)}</div><div class="s">${esc(yearLabel())}${curYear() == null ? "(各国の最新データ)" : ""}・${Object.keys(snapNow).length}か国のデータ${ind.unit ? `・単位 ${esc(ind.unit)}` : ""}</div>`;
+  // 凡例は左が小さい値。少ないほど良い指標(better=low)は左が「良い」になる
+  const lbl = ind.better === "high" ? ["課題が大きい", "良い"] : ind.better === "low" ? ["良い(少ない)", "課題が大きい"] : ["小さい", "大きい"];
+  const br = cz.breaks;
+  $("#legend").innerHTML = tl ? "" : cz.levels ? `<div>${esc(ind.name)}</div>${cz.levels.map((l) => `<div class="lv"><i style="background:${l.color}"></i>${esc(l.label)}</div>`).join("")}<div class="legend-lbl"><span><i style="display:inline-block;width:10px;height:10px;background:${NO_DATA}"></i> データなし</span></div>` : `<div>${esc(ind.name)}${ind.better ? (cvd ? "(黄色いほど望ましい)" : "(青いほど望ましい)") : ""}</div>
+    <div class="legend-bar">${cz.pal.map((c) => `<i style="background:${c}"></i>`).join("")}</div>
+    <div class="legend-lbl"><span>${lbl[0]}</span><span>${br.length ? `${fmtV(ind, br[0])} … ${fmtV(ind, br[br.length - 1])}` : ""}</span><span>${lbl[1]}</span></div>
+    <div class="legend-lbl"><span><i style="display:inline-block;width:10px;height:10px;background:${NO_DATA}"></i> データなし</span>${S.viz !== "flat" ? "<span>高さ = 値の大きさの順位</span>" : ""}</div>
+    ${!tl && arcsOn() ? `<div class="legend-lbl" style="margin-top:4px"><span><i style="display:inline-block;width:18px;height:3px;background:linear-gradient(90deg,#ff6b6b,#ffd43b)"></i> 難民の流れ(赤=出身国 → 黄=受入国)上位${D.flows.flows.length}組・${D.flows.year}年</span></div>` : ""}`;
+}
+
+// ---------------------------------------------------------------- 章ナビ
+function renderChapters() {
+  const list = D.catalog.categories.map((c) => {
+    const inds = indsOf(c.id);
+    const open = c.id === S.cat;
+    return `<button class="chap${open ? " on" : ""}" style="--c:${c.color}" data-cat="${c.id}"><span class="ic">${c.icon}</span>${esc(c.name)}<span class="n">${inds.length}</span></button>
+      ${open ? `<div class="inds" style="--c:${c.color}">${inds.map((i) => `<button class="ind${i.id === S.ind ? " on" : ""}${canUseIndicator(i.id, PAID) ? "" : " locked"}" data-ind="${i.id}">${canUseIndicator(i.id, PAID) ? "" : "🔒 "}${esc(i.name)}<span class="sdg-dots">${i.sdg.slice(0, 2).map((n) => `<span class="sdg-dot" style="background:${D.catalog.sdg_goals[n - 1].color}" title="SDGs 目標${n}">${n}</span>`).join("")}</span></button>`).join("")}</div>` : ""}`;
+  }).join("");
+  $("#chapter-list").innerHTML = `<div class="muted" style="margin:0 0 6px 4px">📖 章をえらぶ</div>${list}`;
+  renderIndBox();
+}
+function renderIndBox() {
+  const ind = IND(S.ind);
+  const w = D.latest[ind.id]?.w;
+  $("#ind-box").innerHTML = `<h4>${esc(ind.name)}</h4><div>${esc(ind.explain)}</div>
+    ${w ? `<div style="margin-top:6px">🌍 世界全体: <b>${fmtV(ind, w[1])}${esc(unitOf(ind))}</b> <small>(${w[0]}年)</small></div>` : ""}
+    ${ind.sdg.length ? `<div style="margin-top:6px">${ind.sdg.map((n) => `<span class="sdg-dot" style="background:${D.catalog.sdg_goals[n - 1].color};width:auto;padding:0 5px">SDGs ${n}</span>`).join(" ")}</div>` : ""}
+    ${glossaryFor(ind.id) ? `<button class="chip gloss-link" data-gterm="${esc(glossaryFor(ind.id).t)}">📖 用語集で詳しく: ${esc(glossaryFor(ind.id).t)}</button>` : ""}
+    <div class="src">出典: ${esc(ind.org || sourceName(ind.source))}${ind.source === "ucla" ? "(CC BY-NC 4.0・非営利の教育利用)" : ""}</div>
+    ${ind.levels ? `<div class="src">段階: ${ind.levels.map((l) => esc(l[1])).join(" < ")}</div>` : ""}`;
+}
+function sourceName(s) {
+  return { wb: "世界銀行 World Development Indicators(国連機関等のデータを集約)", unhcr: "UNHCR", undp: "UNDP 人間開発報告書", owid: "Our World in Data",
+    harvard: "ハーバード大学 Growth Lab", epi: "イェール大学 環境パフォーマンス指数", ndgain: "ノートルダム大学 ND-GAIN",
+    unsdg: "国連統計部 SDG Global Database", uis: "UNESCO 統計研究所", ucla: "UCLA WORLD Policy Analysis Center" }[s] || s;
+}
+
+// ---------------------------------------------------------------- 図鑑ページ(右)
+async function renderDex() {
+  const el = $("#dex");
+  if (S.mode === "timeline") return renderEventDex();
+  if (!S.country) return renderWorldDex();
+  const c = D.countries[S.country];
+  const f = flag(S.country, 160);
+  el.innerHTML = `<div class="dex-head">${f ? `<img class="flag" src="${f}" alt="">` : ""}
+      <div><h2>${esc(c.name_ja)}</h2><div class="en">${esc(c.name_en)}${c.capital ? `・首都 ${esc(c.capital)}` : ""}</div></div></div>
+    <div class="chips"><span class="chip">🗺️ ${esc(c.region_ja)}</span><span class="chip">💴 ${esc(c.income_ja)}</span>
+      ${S.country !== "JPN" ? `<button class="chip jp-cmp" data-act="vs-japan">🗾 日本とくらべる${lock("compare")}</button>` : `<button class="chip jp-cmp" data-act="vs-similar">🧩 日本と似ている国とくらべる${lock("compare")}</button>`}<button class="chip" data-act="cmp-add">⚖️ くらべるに追加${lock("compare")}</button><button class="chip" data-act="world">🌍 世界全体を見る</button><button class="chip" data-act="print">🖨️ 印刷用ページ${lock("print")}</button></div>
+    <div class="tabs">${[["chapter", "この章"], ["overview", "全体像"], ["profile", "プロフィール"], ["history", "歴史"]].map(([k, l]) => `<button data-tab="${k}" class="${S.dexTab === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <div id="dex-body"><div class="empty">読み込み中…</div></div>`;
+  const body = $("#dex-body");
+  if (S.dexTab === "chapter") body.innerHTML = await dexChapter(S.country);
+  else if (S.dexTab === "overview") body.innerHTML = dexOverview(S.country);
+  else if (S.dexTab === "profile") body.innerHTML = dexProfile(S.country);
+  else body.innerHTML = await dexHistory(S.country);
+}
+
+function rowFor(iso3, ind) {
+  const L = D.latest[ind.id]?.c?.[iso3];
+  if (!L) return null;
+  const r = ranksLatest(ind.id)[iso3];
+  const tr = L[2] !== L[0] ? A.trend([[L[2], L[3]], [L[0], L[1]]], 99) : null;
+  return {
+    ind, year: L[0], value: L[1], base: [L[2], L[3]], forecast: L[4], world: D.latest[ind.id]?.w,
+    rank: r?.rank, n: r?.n, goodness: r?.goodness, label: ind.better && r && r.n >= 20 ? A.rateLabel(r.goodness) : null,
+    tr, meaning: A.trendMeaning(tr, ind.better),
+  };
+}
+function trendHTML(row) {
+  if (!row.tr) return "";
+  if (row.ind.levels) return row.tr.dir === "flat" ? "" : `<span class="${row.meaning === "改善" ? "up" : "down"}">${row.tr.from[0]}年から変化(${esc(levelLabel(row.ind, row.tr.from[1]))} → ${esc(levelLabel(row.ind, row.tr.to[1]))})</span>`;
+  const arrow = row.tr.dir === "up" ? "↗" : row.tr.dir === "down" ? "↘" : "→";
+  const cls = row.meaning === "改善" ? "up" : row.meaning === "悪化" ? "down" : "flat";
+  return `<span class="${cls}">${arrow} ${row.tr.from[0]}年から${row.tr.pct != null ? `${row.tr.pct > 0 ? "+" : ""}${row.tr.pct.toFixed(0)}%` : ""}${row.meaning ? `(${row.meaning})` : ""}</span>`;
+}
+function diffHTML(row) {
+  if (!row.world) return "";
+  const d = A.diffPct(row.value, row.world[1]);
+  if (d == null) return "";
+  const good = row.ind.better ? (d > 0) === (row.ind.better === "high") : null;
+  return `<span class="${good == null ? "" : good ? "pos" : "neg"}">世界全体比 ${d > 0 ? "+" : ""}${Math.abs(d) >= 1000 ? (d / 100).toFixed(0) + "倍" : d.toFixed(0) + "%"}</span>`;
+}
+
+async function dexChapter(iso3) {
+  const cat = CAT(S.cat);
+  const allInds = indsOf(S.cat);
+  const inds = allInds.filter((i) => canUseIndicator(i.id, PAID)); // 無料版は無料の指標だけで総評・スコアを出す
+  const hidden = allInds.length - inds.length;
+  const sers = await Promise.all(inds.map((i) => loadSeries(i.id)));
+  const rows = inds.map((ind) => rowFor(iso3, ind)).filter(Boolean);
+  const stats = inds.map((ind, k) => {
+    const row = rowFor(iso3, ind);
+    if (!row) return `<div class="stat"><div class="nm">${esc(ind.name)}</div><div class="val"><small>データなし</small></div></div>`;
+    const s = sers[k]?.countries?.[iso3]?.s || [];
+    return `<div class="stat${ind.id === S.ind ? " on" : ""}" data-ind="${ind.id}" role="button" tabindex="0">
+      <div class="nm">${row.label ? `<span class="rate ${row.label}" title="${A.RATE_TEXT[row.label]}">${row.label}</span> ` : ""}${esc(ind.name)}</div>
+      <div class="val">${fmtV(ind, row.value)}<small>${esc(unitOf(ind))}</small></div>
+      <div class="meta"><span>${A.fmtYear(row.year)}</span>${row.rank ? `<span>${row.n}か国中 <b>${row.rank}位</b></span>` : ""}${diffHTML(row)}${trendHTML(row)}
+        ${row.forecast != null ? (PAID ? `<span>🔮 2030年予測 ${fmtV(ind, row.forecast)}</span>` : `<span class="lk" title="完全版で表示">🔮 2030年予測 🔒</span>`) : ""}<span style="margin-left:auto">${sparkline(s.slice(-30), cat.color)}</span></div></div>`;
+  }).join("");
+  // 選択中の指標の推移グラフ(国・地域の中央値・世界)
+  const ind = IND(S.ind).category === S.cat ? IND(S.ind) : inds[0];
+  const ser = sers[inds.indexOf(ind)];
+  let chart = "";
+  if (ser?.countries?.[iso3]) {
+    const me = ser.countries[iso3];
+    const region = D.countries[iso3].region;
+    const regionSeries = regionMedianSeries(ser, region);
+    const lines = [
+      { name: cname(iso3), color: cat.color, points: me.s, width: 3 },
+      { name: `${D.countries[iso3].region_ja}の中央値`, color: "#adb5bd", points: regionSeries, dashed: true },
+    ];
+    if (ser.world?.length) lines.push({ name: "世界全体", color: "#495057", points: ser.world });
+    const fc = PAID && me.f && ind.forecast !== false ? [{ color: cat.color, from: me.s[me.s.length - 1], to: [me.f.year, me.f.value] }] : [];
+    chart = `<h3>📈 ${esc(ind.name)}の移り変わり</h3>${lineChart(lines, { log: ind.scale === "log", decimals: ind.decimals, forecast: fc, height: 200 })}
+      ${me.f ? `<div class="note">点線は過去${me.f.n}年の傾向をそのまま伸ばした場合の${me.f.year}年の見込み(決定係数 R²=${me.f.r2.toFixed(2)}。1に近いほど直線的な変化)。政策や出来事で大きく変わることがあります。</div>` : ""}`;
+  }
+  const score = scoreFor(iso3, inds);
+  const lines = A.commentary(cname(iso3), rows, cat.name);
+  const exportsBox = (S.cat === "economy" ? (PAID ? exportsHTML(iso3) : lockedCard("exports")) : "") + (iso3 !== "JPN" ? vsJapanHTML(iso3, inds) : "");
+  return `${exportsBox}<div class="kpis"><div class="kpi"><div class="l">${esc(cat.name)}の章スコア</div><div class="v">${score == null ? "—" : `${score.toFixed(0)}点`}</div>${score == null ? "<small>良し悪しで測らない章</small>" : ""}</div>
+      <div class="kpi"><div class="l">評価</div><div class="v">${score == null ? "—" : `<span class="rate ${A.rateLabel(score / 100)}">${A.rateLabel(score / 100)}</span> ${A.RATE_TEXT[A.rateLabel(score / 100)]}`}</div></div>
+      <div class="kpi"><div class="l">データのある指標</div><div class="v">${rows.length}/${inds.length}</div></div></div>
+    <div class="comment">${lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div>
+    ${stats}${hidden ? `<div class="card locked-card"><b>🔒 この章のほか${hidden}指標</b><p class="muted">完全版(買い切り)で、この章のすべての指標と総評・スコアを見られます。</p><button class="chip" data-up="allIndicators">くわしく見る</button></div>` : ""}${chart}
+    <div class="note">評価(S〜D)は、データのある国の中での順位(パーセンタイル)から決めています。S=上位10%、A=上位30%、B=真ん中、C=下位40〜15%、D=下位15%。良し悪しで測らない指標(面積・人口など)には付けていません。章スコアは「良し悪しのある指標」の順位の平均です(50点が世界の真ん中)。</div>`;
+}
+// 主な輸出品目(ハーバード大 Growth Lab Atlas)。分野別の割合の帯グラフ + 上位品目
+function exportsHTML(iso3) {
+  const ex = D.exports?.countries?.[iso3];
+  const P = D.catalog.products;
+  if (!ex || !P) return "";
+  const band = Object.entries(ex.sectors).map(([k, v]) => `<i style="width:${(v * 100).toFixed(1)}%;background:${P.sector_colors[k] || "#adb5bd"}" title="${esc(P.sectors[k] || k)} ${(v * 100).toFixed(1)}%"></i>`).join("");
+  const legend = Object.entries(ex.sectors).filter(([, v]) => v >= 0.03).map(([k, v]) => `<span><i style="background:${P.sector_colors[k] || "#adb5bd"}"></i>${esc(P.sectors[k] || k)} ${(v * 100).toFixed(0)}%</span>`).join("");
+  const top = ex.top.slice(0, 6).map(([code, val, share], i) => `<div class="ex-row"><span class="ex-rank">${i + 1}</span><span class="ex-name">${esc(P.hs2[code] || code)}</span>
+      <span class="ex-bar"><i style="width:${Math.min(100, share * 100 / ex.top[0][2] * 1).toFixed(1)}%"></i></span><span class="ex-val">${(share * 100).toFixed(1)}%<small>${A.fmtNum(val, 0)}ドル</small></span></div>`).join("");
+  const main = ex.top[0] ? P.hs2[ex.top[0][0]] || ex.top[0][0] : "";
+  const conc = ex.top.slice(0, 3).reduce((a, t) => a + t[2], 0);
+  return `<div class="card ex-card"><b>🚢 ${esc(cname(iso3))}の主な輸出品(${ex.year}年)</b> <small>輸出総額 ${A.fmtNum(ex.total, 0)}ドル</small>
+    <div class="ex-band">${band}</div><div class="legend-row">${legend}</div>${top}
+    <div class="comment" style="margin:8px 0 0"><p>【特徴】いちばん多く輸出しているのは「${esc(main)}」です。上位3品目で輸出の${(conc * 100).toFixed(0)}%をしめています。${conc > 0.6 ? "少ない品目にたよっているため、値段の変化の影響を受けやすいかもしれません。" : "いろいろな品目を輸出しています。"}</p></div>
+    <div class="note">出典: ハーバード大学 Growth Lab「Atlas of Economic Complexity」(HS 1992 分類・2桁)。品目名は本図鑑で日本語にしたもの。</div></div>`;
+}
+// 「日本とくらべると」: この章の指標で、日本より良い/課題のあるものを短く示す
+function vsJapanHTML(iso3, inds) {
+  const rows = inds.filter((i) => i.better).map((ind) => ({ ind, a: rowFor(iso3, ind), j: rowFor("JPN", ind) })).filter((x) => x.a && x.j);
+  if (!rows.length) return "";
+  const better = rows.filter((x) => x.a.goodness > x.j.goodness + 0.05).map((x) => x.ind.name);
+  const worse = rows.filter((x) => x.a.goodness < x.j.goodness - 0.05).map((x) => x.ind.name);
+  const name = cname(iso3);
+  return `<div class="card vsjp"><b>🗾 日本とくらべると(この章)</b>
+    ${better.length ? `<p>⬆️ <b>${esc(name)}のほうが良い</b>: ${esc(better.slice(0, 4).join("、"))}</p>` : ""}
+    ${worse.length ? `<p>⬇️ <b>日本のほうが良い</b>: ${esc(worse.slice(0, 4).join("、"))}</p>` : ""}
+    ${!better.length && !worse.length ? "<p>この章では、日本とほぼ同じくらいです。</p>" : ""}
+    <button class="chip jp-cmp" data-act="vs-japan">⚖️ グラフでくらべる</button></div>`;
+}
+function lockedCard(key) {
+  return `<div class="card locked-card"><b>🔒 ${esc(PLAN.paidFeatures[key] || "完全版の機能")}</b>
+    <p class="muted">完全版(買い切り)で見られます。</p><button class="chip" data-up="${key}">くわしく見る</button></div>`;
+}
+function regionMedianSeries(ser, region) {
+  const byYear = {};
+  for (const [iso3, c] of Object.entries(ser.countries)) {
+    if (D.countries[iso3]?.region !== region) continue;
+    for (const [y, v] of c.s) (byYear[y] ||= []).push(v);
+  }
+  return Object.entries(byYear).filter(([, v]) => v.length >= 3).map(([y, v]) => [+y, A.median(v)]).sort((a, b) => a[0] - b[0]);
+}
+function chapterScores(iso3) {
+  return D.catalog.categories.map((c) => ({ cat: c, score: scoreFor(iso3, indsOf(c.id)) }));
+}
+function dexOverview(iso3) {
+  const sc = chapterScores(iso3).filter((x) => indsOf(x.cat.id).some((i) => i.better));
+  const ref = iso3 === "JPN" ? null : "JPN";
+  const series = [{ name: cname(iso3), color: "#1c64d6", values: sc.map((x) => x.score) }];
+  if (ref) series.push({ name: cname(ref), color: "#e8590c", values: sc.map((x) => scoreFor(ref, indsOf(x.cat.id))) });
+  const sdg = D.catalog.sdg_goals.map((g) => ({ g, s: sdgSnap(g.n)[iso3]?.[1] }));
+  const valid = sc.filter((x) => x.score != null).sort((a, b) => b.score - a.score);
+  const best = valid.slice(0, 2).map((x) => x.cat.name), worst = valid.slice(-2).reverse().map((x) => x.cat.name);
+  const sim = similarCountries(iso3, 6);
+  return `<h3>🕸️ 章ごとのバランス(50点=世界の真ん中)</h3>
+    ${radar(sc.map((x) => ({ label: x.cat.icon + x.cat.name.replace(/\(.*\)/, "") })), series, 300)}
+    <div class="legend-row">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}<span><i class="dash"></i>世界の真ん中(50点)</span></div>
+    <div class="comment"><p>【得意な分野】${esc(best.join("・") || "—")}</p><p>【課題のある分野】${esc(worst.join("・") || "—")}</p>
+      <p>【考えてみよう】得意な分野と課題のある分野は、地理や歴史とどんな関係があるでしょうか。</p></div>
+    ${sc.map((x) => `<div class="stat" data-cat="${x.cat.id}" role="button" tabindex="0"><div class="nm">${x.cat.icon} ${esc(x.cat.name)}</div><div class="val">${x.score == null ? "<small>—</small>" : `${x.score.toFixed(0)}<small>点</small> <span class="rate ${A.rateLabel(x.score / 100)}">${A.rateLabel(x.score / 100)}</span>`}</div></div>`).join("")}
+    <h3>🎯 SDGs 17目標のスコア</h3>
+    <div class="sdg-mini">${sdg.map(({ g, s }) => `<div style="background:${g.color}" title="目標${g.n} ${esc(g.name)}">${g.n}<small>${s == null ? "—" : s.toFixed(0)}</small></div>`).join("")}</div>
+    <h3>🧩 データが似ている国</h3>
+    <div class="sim">${sim.map((s) => `<button class="chip" data-country="${s.iso3}">${esc(cname(s.iso3))}</button>`).join("") || "<small>計算できるデータが足りません</small>"}</div>
+    <div class="note">「似ている国」は、章スコア(地理・人口…歴史)の組み合わせが近い国です。地図上で近いとは限りません。</div>`;
+}
+function scoreVector(iso3) { return D.catalog.categories.filter((c) => indsOf(c.id).some((i) => i.better)).map((c) => scoreFor(iso3, indsOf(c.id))); }
+function similarCountries(iso3, k) {
+  const me = scoreVector(iso3);
+  return Object.keys(D.countries).filter((x) => x !== iso3).map((x) => ({ iso3: x, d: A.vecDistance(me, scoreVector(x)) }))
+    .filter((x) => x.d != null).sort((a, b) => a.d - b.d).slice(0, k);
+}
+function dexProfile(iso3) {
+  const c = D.countries[iso3];
+  const fb = c.factbook || {};
+  const w = c.wiki;
+  const items = [
+    ["📍 位置", fb.location], ["📐 広さのたとえ", fb.area_comparative], ["🌡️ 気候", fb.climate], ["⛰️ 地形", fb.terrain],
+    ["🏔️ いちばん高い所", fb.highest_point], ["🌊 いちばん低い所", fb.lowest_point], ["⚠️ 自然災害", fb.natural_hazards],
+    ["💎 天然資源", fb.natural_resources], ["🗣️ 言語", fb.languages], ["🙏 宗教", fb.religions], ["👪 民族", fb.ethnic_groups],
+    ["🏛️ 政治のしくみ", fb.government_type], ["🎌 独立・建国", fb.independence], ["🎉 祝日", fb.national_holiday],
+    ["🌾 農産物", fb.agricultural_products], ["🚢 主な輸出品", fb.exports_commodities], ["♻️ 環境問題", fb.environmental_issues],
+  ].filter(([, v]) => v);
+  return `${w ? `<h3>📖 どんな国?(Wikipedia 日本語版より)</h3><div class="wiki">${esc(w.extract)}</div><div class="note">出典: <a href="${esc(w.url)}" target="_blank" rel="noopener">Wikipedia「${esc(w.title)}」</a>(CC BY-SA 4.0)</div>` : ""}
+    ${exportsHTML(iso3)}
+    <h3>🗂️ 基本データ(CIA World Factbook)</h3>
+    ${items.length ? `<dl class="fact">${items.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : "<p class='muted'>この国・地域の Factbook データはありません。</p>"}
+    <div class="note">Factbook の項目はアメリカ中央情報局(CIA)が公開している原文(英語)です。英語の授業の教材としても使えます。</div>`;
+}
+async function dexHistory(iso3) {
+  const c = D.countries[iso3];
+  const evs = D.timeline.events.filter((e) => e.c.includes(iso3));
+  const longIds = ["pop_hist", "gdp_long", "life_long", "democracy"];
+  const sers = await Promise.all(longIds.map(loadSeries));
+  const charts = longIds.map((id, k) => {
+    const ind = IND(id), me = sers[k]?.countries?.[iso3];
+    if (!me) return "";
+    return `<div class="card" style="margin-bottom:8px"><b>${esc(ind.name)}</b> <small>${esc(ind.org)}</small>
+      ${lineChart([{ name: cname(iso3), color: "#862e9c", points: me.s, width: 2.5 }, ...(sers[k].world?.length ? [{ name: "世界全体", color: "#adb5bd", points: sers[k].world }] : [])],
+        { log: ind.scale === "log", decimals: ind.decimals, height: 150, yearMarks: evs.filter((e) => e.y >= me.s[0][0]).slice(-3).map((e) => ({ year: e.y, label: e.t.slice(0, 8) })) })}</div>`;
+  }).join("");
+  const iy = c.factbook?.independence_year;
+  return `${iy ? `<div class="kpis"><div class="kpi" style="grid-column:1/-1"><div class="l">🎌 独立・建国(CIA World Factbook)</div><div class="v">${A.fmtYear(iy)}</div><small>いまから${new Date().getFullYear() - iy}年前</small></div></div>` : ""}
+    <h3>📜 ${esc(c.name_ja)}の年表(${evs.length}件)</h3>
+    ${evs.length ? [...evs].sort((a, b) => a.y - b.y).map((e) => `<div class="tl-mini" role="button" tabindex="0" data-event="${D.timeline.events.indexOf(e)}">${e.p?.length ? characterSVG(e.p[0], 34) : e.auto ? `<span style="font-size:22px">🎌</span>` : `<span style="font-size:22px">📌</span>`}<div><b>${A.fmtYear(e.y)}</b> ${esc(e.t)}</div></div>`).join("") : "<p class='muted'>この国が登場する出来事はまだ年表にありません。</p>"}
+    <h3>⏳ 数百年のデータで見る歴史</h3>${PAID ? (charts || "<p class='muted'>長期データがありません。</p>") : lockedCard("history")}
+    ${PAID ? historyJaHTML(c) : c.factbook_ja ? lockedCard("factbookJa") : ""}
+    ${c.factbook?.background ? `<details class="en-orig" ${c.factbook_ja ? "" : "open"}><summary>🗒️ 歴史の背景(CIA World Factbook・英語原文)</summary><div class="fact" style="white-space:pre-line">${esc(c.factbook.background)}</div></details>` : ""}`;
+}
+
+// CIA 原文の日本語要約。AI の下書きか、人が確認済みかをはっきり示す
+function jaBadge(t) {
+  if (t.stale) return `<span class="jab stale">⚠️ 英語の原文が改訂されたため、要約の再確認が必要です</span>`;
+  if (t.reviewed) return `<span class="jab ok">✅ 確認済み(${esc(t.reviewer || "")})</span>`;
+  const warn = t.check_numbers?.length ? ` <span class="jab stale" title="要約に出てくる数字のうち、英語の原文に見つからないもの">⚠ 原文に無い数字: ${t.check_numbers.map(esc).join(", ")}</span>` : "";
+  return `<span class="jab draft">🤖 AI による要約の下書き(先生などの確認前)</span>${warn}`;
+}
+function historyJaHTML(c) {
+  const t = c.factbook_ja;
+  if (!t) return "";
+  return `<h3>🗒️ 歴史の背景(CIA World Factbook の日本語要約)</h3>${jaBadge(t)}
+    <div class="wiki" style="margin-top:6px">${esc(t.background_ja)}</div>
+    <div class="note">原文にない内容を加えないように要約していますが、誤りがあるかもしれません。下の英語原文と見くらべてみよう。</div>`;
+}
+function worldCommentary(ind, snap) {
+  const w = D.latest[ind.id]?.w;
+  const ranks = A.rankAll(snap, ind.better);
+  const order = Object.entries(ranks).sort((a, b) => a[1].rank - b[1].rank).map(([k]) => k);
+  const lines = [];
+  if (ind.levels) {
+    // 段階の指標: 各段階に何か国あるか
+    const vals = Object.values(snap).map((p) => Math.round(p[1]));
+    const total = vals.length;
+    for (const [sc, label] of [...ind.levels].reverse()) {
+      const n = vals.filter((v) => v === sc).length;
+      if (n) lines.push(`【${label}】${n}か国(${((n / total) * 100).toFixed(0)}%)`);
+    }
+    if (ind.sdg.length) lines.push(`【SDGs】この指標は目標${ind.sdg.join("・")}に関係しています。`);
+    lines.push("【考えてみよう】法律で決まっていることと、実際のくらし(ほかの指標)にちがいはあるかな?");
+    return { lines, order, w };
+  }
+  if (order.length) {
+    lines.push(`【${ind.better === "low" ? "少ない(良い)" : "大きい"}国】${order.slice(0, 3).map(cname).join("、")}`);
+    lines.push(`【${ind.better === "low" ? "多い(課題が大きい)" : "小さい"}国】${order.slice(-3).reverse().map(cname).join("、")}`);
+  }
+  const vals = Object.values(snap).map((p) => p[1]).filter(Number.isFinite).sort((a, b) => a - b);
+  // 格差(倍率)は、値がすべて正の量のときだけ意味がある(ECI のようにマイナスを含む指数や 0 が多い量は除く)
+  if (vals.length > 10 && vals[0] > 0) {
+    const ratio = vals[Math.floor(vals.length * 0.9)] / vals[Math.floor(vals.length * 0.1)];
+    if (Number.isFinite(ratio) && ratio > 3) lines.push(`【格差】上位10%の国と下位10%の国では、${ratio >= 1000 ? "1000倍以上" : `およそ${ratio >= 100 ? Math.round(ratio / 10) * 10 : ratio.toFixed(0)}倍`}の差があります。`);
+  }
+  if (ind.sdg.length) lines.push(`【SDGs】この指標は目標${ind.sdg.join("・")}に関係しています。`);
+  lines.push("【考えてみよう】色の濃い国はどの地域に集まっていますか? 気候・歴史・経済と関係がありそうですか?");
+  return { lines, order, w };
+}
+async function renderWorldDex() {
+  const ind = IND(S.ind);
+  const snap = latestSnap(S.ind);
+  const { lines, order, w } = worldCommentary(ind, snap);
+  const ser = await loadSeries(S.ind);
+  const regionMed = Object.entries(D.countries).reduce((acc, [k, c]) => { if (snap[k]) (acc[c.region] ||= []).push(snap[k][1]); return acc; }, {});
+  const regRows = Object.entries(regionMed).map(([r, v]) => ({ id: r, label: Object.values(D.countries).find((c) => c.region === r).region_ja, value: A.median(v), color: REGION_COLOR[r] })).sort((a, b) => b.value - a.value);
+  const top = order.slice(0, 5), bottom = order.slice(-5).reverse();
+  const med = A.median(Object.values(snap).map((p) => p[1]));
+  $("#dex").innerHTML = `<h2>🌍 世界全体で見る</h2><p class="muted">国を地球儀でクリックすると、その国の図鑑ページが開きます。</p>
+    <div class="kpis"><div class="kpi"><div class="l">世界全体</div><div class="v">${w ? fmtV(ind, w[1]) : "—"}</div><small>${w ? `${w[0]}年` : ""}</small></div>
+      <div class="kpi"><div class="l">各国の中央値</div><div class="v">${fmtV(ind, med)}</div></div><div class="kpi"><div class="l">データのある国</div><div class="v">${Object.keys(snap).length}</div></div></div>
+    <div class="comment">${lines.map((l) => `<p>${esc(l)}</p>`).join("")}</div>
+    ${ser?.world?.length ? `<h3>📈 世界全体の移り変わり</h3>${lineChart([{ name: "世界全体", color: "#1c64d6", points: ser.world, width: 3 }], { log: ind.scale === "log", decimals: ind.decimals, height: 170 })}` : ""}
+    <h3>🗺️ 地域ごとの中央値</h3>${barRows(regRows, { decimals: ind.decimals, log: ind.scale === "log", fmt: ind.levels ? (v) => fmtV(ind, v) : null })}
+    <div class="grid2" style="margin-top:10px"><div><h3>🔝 上位5か国</h3>${top.map((k, i) => `<div class="tl-mini" role="button" tabindex="0" data-country="${k}">${i + 1}. ${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div>
+      <div><h3>🔚 下位5か国</h3>${bottom.map((k) => `<div class="tl-mini" role="button" tabindex="0" data-country="${k}">${esc(cname(k))} <b style="margin-left:auto">${fmtV(ind, snap[k][1])}</b></div>`).join("")}</div></div>
+    <div class="note">「上位」は値が${ind.better === "low" ? "小さい(望ましい)" : "大きい"}順です。${esc(ind.org || sourceName(ind.source))}のデータ。</div>`;
+}
+
+// ---------------------------------------------------------------- ランキング
+async function renderRank() {
+  const ind = IND(S.ind);
+  const snap = await currentSnap();
+  const ranks = A.rankAll(snap, ind.better);
+  let rows = Object.entries(ranks).map(([k, r]) => ({ id: k, rank: r.rank, label: cname(k), value: snap[k][1], highlight: k === S.country, sub: A.fmtYear(snap[k][0]) }))
+    .filter((r) => S.rankRegion === "all" || D.countries[r.id]?.region === S.rankRegion)
+    .sort((a, b) => a.rank - b.rank);
+  if (S.rankOrder === "bottom") rows.reverse();
+  const cz = colorizer(snap, ind);
+  rows.forEach((r) => (r.color = cz.color(r.value)));
+  const w = D.latest[ind.id]?.w;
+  const regions = [...new Set(Object.values(D.countries).map((c) => c.region))];
+  $("#view-rank").innerHTML = `<h2>🏆 ${esc(ind.name)} ランキング <small>${esc(yearLabel())}</small></h2><p class="muted">${esc(ind.explain)}</p>
+    <div class="toolbar"><select id="rank-region"><option value="all">すべての地域</option>${regions.map((r) => `<option value="${r}" ${S.rankRegion === r ? "selected" : ""}>${esc(Object.values(D.countries).find((c) => c.region === r).region_ja)}</option>`).join("")}</select>
+      <button class="tb ${S.rankOrder === "top" ? "on" : ""}" data-order="top">${ind.better === "low" ? "少ない順" : "大きい順"}</button><button class="tb ${S.rankOrder === "bottom" ? "on" : ""}" data-order="bottom">逆順</button>
+      <span class="muted">黒い線 = 世界全体${w && curYear() == null ? `(${fmtV(ind, w[1])})` : ""}・${rows.length}か国</span></div>
+    ${barRows(rows, { ref: curYear() == null ? w?.[1] : null, decimals: ind.decimals, log: ind.scale === "log", fmt: ind.levels ? (v) => fmtV(ind, v) : null })}`;
+}
+
+// ---------------------------------------------------------------- くらべる
+const CMP_COLORS = ["#1c64d6", "#e8590c", "#2f9e44", "#ae3ec9"];
+async function renderCompare() {
+  if (!S.compare.length) S.compare = [...new Set([S.country || "JPN", "USA", "CHN", "IND"])].slice(0, 4);
+  const ind = IND(S.ind);
+  const ser = await loadSeries(S.ind);
+  const inds = indsOf(S.cat);
+  const lines = S.compare.map((k, i) => ({ name: cname(k), color: CMP_COLORS[i], points: ser?.countries?.[k]?.s || [], width: 2.6 }));
+  if (ser?.world?.length) lines.push({ name: "世界全体", color: "#868e96", points: ser.world, dashed: true });
+  const fc = S.compare.map((k, i) => { const c = ser?.countries?.[k]; return c?.f ? { color: CMP_COLORS[i], from: c.s[c.s.length - 1], to: [c.f.year, c.f.value] } : null; }).filter(Boolean);
+  const cats = D.catalog.categories.filter((c) => indsOf(c.id).some((i) => i.better));
+  const table = inds.map((ii) => {
+    const vals = S.compare.map((k) => rowFor(k, ii));
+    const nums = vals.map((v) => v?.value).filter(Number.isFinite);
+    const best = ii.better === "high" ? Math.max(...nums) : ii.better === "low" ? Math.min(...nums) : null;
+    return `<tr><td>${esc(ii.name)}<br><small>${esc(ii.unit)}</small></td>${vals.map((v) => `<td class="${v && best != null && v.value === best && nums.length > 1 ? "best" : ""}">${v ? `${fmtV(ii, v.value)} ${v.label ? `<span class="rate ${v.label}">${v.label}</span>` : ""}<br><small>${v.n ? `${v.rank}/${v.n}位` : ""} ${v.year}</small>` : "—"}</td>`).join("")}<td><small>${D.latest[ii.id]?.w ? fmtV(ii, D.latest[ii.id].w[1]) : "—"}</small></td></tr>`;
+  }).join("");
+  const options = Object.entries(D.countries).sort((a, b) => a[1].name_ja.localeCompare(b[1].name_ja, "ja")).map(([k, c]) => `<option value="${k}">${esc(c.name_ja)}</option>`).join("");
+  $("#view-compare").innerHTML = `<h2>⚖️ くらべる(最大4か国)</h2>
+    <div class="toolbar">${S.compare.map((k, i) => `<button class="chip x" data-rm="${k}" style="background:${CMP_COLORS[i]};color:#fff">${esc(cname(k))}</button>`).join("")}
+      ${S.compare.length < 4 ? `<select id="cmp-add"><option value="">+ 国を追加</option>${options}</select>` : ""}<span class="muted">左の章・指標を変えると、グラフと表が切りかわります</span></div>
+    <div class="grid2"><div class="card"><b>📈 ${esc(ind.name)}の移り変わり</b>${lineChart(lines, { log: ind.scale === "log", decimals: ind.decimals, forecast: fc, height: 240 })}</div>
+      <div class="card"><b>🕸️ 章ごとのバランス</b>${radar(cats.map((c) => ({ label: c.icon + c.name.replace(/\(.*\)/, "") })), S.compare.map((k, i) => ({ name: cname(k), color: CMP_COLORS[i], values: cats.map((c) => scoreFor(k, indsOf(c.id))) })), 300)}</div></div>
+    <h3>📋 「${esc(CAT(S.cat).name)}」の指標をくらべる</h3>
+    <table class="cmp"><thead><tr><th>指標</th>${S.compare.map((k, i) => `<th style="color:${CMP_COLORS[i]}">${esc(cname(k))}</th>`).join("")}<th>世界全体</th></tr></thead><tbody>${table}</tbody></table>
+    <div class="comment">${compareComment(inds)}</div>`;
+}
+function compareComment(inds) {
+  const out = [];
+  for (const ii of inds.filter((x) => x.better)) {
+    const vals = S.compare.map((k) => ({ k, r: rowFor(k, ii) })).filter((x) => x.r);
+    if (vals.length < 2) continue;
+    vals.sort((a, b) => b.r.goodness - a.r.goodness);
+    out.push(`${ii.name}は${cname(vals[0].k)}がいちばん${ii.better === "low" ? "少なく(良く)" : "高く"}、${cname(vals[vals.length - 1].k)}がいちばん課題が大きい。`);
+    if (out.length >= 3) break;
+  }
+  out.push("【考えてみよう】ちがいが生まれる理由を、地理(気候・資源)や歴史(植民地・戦争)から考えてみましょう。");
+  return out.map((l) => `<p>${esc(l)}</p>`).join("");
+}
+
+// ---------------------------------------------------------------- 分類
+async function renderClassify() {
+  const ind = IND(S.ind);
+  const snap = latestSnap(S.ind);
+  const groups = {};
+  for (const [k, p] of Object.entries(snap)) {
+    const c = D.countries[k]; if (!c) continue;
+    const g = S.groupBy === "region" ? c.region_ja : c.income_ja;
+    (groups[g] ||= []).push({ k, v: p[1] });
+  }
+  const log = ind.scale === "log";
+  const all = Object.values(snap).map((p) => p[1]).filter((v) => Number.isFinite(v) && (!log || v > 0));
+  const tv = (v) => (log ? Math.log10(Math.max(v, 1e-9)) : v);
+  const lo = Math.min(...all.map(tv)), hi = Math.max(...all.map(tv));
+  const X = (v) => 4 + ((tv(v) - lo) / (hi - lo || 1)) * 92;
+  const cz = colorizer(snap, ind);
+  const strips = Object.entries(groups).map(([g, arr]) => ({ g, arr, med: A.median(arr.map((a) => a.v)) }))
+    .sort((a, b) => (ind.better === "low" ? a.med - b.med : b.med - a.med))
+    .map(({ g, arr, med }) => `<div class="strip"><b>${esc(g)} <small>(${arr.length})</small></b>
+      <div class="strip-track">${arr.map((a) => `<i class="sdot${a.k === S.country ? " me" : ""}" role="button" tabindex="0" aria-label="${esc(cname(a.k))}" data-id="${a.k}" style="left:${X(a.v)}%;background:${cz.color(a.v)}" title="${esc(cname(a.k))}: ${esc(fmtV(ind, a.v))}"></i>`).join("")}
+        <i class="smed" style="left:${X(med)}%"></i></div>
+      <span>中央値 <b>${fmtV(ind, med)}</b></span></div>`).join("");
+  const opts = (sel) => D.catalog.categories.map((c) => `<optgroup label="${c.icon} ${esc(c.name)}">${indsOf(c.id).map((i) => `<option value="${i.id}" ${i.id === sel ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</optgroup>`).join("");
+  const sx = IND(S.sx), sy = IND(S.sy), pop = latestSnap("population");
+  const sxs = latestSnap(S.sx), sys = latestSnap(S.sy);
+  const dots = Object.keys(D.countries).filter((k) => sxs[k] && sys[k]).map((k) => ({
+    id: k, x: sxs[k][1], y: sys[k][1], r: Math.max(2.5, Math.sqrt((pop[k]?.[1] || 1e6) / 1e6) * 1.05), color: REGION_COLOR[D.countries[k].region] || "#868e96",
+    label: `${cname(k)}  ${sx.name}: ${fmtV(sx, sxs[k][1])} / ${sy.name}: ${fmtV(sy, sys[k][1])}`, short: cname(k), highlight: k === S.country || S.compare.includes(k),
+  }));
+  const regionLegend = Object.entries(REGION_COLOR).map(([r, c]) => `<span><i style="background:${c};height:10px;width:10px;border-radius:50%"></i>${esc(Object.values(D.countries).find((x) => x.region === r)?.region_ja || r)}</span>`).join("");
+  $("#view-classify").innerHTML = `<h2>🧩 分類する — グループで分けて、2つの指標で並べる</h2>
+    <h3>① ${esc(ind.name)}を${S.groupBy === "region" ? "地域" : "所得"}で分ける</h3>
+    <div class="toolbar"><button class="tb ${S.groupBy === "region" ? "on" : ""}" data-group="region">地域で分ける</button><button class="tb ${S.groupBy === "income" ? "on" : ""}" data-group="income">所得で分ける</button><span class="muted">点=国、黒い線=グループの中央値。点を押すと国の図鑑が開きます</span></div>
+    <div class="card">${strips}</div>
+    <h3>② 2つの指標の関係(散布図・円の大きさ=人口)</h3>
+    <div class="toolbar">横軸 <select id="sx">${opts(S.sx)}</select> 縦軸 <select id="sy">${opts(S.sy)}</select>
+      <button class="tb" data-preset="gdp_pc,life_exp">豊かさと寿命</button><button class="tb" data-preset="gdp_pc,co2_pc">豊かさとCO₂</button><button class="tb" data-preset="tertiary,fertility">進学率と出生率</button><button class="tb" data-preset="forest,thr_mammal">森林と絶滅危惧種</button></div>
+    <div class="card">${scatter(dots, { xlog: sx.scale === "log", ylog: sy.scale === "log", xname: `${sx.name}(${sx.unit})`, yname: `${sy.name}(${sy.unit})`, height: 430 })}<div class="legend-row">${regionLegend}</div></div>
+    <div class="comment">${scatterComment(sx, sy, sxs, sys)}</div>`;
+}
+function scatterComment(sx, sy, xs, ys) {
+  const ks = Object.keys(xs).filter((k) => ys[k] && (sx.scale !== "log" || xs[k][1] > 0) && (sy.scale !== "log" || ys[k][1] > 0));
+  if (ks.length < 10) return "<p>データが少ないため、関係を読み取れません。</p>";
+  const t = (v, ind) => (ind.scale === "log" ? Math.log10(v) : v);
+  const X = ks.map((k) => t(xs[k][1], sx)), Y = ks.map((k) => t(ys[k][1], sy));
+  const mx = A.mean(X), my = A.mean(Y);
+  let sxy = 0, sxx = 0, syy = 0;
+  X.forEach((x, i) => { sxy += (x - mx) * (Y[i] - my); sxx += (x - mx) ** 2; syy += (Y[i] - my) ** 2; });
+  const r = sxy / Math.sqrt(sxx * syy);
+  const strength = Math.abs(r) >= 0.7 ? "強い" : Math.abs(r) >= 0.4 ? "ある程度の" : Math.abs(r) >= 0.2 ? "弱い" : "ほとんどない";
+  const dir = r > 0 ? "「一方が大きい国ほど、もう一方も大きい」" : "「一方が大きい国ほど、もう一方は小さい」";
+  return `<p>【関係の強さ】${ks.length}か国で相関係数は <b>${r.toFixed(2)}</b>。${Math.abs(r) >= 0.2 ? `${dir}という${strength}関係があります。` : "関係はほとんど見られません。"}</p>
+    <p>【注意】相関があっても、どちらかが原因とは限りません(第3の理由がかくれていることがあります)。</p><p>【考えてみよう】グラフから大きく外れている国はどこですか? なぜでしょう?</p>`;
+}
+
+// ---------------------------------------------------------------- ビジュアル年表
+// 年表の横軸は区間ごとに縮尺を変える(出来事が多い時代ほど広く)
+const TL_SEG = [[-10000, -3000, 260], [-3000, 0, 820], [0, 1000, 760], [1000, 1420, 560], [1420, 1620, 1000], [1620, 1800, 560],
+  [1800, 1900, 1150], [1900, 1950, 1000], [1950, 2030, 1500]];
+const TL_W = TL_SEG.reduce((a, s) => a + s[2], 0) + 60;
+function tlX(y) {
+  let x = 30;
+  for (const [a, b, w] of TL_SEG) {
+    if (y <= b) return x + ((Math.max(y, a) - a) / (b - a)) * w;
+    x += w;
+  }
+  return x;
+}
+const TL_CAT_COLOR = { politics: "#1c64d6", war: "#c92a2a", science: "#7048e8", biology: "#0ca678", environment: "#2f9e44", economy: "#f59f00", culture: "#d6336c", independence: "#495057" };
+const catColor = (c) => TL_CAT_COLOR[c] || "#495057";
+const ERA_COLOR = { ancient: "#8d6e63", medieval: "#5c7cfa", early_modern: "#20c997", modern: "#fd7e14", contemporary: "#e64980" };
+
+async function renderTimeline() {
+  const T = D.timeline;
+  if (!S.tlCats) S.tlCats = new Set(Object.keys(T.categories).filter((k) => k !== "independence"));
+  // 分野フィルタ: ✓ と件数を付け、非表示の分野は薄く・取り消し線にして状態をはっきりさせる
+  const counts = T.events.reduce((m, e) => ((m[e.cat] = (m[e.cat] || 0) + 1), m), {});
+  const shown = T.events.filter((e) => S.tlCats.has(e.cat)).length;
+  $("#tl-filters").innerHTML = `<div class="tlf-head"><b>表示する分野</b><span class="muted">押すと表示/非表示が切りかわります(いま ${shown}件を表示)</span>
+      <button class="tlf-all" data-tlall="1">すべて表示</button><button class="tlf-all" data-tlall="0">すべて隠す</button></div>
+    <div class="tlf-chips">${Object.entries(T.categories).map(([k, v]) => {
+      const on = S.tlCats.has(k);
+      return `<button data-tlcat="${k}" class="${on ? "on" : "off"}" style="--c:${catColor(k)}" aria-pressed="${on}" title="${on ? "表示中(押すと隠す)" : "非表示(押すと表示)"}"><span class="tick">${on ? "✓" : ""}</span>${esc(v)}<span class="cnt">${counts[k] || 0}</span></button>`;
+    }).join("")}</div>`;
+  $("#tl-eras").innerHTML = T.eras.map((e) => `<button data-jump="${e.from}" style="background:${ERA_COLOR[e.id]}">${esc(e.name)} ${e.from < 0 ? `前${-e.from}` : e.from}〜</button>`).join("");
+  const cardW = 150, cardH = 74, top0 = 36, rowGap = 6;
+  const evs = T.events.map((e, i) => ({ e, i })).filter(({ e }) => S.tlCats.has(e.cat)).sort((a, b) => a.e.y - b.e.y);
+  // 必要な段数を先に数えて、年表の高さを決める(最大 12 段)
+  const ends = [];
+  for (const { e } of evs) {
+    const left = Math.max(4, tlX(e.y) - 20);
+    let r = ends.findIndex((end) => left > end + 6);
+    if (r === -1) { r = ends.length; ends.push(0); }
+    ends[r] = left + cardW;
+  }
+  const H = Math.max(470, top0 + Math.min(ends.length, 12) * (cardH + rowGap) + 60);
+  const rowsEnd = [];
+  let html = "";
+  // 時代の帯
+  for (const era of T.eras) {
+    const x0 = tlX(era.from), x1 = tlX(Math.min(era.to, 2030));
+    html += `<div class="tl-band" style="left:${x0}px;width:${x1 - x0}px;background:${ERA_COLOR[era.id]}">${esc(era.name)}</div>`;
+  }
+  // 世界人口の山(pop_hist 世界)
+  const pop = (await loadSeries("pop_hist"))?.world || [];
+  if (pop.length) {
+    const ph = 170, lmin = Math.log10(pop[0][1]), lmax = Math.log10(pop[pop.length - 1][1]);
+    const Y = (v) => ph - ((Math.log10(v) - lmin) / (lmax - lmin)) * (ph - 10);
+    const d = pop.map((p, i) => `${i ? "L" : "M"}${tlX(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
+    const last = pop[pop.length - 1];
+    html += `<svg class="tl-pop" width="${TL_W}" height="${ph}"><path d="${d} L${tlX(last[0])},${ph} L${tlX(pop[0][0])},${ph} Z" fill="#e9d8a6" opacity=".55"/><path d="${d}" fill="none" stroke="#c9a227" stroke-width="2"/>
+      <text x="${tlX(last[0]) - 6}" y="${Y(last[1]) - 6}" text-anchor="end" font-size="11" fill="#8a6d1a" font-weight="700">世界の人口 ${A.fmtNum(last[1], 0)}人</text>
+      <text x="${tlX(pop[0][0]) + 6}" y="${Y(pop[0][1]) - 6}" font-size="11" fill="#8a6d1a">紀元前1万年 約${A.fmtNum(pop[0][1], 0)}人</text></svg>`;
+  }
+  // 目盛り
+  const ticks = [-10000, -5000, -3000, -2000, -1000, -500, 1, 500, 1000, 1200, 1400, 1500, 1600, 1700, 1800, 1850, 1900, 1925, 1950, 1975, 2000, 2025];
+  html += `<div class="tl-axis"></div>` + ticks.map((y) => `<div class="tl-tick" style="left:${tlX(y)}px">${y < 0 ? `前${-y}` : y}</div>`).join("");
+  // カード(重ならない行に詰める)
+  for (const { e, i } of evs) {
+    const cx = tlX(e.y);
+    const left = Math.max(4, cx - 20);
+    let row = rowsEnd.findIndex((end) => left > end + 6);
+    if (row === -1) { row = rowsEnd.length; rowsEnd.push(-1e9); }
+    rowsEnd[row] = left + cardW;
+    const top = top0 + row * (cardH + rowGap);
+    if (top + cardH > H - 40) continue; // 表示しきれない分は省略(フィルタで絞れる)
+    const col = catColor(e.cat);
+    html += `<div class="tl-stem" style="left:${cx}px;top:${top + cardH}px;background:${col}"></div>
+      <div class="tl-card${S.tlEvent === e ? " on" : ""}" role="button" tabindex="0" aria-label="${esc(A.fmtYear(e.y) + " " + e.t)}" data-event="${i}" style="left:${left}px;top:${top}px;--c:${col}" title="${esc(e.t)}">
+        <div class="ch">${e.p?.length ? charactersFor({ p: e.p.slice(0, 2) }, 40) : e.auto && flag(e.c[0]) ? `<img class="tl-flag" src="${flag(e.c[0])}" alt="">` : `<span class="ico">${{ politics: "🏛️", war: "⚔️", science: "🔬", biology: "🧬", environment: "🌱", economy: "⚙️", culture: "🎨" }[e.cat] || "📌"}</span>`}</div>
+        <div class="tx"><div class="yr">${A.fmtYear(e.y)}${e.approx ? "頃" : ""}${e.y2 ? `〜${e.y2}` : ""}</div><div class="tt">${esc(e.t)}</div></div></div>`;
+  }
+  const cv = $("#tl-canvas");
+  cv.style.width = `${TL_W}px`;
+  cv.style.height = `${H}px`;
+  cv.innerHTML = html;
+}
+async function renderEventDex() {
+  const e = S.tlEvent;
+  const T = D.timeline;
+  if (!e) {
+    const people = T.events.filter((x) => x.p?.length).flatMap((x) => x.p.map((p) => ({ p, e: x }))).sort((a, b) => a.e.y - b.e.y);
+    $("#dex").innerHTML = `<h2>📜 ビジュアル年表</h2><p class="muted">年表のカードを押すと、ここに出来事の説明と登場人物が表示されます。</p>
+      <div class="kpis"><div class="kpi"><div class="l">出来事</div><div class="v">${T.events.filter((x) => !x.auto).length}</div><small>+独立・建国 ${T.events.filter((x) => x.auto).length}件(自動)</small></div><div class="kpi"><div class="l">登場人物</div><div class="v">${people.length}</div></div><div class="kpi"><div class="l">時代</div><div class="v">${T.eras.length}</div></div></div>
+      <h3>🧑‍🤝‍🧑 キャラクター図鑑(${people.length}人)</h3>
+      ${T.eras.map((era) => {
+        const ps = people.filter(({ e: ev }) => ev.y >= era.from && ev.y < era.to);
+        return ps.length ? `<div class="gal-era" style="--c:${ERA_COLOR[era.id]}">${esc(era.name)}</div><div class="gallery">${ps.map(({ p, e: ev }) => `<button class="gal" data-event="${T.events.indexOf(ev)}" title="${esc(ev.t)}">${characterSVG(p, 48)}<b>${esc(p.name)}</b><small>${A.fmtYear(ev.y)}${ev.approx ? "頃" : ""}・${esc(cname(p.home || ev.c[0]))}</small></button>`).join("")}</div>` : "";
+      }).join("")}
+      <div class="note">${esc(T.character_note)}<br>${esc(T.note)}</div>`;
+    return;
+  }
+  // そのころの世界(長期データの世界値)
+  const [pop, life, gdp] = await Promise.all(["pop_hist", "life_long", "gdp_long"].map(loadSeries));
+  const near = (ser) => (ser?.world?.length ? A.valueAt(ser.world, e.y, gapFor(e.y) * 3) : null);
+  const wp = near(pop), wl = near(life), wg = near(gdp);
+  // 前後ボタンは位置が変わらないよう、パネル上部に固定(並び順は年表に表示中の出来事の年順)
+  const order = tlOrder();
+  const pos = order.indexOf(e);
+  $("#dex").innerHTML = `<div class="ev-nav">
+      <button class="tb" data-tlnav="-1" ${pos <= 0 ? "disabled" : ""} title="前の出来事(← キー)">◀ 前の出来事</button>
+      <span class="ev-pos">${pos + 1} / ${order.length}</span>
+      <button class="tb" data-tlnav="1" ${pos >= order.length - 1 ? "disabled" : ""} title="次の出来事(→ キー)">次の出来事 ▶</button>
+    </div>
+    <div class="ev-hero">${e.p?.length ? e.p.map((p) => characterSVG(p, 118)).join("") : `<span style="font-size:80px">📌</span>`}</div>
+    <div class="ev-year" style="color:${catColor(e.cat)}">${esc(T.categories[e.cat])}・${A.fmtYear(e.y)}${e.approx ? "頃" : ""}${e.y2 ? `〜${e.y2}年` : ""}</div>
+    <h2>${esc(e.t)}</h2>
+    ${e.p?.length ? `<div class="ev-people">${e.p.map((p) => `<div class="ev-person"><b>${esc(p.name)}</b> — ${esc(p.role)}</div>`).join("")}</div>` : ""}
+    <p class="ev-desc">${esc(e.d)}</p>
+    ${e.c.length ? `<h3>🌐 関係する国(地球儀で光っています)</h3><div class="chips">${e.c.filter((k) => D.countries[k]).map((k) => `<button class="chip" data-country="${k}">${esc(cname(k))}</button>`).join("")}</div>` : ""}
+    <h3>⏳ そのころの世界(大学の長期推計)</h3>
+    <div class="kpis"><div class="kpi"><div class="l">世界の人口</div><div class="v">${wp ? A.fmtNum(wp[1], 0) + "人" : "—"}</div><small>${wp ? A.fmtYear(wp[0]) : ""}</small></div>
+      <div class="kpi"><div class="l">世界の平均寿命</div><div class="v">${wl ? wl[1].toFixed(0) + "歳" : "—"}</div><small>${wl ? A.fmtYear(wl[0]) : "推計なし"}</small></div>
+      <div class="kpi"><div class="l">1人あたりGDP(世界)</div><div class="v">${wg ? A.fmtNum(wg[1], 0) : "—"}</div><small>${wg ? A.fmtYear(wg[0]) + "・国際ドル" : "推計なし"}</small></div></div>
+    <div class="note">${e.p?.some((p) => p.symbol) ? esc(e.p.find((p) => p.symbol).note) + "<br>" : ""}${esc(T.character_note)}</div>`;
+}
+// 年表に今表示している出来事(フィルタ適用後)を年順に並べたもの
+function tlOrder() {
+  const cats = S.tlCats || new Set(Object.keys(D.timeline.categories).filter((k) => k !== "independence"));
+  return D.timeline.events.filter((e) => cats.has(e.cat) || e === S.tlEvent).sort((a, b) => a.y - b.y);
+}
+function stepEvent(dir) {
+  const order = tlOrder();
+  const next = order[order.indexOf(S.tlEvent) + dir];
+  if (next) selectEvent(D.timeline.events.indexOf(next));
+}
+async function selectEvent(idx) {
+  const e = D.timeline.events[idx];
+  if (!e) return;
+  S.tlEvent = e;
+  S.highlight = new Set(e.c);
+  if (S.mode !== "timeline") setMode("timeline");
+  await renderTimeline(); await renderEventDex(); paintGlobe(); syncHash();
+  $("#dex").scrollTop = 0;
+  const cc = e.c.map((k) => D.countries[k]).filter((c) => c?.lat != null);
+  if (cc.length && globe) globe.pointOfView({ lat: A.mean(cc.map((c) => c.lat)), lng: A.mean(cc.map((c) => c.lng)), altitude: cc.length > 4 ? 2.2 : 1.7 }, 900);
+  const sc = $("#tl-scroll");
+  sc.scrollLeft = Math.max(0, tlX(e.y) - sc.clientWidth / 2);
+}
+
+// ---------------------------------------------------------------- SDGs
+function renderSDG() {
+  const G = D.catalog.sdg_goals;
+  const iso3 = S.country;
+  const g = G[S.sdgGoal - 1];
+  const inds = D.catalog.indicators.filter((i) => i.sdg.includes(g.n));
+  const snap = sdgSnap(g.n);
+  const ranks = A.rankAll(snap, "high");
+  const order = Object.keys(ranks).sort((a, b) => ranks[a].rank - ranks[b].rank);
+  const rows = inds.map((ii) => {
+    if (!canUseIndicator(ii.id, PAID)) {
+      return `<tr><td><button class="chip" data-up="allIndicators">🔒 ${esc(ii.name)}</button></td><td class="lk">完全版</td>${iso3 ? `<td class="lk">完全版</td>` : ""}</tr>`;
+    }
+    const w = D.latest[ii.id]?.w, r = iso3 ? rowFor(iso3, ii) : null;
+    return `<tr><td><button class="chip" data-ind="${ii.id}">${esc(ii.name)}</button><br><small>${esc(ii.explain)}</small></td><td>${w ? `${fmtV(ii, w[1])}<br><small>${w[0]}年</small>` : "—"}</td>
+      ${iso3 ? `<td>${r ? `${fmtV(ii, r.value)} ${r.label ? `<span class="rate ${r.label}">${r.label}</span>` : ""}<br><small>${r.n ? `${r.n}か国中${r.rank}位` : ""} ${trendHTML(r)}</small>` : "—"}</td>` : ""}</tr>`;
+  }).join("");
+  $("#view-sdg").innerHTML = `<h2>🎯 SDGs(持続可能な開発目標)17の目標</h2>
+    <p class="muted">2015年に国連で決まった、2030年までに世界で達成をめざす17の目標です。${iso3 ? `タイルの数字は<b>${esc(cname(iso3))}</b>のスコア(0〜100点、50点=世界の真ん中)。` : "右上で国をえらぶと、国ごとのスコアが表示されます。"}</p>
+    <div class="sdg-grid">${G.map((x) => { const s = iso3 ? sdgSnap(x.n)[iso3]?.[1] : null; return `<button class="sdg-tile${x.n === g.n ? " on" : ""}" data-goal="${x.n}" style="background:${x.color}"><div class="no">${x.n}</div><div class="nm">${esc(x.name)}</div>${s != null ? `<span class="sc">${s.toFixed(0)}</span>` : ""}</button>`; }).join("")}</div>
+    <h3 style="color:${g.color}">目標${g.n}「${esc(g.name)}」</h3>
+    <div class="toolbar"><button class="tb" data-globe-sdg="${g.n}">🌐 この目標のスコアを地球儀で見る</button><span class="muted">関係する指標 ${inds.length}個</span></div>
+    <div class="grid2"><div class="card"><table class="cmp"><thead><tr><th>指標</th><th>世界全体</th>${iso3 ? `<th>${esc(cname(iso3))}</th>` : ""}</tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="card"><b>🔝 スコア上位10か国</b>${barRows(order.slice(0, 10).map((k) => ({ id: k, label: cname(k), value: snap[k][1], color: g.color, rank: ranks[k].rank, highlight: k === iso3 })), { decimals: 0 })}
+        <b style="display:block;margin-top:10px">🔚 スコア下位10か国</b>${barRows(order.slice(-10).reverse().map((k) => ({ id: k, label: cname(k), value: snap[k][1], color: "#adb5bd", rank: ranks[k].rank, highlight: k === iso3 })), { decimals: 0 })}</div></div>
+    <div class="note">スコアは本図鑑独自の計算です(関係する指標で、データのある国の中での順位の平均)。国連の公式な達成度評価ではありません。公式の SDGs データは <a href="https://data.un.org/undatacommons/goals" target="_blank" rel="noopener">UN Data Commons</a> や <a href="https://unstats.un.org/sdgs/dataportal" target="_blank" rel="noopener">UN SDG Global Database</a> で確認できます。</div>`;
+}
+
+// ---------------------------------------------------------------- 出典
+function renderSources() {
+  const m = D.meta;
+  const rows = D.catalog.indicators.map((i) => {
+    const st = m.sources?.[`${i.source}:${i.code}`];
+    return `<tr><td>${CAT(i.category).icon} ${esc(i.name)}</td><td>${esc(i.org || sourceName(i.source))}</td><td><code>${esc(i.code)}</code></td><td>${st?.years ? `${A.fmtYear(st.years[0])}〜${st.years[1]}` : ""}</td><td>${st?.count ?? ""}</td><td class="${st?.ok ? "ok" : "ng"}">${st?.ok ? "OK" : "失敗(前回データ)"}</td></tr>`;
+  }).join("");
+  const aux = ["factbook", "wiki", "geo", "flows", "exports"].map((k) => `<tr><td>${{ factbook: "CIA World Factbook(国の基本情報・独立年)", wiki: "Wikipedia 日本語版(国の概要)", geo: "Natural Earth(国境・国名ラベル位置)", flows: "UNHCR(難民の流れ 出身国→受入国)", exports: "ハーバード大学 Atlas(国ごとの主な輸出品目)" }[k]}</td><td class="${m.sources?.[k]?.ok ? "ok" : "ng"}">${m.sources?.[k]?.ok ? "OK" : "失敗"}</td><td>${m.sources?.[k]?.count ?? ""}</td></tr>`).join("");
+  $("#view-sources").innerHTML = `<h2>📚 出典・データの更新・注意</h2>
+    <p class="muted">最終更新: <b>${esc((m.generated_at || "").replace("T", " ").slice(0, 16))} (UTC)</b>・${m.ok}/${m.total} ソース取得成功。GitHub Actions で毎週自動更新します。取得に失敗したソースは前回のデータを使い続けます。</p>
+    <h3>データを提供している機関</h3>
+    <div class="grid3">
+      <div class="card"><b>🇺🇳 国連・国際機関</b><p class="fact">国連統計部 SDG Global Database(公式 SDG 指標を API で直接取得)/ UNESCO 統計研究所(教育)/ UNDP(人間開発報告書)/ UNHCR(難民)/ 世界銀行(WHO・FAO・ILO・IEA・IUCN・SIPRI などのデータを集約)/ UN Data Commons(参照)</p></div>
+      <div class="card"><b>🎓 世界の大学・研究機関</b><p class="fact">オックスフォード大学 Our World in Data / フローニンゲン大学 Maddison Project / ヨーテボリ大学 V-Dem 研究所 / ウプサラ大学 紛争データ計画(UCDP) / ハーバード大学 Growth Lab(経済の複雑さ)/ イェール大学・コロンビア大学 環境パフォーマンス指数(EPI)/ ノートルダム大学 ND-GAIN(気候変動への備え)/ UCLA WORLD Policy Analysis Center(子どもの結婚・教育の法律。CC BY-NC 4.0)</p></div>
+      <div class="card"><b>🗂️ そのほか</b><p class="fact">CIA World Factbook(国の基本情報)/ Wikipedia 日本語版(CC BY-SA 4.0)/ Natural Earth(国境・パブリックドメイン)/ 国旗画像 flagcdn.com(自前で配信)/ 3D地球儀 globe.gl・three.js(MIT)</p></div></div>
+    ${updateReportHTML()}
+    <h3>付帯データ</h3><table class="src"><thead><tr><th>データ</th><th>状態</th><th>件数</th></tr></thead><tbody>${aux}</tbody></table>
+    <h3>指標一覧(${D.catalog.indicators.length})</h3>
+    <table class="src"><thead><tr><th>指標</th><th>出典</th><th>コード</th><th>期間</th><th>国数</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>
+    <h3>⚠️ 使うときの注意</h3>
+    <ul class="fact"><li>数値は各機関の公表値や推計です。国によって調べ方や年がちがうため、くらべるときは「何年のデータか」を確認しましょう。</li>
+      <li>2030年の予測は、過去10年の傾向をそのまま伸ばした<b>参考値</b>です。実際には政策・災害・戦争などで大きく変わります。</li>
+      <li>S〜Dの評価・章スコア・SDGsスコアは、本図鑑が順位から計算した<b>目安</b>で、国連などの公式評価ではありません。</li>
+      <li>国境や国・地域の名前は、特定の立場を示すものではありません(データ提供元の区分に従っています)。</li>
+      <li>年表の人物はオリジナルのデフォルメ・キャラクターで、実際の顔とは異なります。</li></ul>`;
+}
+
+// ---------------------------------------------------------------- クイズ(授業用)
+let quizCache = { seed: null, qs: [] };
+function currentQuiz() {
+  if (S.quizSeed == null) S.quizSeed = Math.floor(Math.random() * 9000) + 1000;
+  if (quizCache.seed !== S.quizSeed) {
+    quizCache = { seed: S.quizSeed, qs: makeQuiz({ catalog: D.catalog, countries: D.countries, latest: D.latest, timeline: D.timeline }, S.quizSeed, PAID ? 10 : PLAN.freeQuizQuestions) };
+  }
+  return quizCache.qs;
+}
+const KANA = "アイウエ";
+function renderQuiz() {
+  const qs = currentQuiz();
+  const done = Object.keys(S.quizAns).length;
+  const score = qs.filter((q, i) => S.quizAns[i] === q.answer).length;
+  const TYPE = { compare: "⚖️ くらべる", top: "🏆 世界一", year: "📜 年表", person: "🧑 人物", region: "🗺️ 地理", sdg: "🎯 SDGs" };
+  const cards = qs.map((q, i) => {
+    const a = S.quizAns[i];
+    const answered = a != null;
+    const res = answered ? (a === q.answer ? " ok" : " ng") : "";
+    const btns = q.choices.map((c, ci) => {
+      const cls = answered ? (ci === q.answer ? "right" : ci === a ? "wrong" : "dim") : "";
+      return `<button data-qi="${i}" data-ci="${ci}" class="${cls}" ${answered ? "disabled" : ""}>${KANA[ci]}. ${esc(c)}</button>`;
+    }).join("");
+    return `<div class="qcard${res}">
+      <div class="qhead"><span class="qno">Q${i + 1}</span><span class="qtype">${TYPE[q.type] || ""}</span>${answered ? `<span class="qres">${a === q.answer ? "⭕ 正解!" : "❌ ざんねん"}</span>` : ""}</div>
+      ${q.person ? `<div class="qchara">${characterSVG(q.person, 84)}</div>` : ""}
+      <div class="qtext">${esc(q.q)}</div>
+      <div class="qchoices">${btns}</div>
+      ${answered ? `<div class="qexp">💡 ${esc(q.explain)} <button class="chip" data-qlink="${i}">図鑑で見る →</button></div>` : ""}
+    </div>`;
+  }).join("");
+  const ws = qs.map((q, i) => `<div class="ws-q"><b>Q${i + 1}.</b> ${esc(q.q)}<div class="ws-c">${q.choices.map((c, ci) => `<span>${KANA[ci]}. ${esc(c)}</span>`).join("")}</div><div class="ws-a">答え(　　　)</div></div>`).join("");
+  const key = qs.map((q, i) => `<li>Q${i + 1}: ${KANA[q.answer]}(${esc(q.choices[q.answer])})— ${esc(q.explain)}</li>`).join("");
+  const verdict = score >= 8 ? "すばらしい! 世界のことをよく知っていますね。"
+    : score >= 5 ? "よくできました。まちがえた問題は「図鑑で見る」でたしかめよう。"
+    : "まちがえた問題こそ、新しい発見のチャンス。図鑑で理由を調べてみよう。";
+  $("#view-quiz").innerHTML = `<div class="quiz-top no-print"><div><h2>🧠 せかいクイズ</h2>
+      <p class="muted">図鑑の最新データから毎回ちがう問題をつくります。<b>問題番号 #${S.quizSeed}</b> を伝えると、クラス全員が同じ問題にちょうせんできます。</p></div>
+      <div class="quiz-score"><div class="big">${score}<small> / ${qs.length}</small></div><small>${done}問 回答ずみ</small></div></div>
+    <div class="toolbar no-print"><button class="tb" data-act="quiz-new">🔀 新しい問題</button><button class="tb" data-act="quiz-print">🖨️ ワークシートを印刷</button>
+      <label class="muted">問題番号 <input id="quiz-seed" type="number" min="1" max="99999" value="${S.quizSeed}" style="width:90px"></label></div>
+    ${done === qs.length ? `<div class="comment no-print"><p>【結果】${qs.length}問中 ${score}問 正解! ${verdict}</p>
+      <p>【考えてみよう】いちばん意外だった答えはどれ? なぜそうなっているのか、地理・歴史・経済から考えて、となりの人と話してみよう。</p></div>` : ""}
+    <div class="qlist no-print">${cards}</div>
+    <div class="ws print-only"><h2>せかいクイズ ワークシート(問題番号 #${S.quizSeed})</h2><p>　　年　　組　　番　名前</p>${ws}
+      <div class="ws-think"><b>考えてみよう:</b> いちばん意外だった答えと、その理由を書こう。<div class="ws-lines"></div></div>
+      <div class="ws-key"><h3>解答と解説</h3><ol>${key}</ol><p class="note">データ: せかい3Dデジタル図鑑(${esc((D.meta.generated_at || "").slice(0, 10))} 時点)</p></div></div>`;
+}
+function followQuizLink(i) {
+  const L = currentQuiz()[i]?.link;
+  if (!L) return;
+  if (L.event != null) return selectEvent(L.event);
+  if (L.goal) { S.sdgGoal = L.goal; return setMode("sdg"); }
+  if (L.countries) S.compare = L.countries.slice(0, 4);
+  if (L.country) S.country = L.country;
+  if (L.ind) { S.ind = L.ind; S.cat = IND(L.ind).category; }
+  setupYears().then(() => setMode(L.mode || "globe"));
+}
+
+// ---------------------------------------------------------------- 国別図鑑の印刷用ページ(1国1冊子)
+async function renderPrint() {
+  const iso3 = S.country;
+  const el = $("#view-print");
+  if (!iso3) { el.innerHTML = `<div class="empty">地球儀で国を選んでから「印刷用ページ」を押してください。<br><button class="tb" data-act="back">← 地球儀にもどる</button></div>`; return; }
+  const c = D.countries[iso3], fb = c.factbook || {};
+  const f = flag(iso3, 160);
+  const cats = D.catalog.categories;
+  const scored = cats.filter((x) => indsOf(x.id).some((i) => i.better));
+  const sections = cats.map((cat) => {
+    const rows = indsOf(cat.id).map((ind) => ({ ind, row: rowFor(iso3, ind) })).filter((x) => x.row);
+    if (!rows.length) return "";
+    const sc = scoreFor(iso3, indsOf(cat.id));
+    const body = rows.map(({ ind, row }) => `<tr><td>${esc(ind.name)}</td><td>${fmtV(ind, row.value)}${esc(unitOf(ind))}</td><td>${row.year}</td><td>${row.n ? `${row.rank}/${row.n}` : "—"}</td><td>${row.label ? `<span class="rate ${row.label}">${row.label}</span>` : "—"}</td><td>${row.world ? fmtV(ind, row.world[1]) : "—"}</td><td>${row.meaning || "—"}</td></tr>`).join("");
+    return `<div class="print-sec"><h3>${cat.icon} ${esc(cat.name)}${sc != null ? ` <span class="rate ${A.rateLabel(sc / 100)}">${A.rateLabel(sc / 100)}</span> <small>${sc.toFixed(0)}点</small>` : ""}</h3>
+      <table class="cmp"><thead><tr><th>指標</th><th>値</th><th>年</th><th>順位</th><th>評価</th><th>世界全体</th><th>10年の変化</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }).join("");
+  const evs = D.timeline.events.filter((e) => e.c.includes(iso3)).sort((a, b) => a.y - b.y);
+  const facts = [["気候", fb.climate], ["地形", fb.terrain], ["言語", fb.languages], ["宗教", fb.religions], ["政治のしくみ", fb.government_type], ["独立・建国", fb.independence]].filter(([, v]) => v);
+  const sdgTiles = D.catalog.sdg_goals.map((g) => { const v = sdgSnap(g.n)[iso3]?.[1]; return `<div style="background:${g.color}">${g.n}<small>${v == null ? "—" : v.toFixed(0)}</small></div>`; }).join("");
+  const radarSvg = radar(scored.map((x) => ({ label: x.icon + x.name.replace(/\(.*\)/, "") })), [{ name: c.name_ja, color: "#1c64d6", values: scored.map((x) => scoreFor(iso3, indsOf(x.id))) }], 280);
+  el.innerHTML = `<div class="toolbar no-print"><button class="tb" data-act="print-now">🖨️ 印刷する</button><button class="tb" data-act="back">← 地球儀にもどる</button><span class="muted">A4 縦で印刷できます。ブラウザの印刷で「PDF に保存」を選ぶと PDF になります。</span></div>
+    <article class="print-page">
+      <header class="print-head">${f ? `<img src="${f}" alt="">` : ""}<div><h1>${esc(c.name_ja)} <small>${esc(c.name_en)}</small></h1>
+        <p>${esc(c.region_ja)}・${esc(c.income_ja)}${c.capital ? `・首都 ${esc(c.capital)}` : ""}${fb.independence_year ? `・独立/建国 ${A.fmtYear(fb.independence_year)}` : ""}</p></div>
+        <div class="print-brand">せかい3Dデジタル図鑑<br><small>${esc((D.meta.generated_at || "").slice(0, 10))} 時点のデータ</small></div></header>
+      ${c.wiki ? `<div class="print-sec"><h3>📖 どんな国?</h3><p class="wiki">${esc(c.wiki.extract)}</p><p class="note">出典: Wikipedia「${esc(c.wiki.title)}」(CC BY-SA 4.0)</p></div>` : ""}
+      <div class="print-sec grid2"><div><h3>🕸️ 章ごとのバランス</h3>${radarSvg}</div>
+        <div><h3>🎯 SDGs スコア</h3><div class="sdg-mini">${sdgTiles}</div>${exportsHTML(iso3)}</div></div>
+      ${sections}
+      ${c.factbook_ja ? `<div class="print-sec"><h3>🗒️ 歴史の背景(CIA World Factbook の日本語要約)</h3>${jaBadge(c.factbook_ja)}<p class="wiki">${esc(c.factbook_ja.background_ja)}</p></div>` : ""}
+      ${facts.length ? `<div class="print-sec"><h3>🗂️ 基本データ(CIA World Factbook・英語原文)</h3><dl class="fact">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>` : ""}
+      ${evs.length ? `<div class="print-sec"><h3>📜 ${esc(c.name_ja)}の年表</h3><ul class="fact">${evs.map((e) => `<li><b>${A.fmtYear(e.y)}${e.approx ? "頃" : ""}</b> ${esc(e.t)}</li>`).join("")}</ul></div>` : ""}
+      <div class="print-sec"><h3>✏️ 考えてみよう</h3><p>① ${esc(c.name_ja)}の強みと課題を1つずつ書こう。② 日本とくらべて、同じところ・ちがうところは? ③ SDGs のどの目標に取り組むとよいと思う?</p><div class="ws-lines"></div></div>
+      <p class="note">評価(S〜D)・章スコア・SDGsスコアは、データのある国の中での順位から本図鑑が計算した目安です。数値は各機関の公表値・推計で、年は国によって異なります。出典: 国連(UNDP・UNHCR・SDG Global Database)・世界銀行・UNESCO・CIA World Factbook・世界の大学の研究データ。</p>
+    </article>`;
+}
+
+function updateReportHTML() {
+  const r = D.updateReport;
+  if (!r) return "";
+  const names = Object.fromEntries(D.catalog.indicators.map((i) => [i.id, i.name]));
+  const changed = r.indicators.filter((x) => x.status !== "unchanged");
+  const failed = Object.entries(D.meta.sources || {}).filter(([, v]) => !v.ok);
+  return `<h3>🆕 今回の更新で新しくなったデータ(${esc((r.generated_at || "").slice(0, 10))})</h3>
+    ${changed.length ? `<table class="src"><thead><tr><th>指標</th><th>最新の年</th><th>国の数</th><th>更新された国</th></tr></thead><tbody>${changed.map((x) => `<tr><td>${esc(names[x.id] || x.id)}${x.status === "new" ? " <b>(新規)</b>" : ""}</td><td>${x.year_from !== x.year_to && x.year_from != null ? `${x.year_from} → ` : ""}${x.year_to ?? "—"}</td><td>${x.countries_from} → ${x.countries_to}</td><td>${x.updated}</td></tr>`).join("")}</tbody></table>`
+      : `<p class="muted">前回の更新から、新しい年や国のデータはありませんでした(各機関の公表を待っています)。</p>`}
+    ${failed.length ? `<p class="ng">⚠️ 取得に失敗したソース ${failed.length}件(前回のデータを表示しています): ${failed.map(([k]) => esc(k)).join(", ")}</p>` : ""}`;
+}
+
+// ---------------------------------------------------------------- 使い方・用語集(T5-1 / T5-2)
+function glossaryFor(indId) {
+  for (const g of D.glossary?.groups || []) for (const t of g.terms) if (t.ind === indId) return t;
+  return null;
+}
+function renderGuide() {
+  const tab = S.guideTab || "teacher";
+  const tabs = `<div class="tabs"><button data-gtab="teacher" class="${tab === "teacher" ? "on" : ""}">👩‍🏫 先生用ガイド</button><button data-gtab="glossary" class="${tab === "glossary" ? "on" : ""}">📖 用語集</button></div>`;
+  $("#view-guide").innerHTML = `<h2>📖 使い方・用語集</h2>${tabs}<div id="guide-body"></div>`;
+  $("#guide-body").innerHTML = tab === "glossary" ? glossaryHTML(S.glossQ || "") : teacherGuideHTML();
+  if (tab === "glossary") {
+    const q = $("#gloss-q");
+    q.value = S.glossQ || "";
+    q.addEventListener("input", () => { S.glossQ = q.value; $("#gloss-list").innerHTML = glossaryList(q.value); });
+  }
+}
+function glossaryList(q) {
+  const k = q.trim().toLowerCase();
+  const groups = (D.glossary?.groups || []).map((g) => ({ ...g, terms: g.terms.filter((t) => !k || (t.t + t.d).toLowerCase().includes(k)) })).filter((g) => g.terms.length);
+  if (!groups.length) return `<p class="muted">「${esc(q)}」に当てはまる言葉は見つかりませんでした。</p>`;
+  return groups.map((g) => `<h3>${esc(g.name)}</h3><div class="gloss-grid">${g.terms.map((t) => `<div class="gloss" id="g-${esc(t.t)}">
+      <b>${esc(t.t)}</b><p>${esc(t.d)}</p>${t.ind && IND(t.ind) ? `<button class="chip" data-gind="${t.ind}">🌐 「${esc(IND(t.ind).name)}」を地球儀で見る</button>` : ""}</div>`).join("")}</div>`).join("");
+}
+function glossaryHTML(q) {
+  const n = (D.glossary?.groups || []).reduce((a, g) => a + g.terms.length, 0);
+  return `<p class="muted">図鑑に出てくる言葉を、中学生・高校生向けにやさしく説明しています(${n}語)。</p>
+    <input id="gloss-q" class="gloss-q" placeholder="言葉をさがす(例: GDP、ジニ、SDGs)" aria-label="用語をさがす">
+    <div id="gloss-list">${glossaryList(q)}</div>`;
+}
+function teacherGuideHTML() {
+  const card = (title, body) => `<div class="card guide-card"><h3>${title}</h3>${body}</div>`;
+  return `<p class="muted">授業でこの図鑑を使うときのヒントです。すべての画面は URL(🔗 共有)で開いたまま共有でき、🖨️ 印刷用ページとワークシートは紙でも使えます。</p>
+  <div class="grid2">
+    ${card("⏱️ 45分授業の流れ(例)", `<ol class="fact">
+      <li><b>導入(5分)</b> 🧠 クイズを全員で1〜2問。<b>問題番号</b>を黒板に書けば、全員が同じ問題に取り組める。</li>
+      <li><b>課題(5分)</b> 「なぜこの国は○○なのか?」という問いを立てる(例: 平均寿命の差はどこから?)。</li>
+      <li><b>調べる(20分)</b> 🌐 地球儀で色と高さを見る → 🏆 ランキング → ⚖️ くらべる(最大4か国)→ 📘 図鑑ページの総評。</li>
+      <li><b>考える(10分)</b> 🧩 分類の散布図で「2つの指標の関係」を見る。相関と原因のちがいに注意。</li>
+      <li><b>まとめ(5分)</b> 図鑑ページの「考えてみよう」やワークシートの記入欄に、自分の言葉で書く。</li></ol>`)}
+    ${card("🧑‍🏫 教科ごとの使い方", `<ul class="fact">
+      <li><b>地理</b>: 地形・気候・人口密度を地球儀で見て、地域ごとの特色を分類する(🧩 分類 → 地域で分ける)。</li>
+      <li><b>歴史</b>: 📜 ビジュアル年表の人物キャラクターと、関係する国が光る地球儀。歴史のデータの章で人口や寿命を数百年さかのぼる。</li>
+      <li><b>公民・現代社会</b>: 🎯 SDGs、人間開発(UNDP)、子どもの結婚や教育の法律(UCLA)と実際の数字をくらべる。</li>
+      <li><b>理科(生物・地学)</b>: 絶滅が心配される生き物、保護区、気温の平年差、自然災害。</li>
+      <li><b>数学・情報</b>: 散布図と相関係数、対数目盛り、2030年の予測(直線でのばす考え方)を読み解く。</li>
+      <li><b>英語</b>: 国ページの CIA World Factbook の英語原文と日本語要約を読みくらべる。</li></ul>`)}
+    ${card("🧠 クイズとワークシート", `<ol class="fact">
+      <li>🧠 クイズを開き、<b>問題番号</b>(例 #2026)を決める。番号を入れると同じ問題が出る。</li>
+      <li>「🖨️ ワークシートを印刷」で、問題と記入欄を印刷(解答と解説は最後のページ)。</li>
+      <li>答え合わせでは「図鑑で見る」から、その問題のデータを全員で確認する。</li></ol>`)}
+    ${card("🖨️ 印刷用ページ(1国1冊子)", `<p class="fact">図鑑ページの「🖨️ 印刷用ページ」から、A4 縦の冊子(概要・章ごとのバランス・SDGs・主な輸出品・全指標の表・歴史・考えてみよう欄)を印刷できます。ブラウザの印刷で「PDF に保存」を選べば PDF になります。グループごとに担当の国を決めて発表する授業に向いています。</p>`)}
+    ${card("📶 通信が弱い教室では", `<p class="fact">授業の前に、ヘッダーの「📥 オフライン用に保存」を押しておくと、全指標のデータが端末に保存され、通信がなくても地球儀や図鑑を使えます(一度開いたことのある端末に限ります)。</p>`)}
+    ${card("⚠️ データを使うときの注意", `<ul class="fact">
+      <li>国によって調べた年がちがいます。くらべるときは「何年のデータか」を必ず確認しましょう。</li>
+      <li>S〜D の評価・章スコア・SDGs スコアは、順位から本図鑑が計算した<b>目安</b>で、国連の公式評価ではありません。</li>
+      <li>2030年の予測は、過去10年の変化をそのまま伸ばした参考値です。</li>
+      <li>CIA 原文の日本語要約は AI による下書きで、確認済みの表示がないものは誤りを含む可能性があります。</li>
+      <li>法律データ(UCLA)は CC BY-NC 4.0(非営利・出典表示)。授業資料に使うときは出典を書きましょう。</li></ul>`)}
+  </div>`;
+}
+
+// ---------------------------------------------------------------- 無料版・有料版(買い切り)
+let PAID = isPaidFromStorage(localStorage, location); // 起動時に /api/license でも確かめる
+const lock = (key) => (canUseFeature(key, PAID) ? "" : " 🔒");
+function upsell(key) {
+  const m = $("#upsell");
+  const what = PLAN.paidFeatures[key] || "この機能";
+  m.innerHTML = `<div class="up-box" role="dialog" aria-modal="true" aria-labelledby="up-t">
+    <button class="up-x" data-act="up-close" aria-label="閉じる">✕</button>
+    <div class="up-badge">🔒 完全版の機能</div>
+    <h2 id="up-t">${esc(what)}</h2>
+    <p class="muted">この機能は「${esc(PLAN.name)}」(買い切り)で使えます。一度買えば、追加料金なしでずっと使えます。</p>
+    <ul class="up-list">${Object.values(PLAN.paidFeatures).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+    <div class="up-price">${PLAN.price ? `買い切り <b>${PLAN.price.toLocaleString("ja-JP")}円</b>(税込)` : "価格・購入方法は準備中です"}</div>
+    <div class="toolbar"><button class="tb buy" data-act="buy">💎 ${PLAN.price.toLocaleString("ja-JP")}円で完全版を買う</button><button class="tb" data-act="up-plans">無料版とくらべる</button><button class="tb" data-act="up-close">閉じる</button></div>
+    <p class="note">お支払いは Stripe の安全な決済画面で行います(クレジットカードなど)。購入後に表示される「ライセンスコード」を保存しておくと、ほかの端末でも使えます。</p>
+  </div>`;
+  m.hidden = false;
+  m.querySelector(".up-x").focus();
+}
+function guard(key) {
+  if (canUseFeature(key, PAID)) return true;
+  upsell(key);
+  return false;
+}
+function renderPlans() {
+  const rows = [
+    ["🌐 3D地球儀・国名・ランキング", true, true],
+    ["📘 国の図鑑ページ(基本情報・順位・評価・総評)", true, true],
+    ["📜 ビジュアル年表・人物キャラクター", true, true],
+    ["🎯 SDGs 17目標", true, true],
+    ["📖 使い方・用語集", true, true],
+    ["📊 指標の数", "27指標", "98指標(全10章)"],
+    ["🧠 クイズ", `${PLAN.freeQuizQuestions}問`, "10問+ワークシート印刷"],
+    ...Object.entries(PLAN.paidFeatures).filter(([k]) => !["allIndicators", "quizFull"].includes(k)).map(([, v]) => [v, false, true]),
+  ];
+  const cell = (v) => (v === true ? "✅" : v === false ? "—" : esc(v));
+  $("#view-plans").innerHTML = `<h2>💎 無料版と完全版</h2>
+    <p class="muted">無料版はだれでもすぐ使えます。完全版は<b>買い切り</b>で、一度買えば追加料金なしでずっと使え、データの更新も受け取れます。</p>
+    <div class="up-price big">${PLAN.price ? `完全版 買い切り <b>${PLAN.price.toLocaleString("ja-JP")}円</b>(税込)` : "完全版の価格・購入方法は準備中です"}</div>
+    <table class="cmp plans"><thead><tr><th>できること</th><th>無料版</th><th>完全版</th></tr></thead>
+    <tbody>${rows.map(([n, f, p]) => `<tr><td>${esc(n)}</td><td>${cell(f)}</td><td>${cell(p)}</td></tr>`).join("")}</tbody></table>
+    <p class="note">いまお使いの版: <b>${PAID ? "完全版" : "無料版"}</b></p>
+    ${PAID ? `<div class="card"><b>✅ 完全版をご利用中です</b><p class="muted">ありがとうございます。すべての機能とデータを使えます。</p></div>` : `
+    <div class="toolbar"><button class="tb buy" data-act="buy">💎 ${PLAN.price.toLocaleString("ja-JP")}円で完全版を買う</button></div>
+    <div class="card redeem"><b>🔑 購入済みの方(ほかの端末で使う)</b>
+      <p class="muted">購入後に表示された「ライセンスコード」(SK1. で始まる文字列)を入れてください。</p>
+      <div class="toolbar"><input id="lic-code" placeholder="SK1.xxxx.yyyy" autocomplete="off" aria-label="ライセンスコード"><button class="tb" data-act="redeem">使えるようにする</button></div>
+      <p class="ng" id="lic-msg" role="status"></p></div>`}`;
+}
+
+// ---------------------------------------------------------------- 購入(Stripe・買い切り)
+async function loadPaidData() {
+  const [lp, ex, fl, ja] = await Promise.all(["latest_paid.json", "exports.json", "flows/refugees.json", "factbook_ja.json"]
+    .map((f) => getJSON(`api/data?f=${f}`).catch(() => null)));
+  if (!lp) return; // ライセンスが確認できなかった(開発用のプレビューなど)
+  Object.assign(D.latest, lp);
+  D.exports = ex; D.flows = fl;
+  if (ja) for (const [k, v] of Object.entries(ja)) if (D.countries[k]) D.countries[k].factbook_ja = v;
+}
+async function startCheckout(btn) {
+  btn.disabled = true;
+  btn.textContent = "決済画面をひらいています…";
+  try {
+    const r = await fetch("api/checkout", { method: "POST" });
+    const j = await r.json();
+    if (!r.ok || !j.url) throw new Error(j.error || "エラー");
+    location.href = j.url; // Stripe の決済画面へ
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = "💎 もう一度ためす";
+    toast(`決済画面を開けませんでした: ${e.message}`);
+  }
+}
+async function redeemCode() {
+  const code = $("#lic-code").value.trim();
+  const msg = $("#lic-msg");
+  if (!code) { msg.textContent = "ライセンスコードを入れてください"; return; }
+  msg.textContent = "確認しています…";
+  try {
+    const r = await fetch("api/redeem", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "エラー");
+    location.hash = "#m=globe";
+    location.reload();
+  } catch (e) {
+    msg.textContent = `使えませんでした: ${e.message}`;
+  }
+}
+// 決済のあと ?purchase=success&session_id=... で戻ってくる
+async function handlePurchaseReturn() {
+  const q = new URLSearchParams(location.search);
+  const status = q.get("purchase");
+  if (!status) return;
+  history.replaceState(null, "", location.pathname + location.hash); // URL から購入情報を消す
+  if (status === "cancel") { setTimeout(() => toast("購入をキャンセルしました"), 500); return; }
+  try {
+    const j = await getJSON(`api/claim?session_id=${encodeURIComponent(q.get("session_id") || "")}`);
+    if (!j.ok) throw new Error(j.error);
+    PAID = true;
+    setTimeout(() => showThanks(j.code), 300);
+  } catch {
+    setTimeout(() => toast("お支払いの確認ができませんでした。時間をおいてページを開き直してください"), 500);
+  }
+}
+function showThanks(code) {
+  const m = $("#upsell");
+  m.innerHTML = `<div class="up-box" role="dialog" aria-modal="true" aria-labelledby="th-t">
+    <div class="up-badge">💎 完全版</div><h2 id="th-t">ご購入ありがとうございます!</h2>
+    <p>この端末で完全版のすべての機能が使えるようになりました。</p>
+    <p class="muted">ほかの端末(タブレット・家族のパソコンなど)で使うときは、この<b>ライセンスコード</b>を入れてください。メモ帳などに保存しておきましょう。</p>
+    <textarea class="lic-box" readonly rows="3" aria-label="ライセンスコード">${esc(code)}</textarea>
+    <div class="toolbar"><button class="tb" data-act="copy-code" data-code="${esc(code)}">📋 コピー</button><button class="tb on" data-act="thanks-close">はじめる</button></div>
+    <p class="note">領収書は Stripe からメールで届きます。</p></div>`;
+  m.hidden = false;
+}
+
+// ---------------------------------------------------------------- 画面切りかえ
+function setMode(mode) {
+  if (!canUseMode(mode, PAID)) return upsell(mode);
+  S.mode = mode;
+  document.body.classList.toggle("wide", ["quiz", "print", "guide", "plans"].includes(mode));
+  document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.id !== `view-${mode}`));
+  // 地球儀は「地球儀」「年表」で共有(DOM を移動)
+  const wrap = $("#globe-wrap");
+  if (mode === "timeline") $("#globe-slot-tl").appendChild(wrap);
+  else $("#globe-slot-main").appendChild(wrap);
+  $("#globe-ctrl").hidden = mode === "timeline";
+  if (mode !== "timeline") S.highlight = null;
+  requestAnimationFrame(sizeGlobe);
+  renderAll();
+}
+async function renderAll() {
+  renderChapters();
+  const m = S.mode;
+  if (m === "globe" || m === "timeline") await paintGlobe();
+  if (m === "rank") await renderRank();
+  if (m === "compare") await renderCompare();
+  if (m === "classify") await renderClassify();
+  if (m === "timeline") await renderTimeline();
+  if (m === "sdg") renderSDG();
+  if (m === "sources") renderSources();
+  if (m === "quiz") renderQuiz();
+  if (m === "print") await renderPrint();
+  if (m === "guide") renderGuide();
+  if (m === "plans") renderPlans();
+  if (!["quiz", "print", "guide", "plans"].includes(m)) await renderDex();
+  syncHash();
+}
+async function setIndicator(id) {
+  if (!canUseIndicator(id, PAID)) return upsell(IND(id)?.category === "history" ? "history" : "allIndicators");
+  S.ind = id;
+  S.arcs = null;
+  const ind = IND(id);
+  if (ind.category && ind.category !== "sdg") S.cat = ind.category;
+  S.yearIdx = null;
+  stopPlay();
+  await setupYears();
+  if (S.mode === "sources" || S.mode === "sdg") S.mode = S.mode === "sdg" && id.startsWith("sdg:") ? "globe" : S.mode;
+  if (id.startsWith("sdg:")) setMode("globe"); else renderAll();
+}
+function selectCountry(iso3, { fly = true } = {}) {
+  if (!D.countries[iso3]) return;
+  S.country = iso3;
+  const c = D.countries[iso3];
+  if (fly && globe && c.lat != null) globe.pointOfView({ lat: c.lat, lng: c.lng, altitude: 1.6 }, 900);
+  if (S.mode === "timeline") { setMode("globe"); return; }
+  renderAll();
+}
+function syncHash() {
+  const h = new URLSearchParams({ m: S.mode, i: S.ind, ...(S.country ? { c: S.country } : {}),
+    ...(S.mode === "timeline" && S.tlEvent ? { e: D.timeline.events.indexOf(S.tlEvent) } : {}),
+    ...(S.viz !== "extrude" ? { v: S.viz } : {}),
+    ...(S.mode === "quiz" && S.quizSeed ? { q: S.quizSeed } : {}) });
+  history.replaceState(null, "", `#${h}`);
+}
+
+// ---------------------------------------------------------------- 再生
+let playTimer = null;
+function stopPlay() { clearInterval(playTimer); playTimer = null; $("#play").textContent = "▶"; }
+function togglePlay() {
+  if (playTimer) return stopPlay();
+  if (!guard("years")) return;
+  if (!yearStops.length) return;
+  if (S.yearIdx >= yearStops.length) S.yearIdx = 0;
+  $("#play").textContent = "⏸";
+  playTimer = setInterval(async () => {
+    S.yearIdx++;
+    if (S.yearIdx >= yearStops.length) { S.yearIdx = yearStops.length; stopPlay(); }
+    $("#year").value = S.yearIdx;
+    $("#year-label").textContent = yearLabel();
+    await paintGlobe();
+  }, IND(S.ind).category === "history" ? 180 : 420);
+}
+
+// ---------------------------------------------------------------- イベント
+function bind() {
+  document.addEventListener("click", (ev) => {
+    const t = ev.target.closest("button, [data-event], [data-country], .stat, .bar-row, circle[data-id], .dot, .sdot");
+    if (t?.disabled) return;
+    if (!t) return;
+    const d = t.dataset;
+    if (d.mode) return setMode(d.mode);
+    if (d.cat && t.classList.contains("chap")) { S.cat = d.cat; return setIndicator(indsOf(d.cat)[0].id); }
+    if (d.ind) return setIndicator(d.ind);
+    if (d.cat && t.classList.contains("stat")) { S.cat = d.cat; S.dexTab = "chapter"; return setIndicator(indsOf(d.cat)[0].id); }
+    if (d.tab) { S.dexTab = d.tab; return renderDex(); }
+    if (d.act === "world") { S.country = null; return renderAll(); }
+    if (d.act === "print") return guard("print") && setMode("print");
+    if (d.up) return upsell(d.up);
+    if (d.gtab) { S.guideTab = d.gtab; return renderGuide(); }
+    if (d.gind) { S.ind = d.gind; S.cat = IND(d.gind).category; return setupYears().then(() => setMode("globe")); }
+    if (d.gterm) { S.guideTab = "glossary"; S.glossQ = d.gterm; return setMode("guide"); }
+    if (d.act === "print-now") return window.print();
+    if (d.act === "back") return setMode("globe");
+    if (d.act === "quiz-new") { S.quizSeed = Math.floor(Math.random() * 9000) + 1000; S.quizAns = {}; return renderQuiz(); }
+    if (d.act === "quiz-print" && !guard("quizFull")) return;
+    if (d.act === "quiz-print") { document.body.classList.add("print-ws"); window.print(); document.body.classList.remove("print-ws"); return; }
+    if (d.qi != null && d.ci != null) { if (S.quizAns[d.qi] == null) S.quizAns[d.qi] = +d.ci; return renderQuiz(); }
+    if (d.qlink != null) return followQuizLink(+d.qlink);
+    if (d.act === "buy") return startCheckout(t);
+    if (d.act === "redeem") return redeemCode();
+    if (d.act === "thanks-close") { $("#upsell").hidden = true; return; }
+    if (d.act === "copy-code") { navigator.clipboard?.writeText(d.code || ""); toast("ライセンスコードをコピーしました。メモ帳などに保存しておいてください"); return; }
+    if (d.act === "up-close") { $("#upsell").hidden = true; return; }
+    if (d.act === "up-plans") { $("#upsell").hidden = true; return setMode("plans"); }
+    if (d.act === "vs-japan" && !guard("compare")) return;
+    if (d.act === "vs-japan") { S.compare = [S.country, "JPN"]; return setMode("compare"); }
+    if (d.act === "vs-similar" && !guard("compare")) return;
+    if (d.act === "vs-similar") { S.compare = ["JPN", ...similarCountries("JPN", 3).map((x) => x.iso3)]; return setMode("compare"); }
+    if (d.act === "cmp-add" && !guard("compare")) return;
+    if (d.act === "cmp-add") { if (!S.compare.includes(S.country)) S.compare = [...S.compare, S.country].slice(-4); return setMode("compare"); }
+    if (d.rm) { S.compare = S.compare.filter((k) => k !== d.rm); return renderCompare(); }
+    if (d.order) { S.rankOrder = d.order; return renderRank(); }
+    if (d.group) { S.groupBy = d.group; return renderClassify(); }
+    if (d.preset) { [S.sx, S.sy] = d.preset.split(","); return renderClassify(); }
+    if (d.goal) { S.sdgGoal = +d.goal; return renderSDG(); }
+    if (d.globeSdg) return setIndicator(`sdg:${d.globeSdg}`);
+    if (d.tlcat) { S.tlCats.has(d.tlcat) ? S.tlCats.delete(d.tlcat) : S.tlCats.add(d.tlcat); return renderTimeline(); }
+    if (d.tlall != null) { S.tlCats = new Set(d.tlall === "1" ? Object.keys(D.timeline.categories) : []); return renderTimeline(); }
+    if (d.jump != null) { $("#tl-scroll").scrollLeft = tlX(+d.jump) - 20; return; }
+    if (d.tlnav) return stepEvent(+d.tlnav);
+    if (d.event != null) return selectEvent(+d.event);
+    if (d.country) return selectCountry(d.country);
+    if (d.id && D.countries[d.id]) return selectCountry(d.id);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.('[role="button"]')) {
+      ev.preventDefault();
+      ev.target.click();
+    }
+  });
+  $("#share").addEventListener("click", shareNow);
+  $("#cvd").addEventListener("click", () => {
+    cvd = !cvd;
+    localStorage.setItem("atlas-cvd", cvd ? "1" : "0");
+    $("#cvd").setAttribute("aria-pressed", String(cvd));
+    $("#cvd").classList.toggle("on", cvd);
+    renderAll();
+  });
+  document.addEventListener("change", (ev) => {
+    const t = ev.target;
+    if (t.id === "rank-region") { S.rankRegion = t.value; renderRank(); }
+    if (t.id === "cmp-add" && t.value) { S.compare = [...new Set([...S.compare, t.value])].slice(0, 4); renderCompare(); }
+    if (t.id === "sx") { S.sx = t.value; renderClassify(); }
+    if (t.id === "sy") { S.sy = t.value; renderClassify(); }
+    if (t.id === "quiz-seed" && +t.value > 0) { S.quizSeed = +t.value; S.quizAns = {}; renderQuiz(); }
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (S.mode !== "timeline" || !S.tlEvent || ev.target.closest("input, select, textarea")) return;
+    if (ev.key === "ArrowLeft") { ev.preventDefault(); stepEvent(-1); }
+    if (ev.key === "ArrowRight") { ev.preventDefault(); stepEvent(1); }
+  });
+  $("#year").addEventListener("input", async (ev) => {
+    if (!guard("years")) { ev.target.value = yearStops.length; return; }
+    S.yearIdx = +ev.target.value;
+    $("#year-label").textContent = yearLabel();
+    await paintGlobe();
+    if (S.mode === "rank") renderRank();
+  });
+  $("#play").addEventListener("click", togglePlay);
+  $("#viz").addEventListener("change", (ev) => { if (ev.target.value !== "extrude" && !guard("viz")) { ev.target.value = "extrude"; return; } S.viz = ev.target.value; paintGlobe(); });
+  $("#arcs").addEventListener("change", (ev) => { if (ev.target.checked && !guard("viz")) { ev.target.checked = false; return; } S.arcs = ev.target.checked; paintGlobe(); });
+  $("#labels").addEventListener("change", (ev) => { S.labels = ev.target.checked; paintGlobe(); });
+  $("#rotate").addEventListener("change", (ev) => { if (globe) globe.controls().autoRotate = ev.target.checked; });
+  $("#search").addEventListener("change", (ev) => {
+    const q = ev.target.value.trim();
+    const hit = Object.entries(D.countries).find(([, c]) => c.name_ja === q || c.name_en.toLowerCase() === q.toLowerCase())
+      || Object.entries(D.countries).find(([, c]) => c.name_ja.includes(q) || c.name_en.toLowerCase().includes(q.toLowerCase()));
+    if (hit) {
+      if (!["globe", "rank", "compare", "classify", "sdg"].includes(S.mode)) setMode("globe");
+      selectCountry(hit[0]);
+      ev.target.value = "";
+    }
+  });
+}
+
+// CIA Factbook の独立年から「独立・建国」の出来事を自動でつくる(年表のフィルタで表示)
+function addIndependenceEvents() {
+  for (const [iso3, c] of Object.entries(D.countries)) {
+    const y = c.factbook?.independence_year;
+    if (!y) continue;
+    D.timeline.events.push({
+      y, y2: null, approx: false, auto: true, cat: "independence", c: [iso3],
+      t: `${c.name_ja}の独立・建国`,
+      d: `${c.name_ja}が独立(または建国)した年です。CIA World Factbook の記録(英語原文): ${c.factbook.independence}`,
+    });
+  }
+}
+
+// ---------------------------------------------------------------- 共有
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
+}
+async function shareNow() {
+  syncHash();
+  const url = location.href;
+  const title = S.country ? `${cname(S.country)} — せかい3Dデジタル図鑑` : `${IND(S.ind)?.name || ""} — せかい3Dデジタル図鑑`;
+  // スマホなどでは共有メニュー、パソコンでは URL をコピー
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try { await navigator.share({ title, url }); return; } catch { /* キャンセル時はコピーに切りかえ */ }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("🔗 この画面の URL をコピーしました。授業のスライドやチャットに貼って共有できます");
+  } catch {
+    prompt("この URL をコピーしてください", url);
+  }
+}
+
+// ---------------------------------------------------------------- オフライン対応
+function setupOffline() {
+  const badge = $("#net");
+  const show = () => { badge.hidden = navigator.onLine; };
+  addEventListener("online", show); addEventListener("offline", show); show();
+  if (!("serviceWorker" in navigator)) { $("#save-offline").hidden = true; return; }
+  navigator.serviceWorker.register("sw.js").catch(() => { $("#save-offline").hidden = true; });
+  navigator.serviceWorker.addEventListener("message", (ev) => {
+    if (ev.data?.type !== "prefetch-progress") return;
+    const { done, total } = ev.data;
+    $("#save-offline").innerHTML = done >= total ? '✅<span class="lbl"> 保存済み</span>' : `📥<span class="lbl"> 保存中… ${done}/${total}</span>`;
+    if (done >= total) localStorage.setItem("atlas-offline-saved", D.meta.generated_at || "1");
+  });
+  if (localStorage.getItem("atlas-offline-saved") === (D.meta.generated_at || "1")) $("#save-offline").innerHTML = '✅<span class="lbl"> 保存済み</span>';
+}
+async function saveOffline() {
+  if (!guard("offline")) return;
+  const reg = await navigator.serviceWorker?.ready;
+  if (!reg?.active) return;
+  const urls = [
+    ...D.catalog.indicators.map((i) => (canUseIndicator(i.id, false) ? `data/series/${i.id}.json` : `api/data?f=series/${i.id}.json`)),
+    ...["latest_paid.json", "exports.json", "flows/refugees.json", "factbook_ja.json"].map((f) => `api/data?f=${f}`),
+  ];
+  $("#save-offline").innerHTML = `📥<span class="lbl"> 保存中… 0/${urls.length}</span>`;
+  reg.active.postMessage({ type: "prefetch", urls });
+}
+
+// ---------------------------------------------------------------- 起動
+async function main() {
+  try {
+    const [catalog, countries, latest, meta, geo, timeline] = await Promise.all([
+      getJSON("data/catalog.json"), getJSON("data/countries.json"), getJSON("data/latest.json"),
+      getJSON("data/meta.json"), getJSON("data/geo/countries.json"), getJSON("data/timeline.json"),
+    ]);
+    Object.assign(D, { catalog, countries: countries.countries, latest, meta, geo, timeline });
+    await handlePurchaseReturn();
+    PAID = PAID || await getJSON("api/license").then((j) => !!j.paid).catch(() => false);
+    if (PAID) await loadPaidData();
+    D.updateReport = await getJSON("data/update_report.json").catch(() => null);
+    D.glossary = await getJSON("data/glossary.json").catch(() => null);
+    addIndependenceEvents();
+  } catch (e) {
+    $("#loading").textContent = `データを読み込めませんでした(${e.message})。README の手順でローカルサーバーから開いてください。`;
+    return;
+  }
+  $("#updated").textContent = `更新 ${(D.meta.generated_at || "").slice(0, 10)}`;
+  $("#country-list").innerHTML = Object.values(D.countries).map((c) => `<option value="${esc(c.name_ja)}">${esc(c.name_en)}</option>`).join("");
+  geoFeatures = D.geo.features;
+  const inGeo = new Set(geoFeatures.map((f) => f.properties.iso3).filter(Boolean));
+  pointCountries = Object.values(D.countries).filter((c) => !inGeo.has(c.iso3) && c.lat != null);
+  buildLabels();
+  // URL の状態を復元
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get("i") && (IND(h.get("i")))) { S.ind = h.get("i"); S.cat = IND(S.ind).category === "sdg" ? S.cat : IND(S.ind).category; }
+  if (h.get("c") && D.countries[h.get("c")]) S.country = h.get("c");
+  if (!canUseIndicator(S.ind, PAID)) { S.ind = "population"; S.cat = "people"; }
+  if (["extrude", "bars", "flat"].includes(h.get("v"))) { S.viz = h.get("v"); $("#viz").value = S.viz; }
+  if (+h.get("q") > 0) S.quizSeed = +h.get("q");
+  bind();
+  setupOffline();
+  $("#save-offline").addEventListener("click", saveOffline);
+  $("#cvd").setAttribute("aria-pressed", String(cvd));
+  $("#cvd").classList.toggle("on", cvd);
+  if (typeof Globe === "function") initGlobe();
+  else $("#globe").innerHTML = `<div class="empty" style="color:#fff">3D地球儀ライブラリを読み込めませんでした(インターネット接続を確認してください)。ほかの画面は使えます。</div>`;
+  await setupYears();
+  $("#loading").hidden = true;
+  setMode(canUseMode(h.get("m") || "globe", PAID) ? h.get("m") || "globe" : "globe");
+  document.body.classList.toggle("paid", PAID);
+  if (h.get("e") != null && D.timeline.events[+h.get("e")]) selectEvent(+h.get("e"));
+  if (h.get("t")) { S.dexTab = h.get("t"); renderDex(); }
+  if (h.get("g")) { S.guideTab = h.get("g"); if (S.mode === "guide") renderGuide(); }
+  if (S.country && globe) { const c = D.countries[S.country]; if (c.lat != null) globe.pointOfView({ lat: c.lat, lng: c.lng, altitude: 1.8 }); }
+}
+main();

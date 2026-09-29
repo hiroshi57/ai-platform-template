@@ -1,0 +1,85 @@
+name: world-atlas data update
+
+# せかい3Dデジタル図鑑のデータを毎週取り直し、差分があれば PR を作る。
+# 取り込みは人がレビューして merge する(自動で main には書き込まない)。
+# 取得に失敗したソースがあれば Issue で知らせる。
+# 前提: Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests" を有効化。
+
+on:
+  schedule:
+    - cron: "0 18 * * 0"   # 毎週月曜 03:00 JST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: world-atlas-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check pipeline (no network)
+        run: |
+          pip install "pytest>=8.0,<9.0"
+          python -m pytest -q tests/test_world_atlas_pipeline.py
+
+      - name: Vendor files and known vulnerabilities (OSV)
+        # 自前配信しているライブラリの改ざん検知と、既知の脆弱性チェック(見つかれば Issue で通知)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! python -m world_atlas.pipeline.vendor --verify --audit > "$RUNNER_TEMP/vendor.txt" 2>&1; then
+            cat "$RUNNER_TEMP/vendor.txt"
+            gh issue create --title "せかい3Dデジタル図鑑: ライブラリの脆弱性または改ざんの疑い" --body-file "$RUNNER_TEMP/vendor.txt" || true
+          fi
+          cat "$RUNNER_TEMP/vendor.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build data (国連 SDG / UNDP / UNHCR / UNESCO / World Bank / 大学 / CIA / Wikipedia / Natural Earth)
+        run: python -m world_atlas.pipeline.build_data --report "$RUNNER_TEMP/update-report.md"
+
+      - name: Summarize
+        run: cat "$RUNNER_TEMP/update-report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify failures (Issue)
+        # 取得に失敗したソースがあれば Issue で知らせる(同じ種類の Issue が開いていればコメントを追加)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FAILED=$(python -c "import json;m=json.load(open('world_atlas/site/data/meta.json',encoding='utf-8'));print(sum(1 for v in m['sources'].values() if not v.get('ok')))")
+          if [ "$FAILED" = "0" ]; then echo "no failures"; exit 0; fi
+          NUM=$(gh issue list --state open --search "せかい3Dデジタル図鑑 データ取得の失敗 in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --body-file "$RUNNER_TEMP/update-report.md"
+          else
+            gh issue create --title "せかい3Dデジタル図鑑 データ取得の失敗(${FAILED}件)" --body-file "$RUNNER_TEMP/update-report.md"
+          fi
+
+      - name: Open PR if data changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- world_atlas/site/data world_atlas/site/api/_paid; then
+            echo "no data changes"; exit 0
+          fi
+          BR="world-atlas/data-$(date -u +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BR"
+          git add world_atlas/site/data world_atlas/site/api/_paid
+          git commit -m "chore: せかい3Dデジタル図鑑のデータを週次更新 ($(date -u +%Y-%m-%d))"
+          git push -u origin "$BR"
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$BR" \
+            --title "chore: せかい3Dデジタル図鑑 データ週次更新 $(date -u +%Y-%m-%d)" \
+            --body-file "$RUNNER_TEMP/update-report.md"
