@@ -1,6 +1,6 @@
 """同じツール呼び出しの連続を検出する Claude Code hook（PostToolUse / PostToolUseFailure）.
 
-仕様: `.claude/rules/decision-boundaries.md` ルール1「機械的な検出」
+仕様: `decision-boundaries.md` ルール1「機械的な検出」（hiroshi57/harness-rules の `.claude/rules/`）
   - 同じツール名・同じ引数の呼び出しが NOTICE 回連続        → 注意を1回だけ context に入れる
   - 同じツール名・同じ引数で失敗した呼び出しが NOTICE 回連続 → 同上
   - 同じツール名・同じ引数で失敗した呼び出しが STOP 回連続   → 実行を止める（escalated を促す）
@@ -9,7 +9,7 @@ IDENTICAL_CALL_NOTICE / IDENTICAL_CALL_STOP で変えられる。
 
 判定はすべてコードで行い、LLM を呼ばない。
 記録するのは「ツール名＋引数」の SHA-256 と成否だけで、引数の中身は保存しない
-（`.claude/rules/secret-isolation.md` ルール6）。
+（`secret-isolation.md` ルール6。同じく harness-rules）。
 hook 自体の不具合でツール実行を妨げないよう、想定外の入力・例外では何も出力せず exit 0 で通す。
 """
 
@@ -30,7 +30,7 @@ STATE_SUBDIR = Path(".claude") / "state" / "identical-call-guard"
 
 NOTICE_TEXT = (
     "[identical-call-guard] 同じツール（{tool}）を同じ引数で {n} 回続けて呼んでいます{fail}。"
-    "次の試行では `.claude/rules/decision-boundaries.md` ルール1の4つ"
+    "次の試行では `decision-boundaries.md`（harness-rules）ルール1の4つ"
     "（証拠を足す・仮説を変える・範囲を絞る・エスカレーション）のどれかを必ず選んでください。"
 )
 STOP_TEXT = (

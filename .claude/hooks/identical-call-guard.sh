@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # identical-call-guard: 同じツール呼び出しの連続を検出する hook の入口。
-# 判定の本体は identical_call_guard.py（仕様: .claude/rules/decision-boundaries.md ルール1）。
+# 判定の本体は identical_call_guard.py（仕様: hiroshi57/harness-rules の .claude/rules/decision-boundaries.md ルール1）。
 #
-# settings.json への登録（本 repo は登録済み。他の案件は提案書 harness-proposals/2026-09-28-harness-components-and-self-evolution.md diff 5 を参照）:
+# settings.json への登録（本 repo は登録済み。他の案件は hiroshi57/harness-rules の提案書 2026-09-28-harness-components-and-self-evolution.md diff 5 を参照）:
 #   "PostToolUse":        [{ "matcher": "*", "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/identical-call-guard.sh\"" }] }]
 #   "PostToolUseFailure": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/identical-call-guard.sh\"" }] }]
 #

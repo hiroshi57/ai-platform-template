@@ -1,6 +1,6 @@
 """identical-call-guard hook の回帰テスト.
 
-仕様: `.claude/rules/decision-boundaries.md` ルール1「機械的な検出」
+仕様: `decision-boundaries.md` ルール1「機械的な検出」（hiroshi57/harness-rules の `.claude/rules/`）
   - 同じツール名・同じ引数の呼び出しが 5 回連続 → 注意を 1 回だけ
   - 同じツール名・同じ引数で失敗した呼び出しが 5 回連続 → 同上
   - 同じツール名・同じ引数で失敗した呼び出しが 8 回連続 → 停止
