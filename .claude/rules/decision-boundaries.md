@@ -27,7 +27,9 @@
 | 同じツール名・同じ引数で**失敗した**呼び出しが **8回** 連続 | 実行を止め、`status: escalated`（`escalation_reason: "identical-failing-calls"`）で返す |
 
 - 回数（5 / 8）は根拠論文（arXiv:2609.20804）の設定値で、暫定（P-2）。最初の 2〜3 回の retro の実測で見直す。
-- 検出は hook（PreToolUse / PostToolUse）で行う。hook の追加は人間が反映する（提案書 diff 5）。
+- 検出は hook（PostToolUse / PostToolUseFailure）で行う。実装は `.claude/hooks/identical-call-guard.sh`。
+  止めるときは `{"continue": false}` を返す（PostToolUse の終了コード 2 では止まらないため）。
+  settings.json への登録は人間が反映する（提案書 diff 5）。
   hook が入るまでは、Lead が `retries.log` と生ログで同じ条件を確認する。
 - 注意の挿入や停止の回数は `retries.log` に1行残す。
 

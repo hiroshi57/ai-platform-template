@@ -6,7 +6,7 @@
 - **ステータス**: **2026-09-29 人間承認済み** — 提案 A〜E すべて承認。§5 の論点 P-1〜P-4 は既定案で確定。
   - 反映済み（Claude）: A・C・E → [`.claude/rules/harness-components.md`](../.claude/rules/harness-components.md)（新設）、B → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md) ルール1「機械的な検出」、D → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案11
   - 人間が反映: diff 4（グローバル CLAUDE.md §7）、diff 5（各案件の settings.json の hook）、diff 6（plugin 側 Worker 定義）
-  - hook スクリプト `identical-call-guard.sh` の実装は別タスク（未着手）
+  - hook スクリプト `identical-call-guard.sh` の実装は別タスク（未着手）→ [更新: 2026-09-29] 実装済み（§3 diff 5 の注記）。settings.json への登録は引き続き人間が反映
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠論文**:
   1. *An Empirical Study of Harness Design for Coding Agents* — Fan, Zhang, Ma ほか（UMass Amherst / Emory / UNC Charlotte / Zoom）— arXiv:2609.20804v1 [cs.AI], 2026-09-17（以下「論文1」）
@@ -253,22 +253,34 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 
 本 repo には `.claude/settings.json` が無い。hook を入れる案件で、人間が次を追加する。スクリプトは、呼び出しごとに「ツール名＋引数の hash」と成否を1行ずつ追記し、末尾の連続回数を数えるだけの処理でよい（LLM を呼ばない）。
 
+> [更新: 2026-09-29] main の取り込み後、本 repo にも `.claude/settings.json`（秘密ファイルの `permissions.deny`）が入った。hook は既存の `permissions` と並べて `hooks` を足す形で反映する。失敗した呼び出しは PostToolUseFailure で届くことがあるため、両方のイベントに登録する。
+
 ```diff
 --- a/.claude/settings.json
 +++ b/.claude/settings.json
-@@ "hooks" @@
+@@ {
+   "permissions": {
+     "deny": [ ... 既存のまま ... ]
+-  }
++  },
++  "hooks": {
 +    "PostToolUse": [
-+      {
-+        "matcher": "*",
-+        "hooks": [
-+          { "type": "command", "command": "bash .claude/hooks/identical-call-guard.sh" }
-+        ]
-+      }
++      { "matcher": "*", "hooks": [{ "type": "command", "command": "bash .claude/hooks/identical-call-guard.sh" }] }
++    ],
++    "PostToolUseFailure": [
++      { "matcher": "*", "hooks": [{ "type": "command", "command": "bash .claude/hooks/identical-call-guard.sh" }] }
 +    ]
++  }
+ }
 ```
 
-- `identical-call-guard.sh` の仕様: 連続5回で注意文を出力（1回だけ）、失敗の連続8回で終了コード 2 を返して Worker を止める。記録ファイルはタスクごとに分け、秘密を含みうる引数の中身は保存せず hash だけ残す（`secret-isolation.md` ルール6）。
-- スクリプト本体の実装は、承認後に別タスクで作る（本提案には含めない）。
+- `identical-call-guard.sh` の仕様: 連続5回で注意文を出力（1回だけ）、失敗の連続8回で Worker を止める。記録ファイルはタスクごとに分け、秘密を含みうる引数の中身は保存せず hash だけ残す（`secret-isolation.md` ルール6）。
+- ~~スクリプト本体の実装は、承認後に別タスクで作る（本提案には含めない）。~~ [更新: 2026-09-29] 実装済み: [`.claude/hooks/identical-call-guard.sh`](../.claude/hooks/identical-call-guard.sh)（入口）＋ [`.claude/hooks/identical_call_guard.py`](../.claude/hooks/identical_call_guard.py)（判定の本体）、テスト [`tests/test_identical_call_guard.py`](../tests/test_identical_call_guard.py)。実装時に仕様を次のとおり確定した:
+  - **止め方**: 当初は「終了コード 2 で止める」としていたが、PostToolUse の終了コード 2 はツール実行後にエラー文を Claude に見せるだけで、実行は止まらない。実装では `{"continue": false, "stopReason": ...}` を返して止める（注意も停止も終了コードは 0）。
+  - **失敗の判定**: `hook_event_name == "PostToolUseFailure"`、上位の `error`、`tool_response` の `is_error` / `success: false` / `error` / 0 以外の終了コードのどれかがあれば失敗として数える。
+  - **記録先**: `$CLAUDE_PROJECT_DIR/.claude/state/identical-call-guard/<session_id>.jsonl`（`.gitignore` 済み、直近50件だけ保持）。環境変数 `HARNESS_RETRIES_LOG` を設定すると、注意と停止を `retries.log` に1行ずつ追記する（引数の中身は書かない）。
+  - **安全側**: 壊れた入力・例外・Python が見つからない場合は何も出さずに通す（hook の不具合でツールを止めない）。
+  - **文字コード**: Windows でも日本語の引数で壊れないよう、標準入出力は UTF-8 のバイト列で扱う。
 
 #### diff 6: plugin 側 Worker 定義（参考・人間が反映）
 
