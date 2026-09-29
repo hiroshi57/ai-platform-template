@@ -6,6 +6,7 @@
 - **ステータス**: **2026-09-29 人間承認済み** — 提案 A〜D すべて承認。§5 の論点 P-1〜P-4 は既定案で確定。
   - 反映済み（Claude）: A・B → [`.claude/rules/parallel-mode-selection.md`](../.claude/rules/parallel-mode-selection.md)（新設・diff 1）、C → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9（diff 2）
   - 人間が反映: diff 3（plugin 側の Worker 定義）
+  - [更新: 2026-09-29] diff 3 を、読み込まれている plugin cache（`~/.claude/plugins/cache/Chachamaru127-claude-code-harness/claude-code-harness/4.3.1/agents/worker.md`）に反映済み（ユーザー指示により Claude が反映）。cache は git 管理外で、plugin を更新すると上書きされる。更新後は [`patches/worker-md-diff3-parallel-mode.patch`](patches/worker-md-diff3-parallel-mode.patch) を当て直す（手順は同ファイルのあるフォルダの README）
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠資料**: Park, Kontonis, Garg, Krishnamurthy, Papailiopoulos, *Scaling Discovery through Test-Time Communication*, arXiv:2609.21032v1 [cs.LG], 2026-09-17（UC Berkeley / Microsoft Research）
   - https://arxiv.org/abs/2609.21032

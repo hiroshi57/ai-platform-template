@@ -1,0 +1,11 @@
+--- a/agents/worker.md
++++ b/agents/worker.md
+@@ -247,6 +247,8 @@
+ 
+ 3. commit は feature branch 上で行う
+ 4. Lead が `REQUEST_CHANGES` を返した場合だけ `git commit --amend` を使う
++5. 入力に `parallel_mode: team` がある場合は、`.claude/rules/parallel-mode-selection.md` ルール2〜4 に従う。
++   `scorer` による最適化の繰り返しは「エラー復旧」の最大3回とは別に数え、`budget` が尽きるまで続ける。
+ 
+ ## 出力
+ 
