@@ -79,8 +79,34 @@ Worker の `self_review` 5 rule と同じ観点で採点する（観点を揃え
 - **verdict は2値のまま**（APPROVE / REQUEST_CHANGES）。人間に回すべきかは `route: human` で表す（P-1）。
 - **`route_mode`**: `shadow` のあいだ、`route` は記録専用。実際の判定（`verdict`）は今までどおり Lead が決める。
   `shadow` を外すかどうかは、**最低20件かつ retro 2回分**の実測（`route` と `verdict` の一致率）を見て別の提案で決める（P-2）。
+  [更新: 2026-09-29] `route_mode` は `shadow` / `active` / `off` の3値。`off` は「route を使った自動処理を止め、記録は続ける」。
+  `active` にする前提条件は `harness-retro.md` 提案9 を参照（提案 `2026-09-29-jev-field-guide-deltas.md` 提案 H・Q-3）。
 - 自己申告の確信度（「自信あり」「おそらく」など）は `route` の入力にしない（ルール4）。
 - 本節は rubric のアンカーを変えないので `rubric_version` は上げない。
+
+### 迷いの原因（review.v1 追加分・任意項目）
+
+> **起源**: 提案 `harness-proposals/2026-09-29-jev-field-guide-deltas.md`（提案 G）
+> **承認**: 2026-09-29 人間承認済み
+
+- `uncertain: true` の観点には、`uncertain_cause` を次から1つ付ける。原因ごとに直す場所が違うため。
+
+  | `uncertain_cause` | 観測されること | 直す場所（`harness-retro.md` 提案8 の層） |
+  |---|---|---|
+  | `missing_evidence` | 必要な証跡が `commands.stdout.log` や diff に無い | 1 状態 |
+  | `stale_evidence` | 証跡はあるが、判定対象（`state_ref`）より古い | 1 状態 |
+  | `overlapping_anchors` | 2つの段階のアンカーのどちらにも当てはまる | 3 契約 |
+  | `out_of_scope` | 観点がこのタスクに当てはまらない | 2 選択肢 |
+  | `other` | 上のどれでもない（理由を1行書く） | — |
+
+- `uncertain_cause` は route の計算には使わない（route の規則は変えない）。retro の集計にだけ使う。
+- 任意項目の追加なので `rubric_version` は上げない。
+
+```json
+{ "criterion": "dod-items-verified-with-evidence", "score": 2, "max": 3,
+  "uncertain": true, "uncertain_cause": "missing_evidence",
+  "evidence_ref": "commands.stdout.log:L120-L134" }
+```
 
 ## 一致度の確認（`.claude/rules/harness-retro.md` 提案7）
 
