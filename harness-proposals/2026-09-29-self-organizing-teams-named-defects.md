@@ -6,6 +6,7 @@
 - **ステータス**: **2026-09-29 人間承認済み** — 提案 A・B を承認。§5 の論点 P-1〜P-4 は既定案で確定。
   - 反映済み（Claude）: A → [`.claude/rules/judge-rubric.md`](../.claude/rules/judge-rubric.md) ルール6〜8・`rubric_version` を v2 に変更、B → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案9
   - 人間が反映: diff 3（グローバル CLAUDE.md §7）
+  - [更新: 2026-09-29] diff 3 をグローバル CLAUDE.md §7「ログ保存先」の表の直後に反映済み（ユーザー指示により Claude が反映）
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠論文**: Pappu, Suzgun, Kwon, Bianchi, El, Kochenderfer, Cao, Zou. *Self-Organizing Agent Teams Learn to Reason Together*. arXiv:2609.22682v1, 2026-09-19（Stanford / Together AI / Emory）
   - 入手元: https://arxiv.org/abs/2609.22682 （PDF 30ページ。本文 §1〜§7、付録 A〜E）
