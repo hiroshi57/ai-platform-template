@@ -5,8 +5,8 @@
 - **起案**: Claude Code (Worker)
 - **ステータス**: **2026-09-29 人間承認済み** — 提案 A〜E すべて承認。§5 の論点 P-1〜P-4 は既定案で確定。
   - 反映済み（Claude）: A・C・E → [`.claude/rules/harness-components.md`](../.claude/rules/harness-components.md)（新設）、B → [`.claude/rules/decision-boundaries.md`](../.claude/rules/decision-boundaries.md) ルール1「機械的な検出」、D → [`.claude/rules/harness-retro.md`](../.claude/rules/harness-retro.md) 提案11
-  - 人間が反映: diff 4（グローバル CLAUDE.md §7）、diff 5（各案件の settings.json の hook）、diff 6（plugin 側 Worker 定義）
-  - hook スクリプト `identical-call-guard.sh` の実装は別タスク（未着手）→ [更新: 2026-09-29] 実装済み（§3 diff 5 の注記）。settings.json への登録は引き続き人間が反映
+  - 人間が反映: diff 4（グローバル CLAUDE.md §7）、diff 5（本 repo 以外の各案件の settings.json の hook。本 repo は反映済み）、diff 6（plugin 側 Worker 定義）
+  - hook スクリプト `identical-call-guard.sh` の実装は別タスク（未着手）→ [更新: 2026-09-29] 実装済み（§3 diff 5 の注記）。本 repo の settings.json への登録も人間の指示で Claude が反映済み
   - 旧ステータス: 人間承認待ち（DRAFT）[更新: 2026-09-29]
 - **根拠論文**:
   1. *An Empirical Study of Harness Design for Coding Agents* — Fan, Zhang, Ma ほか（UMass Amherst / Emory / UNC Charlotte / Zoom）— arXiv:2609.20804v1 [cs.AI], 2026-09-17（以下「論文1」）
@@ -265,10 +265,10 @@ retro の改善案は、skills やルールに手順を書き足す形（蒸留�
 +  },
 +  "hooks": {
 +    "PostToolUse": [
-+      { "matcher": "*", "hooks": [{ "type": "command", "command": "bash .claude/hooks/identical-call-guard.sh" }] }
++      { "matcher": "*", "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/identical-call-guard.sh\"" }] }
 +    ],
 +    "PostToolUseFailure": [
-+      { "matcher": "*", "hooks": [{ "type": "command", "command": "bash .claude/hooks/identical-call-guard.sh" }] }
++      { "matcher": "*", "hooks": [{ "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/identical-call-guard.sh\"" }] }
 +    ]
 +  }
  }

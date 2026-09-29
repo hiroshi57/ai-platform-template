@@ -29,8 +29,8 @@
 - 回数（5 / 8）は根拠論文（arXiv:2609.20804）の設定値で、暫定（P-2）。最初の 2〜3 回の retro の実測で見直す。
 - 検出は hook（PostToolUse / PostToolUseFailure）で行う。実装は `.claude/hooks/identical-call-guard.sh`。
   止めるときは `{"continue": false}` を返す（PostToolUse の終了コード 2 では止まらないため）。
-  settings.json への登録は人間が反映する（提案書 diff 5）。
-  hook が入るまでは、Lead が `retries.log` と生ログで同じ条件を確認する。
+  settings.json に登録済み（2026-09-29、人間の指示で反映。提案書 diff 5）。
+  hook が登録されていない環境（他の案件など）では、Lead が `retries.log` と生ログで同じ条件を確認する。
 - 注意の挿入や停止の回数は `retries.log` に1行残す。
 
 ## ルール2: 新しく自動化する判断は、3つの問いで分ける（SHOULD）
