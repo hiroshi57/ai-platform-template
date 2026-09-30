@@ -80,10 +80,16 @@ while (step < MAX_STEPS) {
     } else {
       console.log(`  ❌ 失敗: ${JSON.stringify(result.failed)}`);
       const names = result.failed.map((c) => c.name).join(", ");
-      // 提案B: 何を試してどう落ちたかを構造化して残す（推論や観測の全文は残さない）
+      // 提案B: 何を試してどう落ちたかを構造化して残す（推論や観測の全文は残さない）。
+      // ここに hypothesis を入れるから、次の propose が同じ候補を選び直さずに済む。
       commit({
         tested_hypotheses: [
-          { attempt: state.repairs + 1, action: request.name, failed_checks: names },
+          {
+            attempt: state.repairs + 1,
+            action: request.name,
+            hypothesis: request.hypothesis ?? {},
+            failed_checks: names,
+          },
         ],
       });
       if (result.status === "retry" && state.repairs < task.max_repairs) {
