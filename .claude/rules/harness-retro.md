@@ -47,3 +47,62 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
 - 1・2 が崩れた（削除・作り直しが起きた）場合は `.claude/rules/memory-curation.md` の保存ルール違反。
   内容欠落がないか diff で確認する。
 - 3 が悪化した場合、taxonomy を守れる強い管理エージェントに切り替えるか、ツールセット（提案4）を見直す。
+
+## 提案6: ツール使用の内訳を測り、検索結果を共有する（Jev 設計メモ III・X）
+
+> **起源**: 提案 `harness-proposals/2026-09-28-jev-context-engineering.md`（提案 D）
+> **承認**: 2026-09-28 人間承認済み（P-3 = フェーズ1は Worker の自己申告で確定）
+
+背景: コーディングエージェントのトークンの大半は、コードを書くことではなく読み込み・検索・コマンド出力に
+使われる（元資料の推定で約3分の2、コード記述は1割未満）。どこを削れば効くかを判断するため、内訳を測る。
+
+### worker-report の任意フィールド `tool_usage`
+
+Worker は取れる範囲で自己申告する。**任意項目で、未記入でも review で差し戻さない**。
+既存のフィールドは変えない。
+
+Worker 定義への追記（2026-09-28 適用済み）: claude-code-harness プラグイン（4.3.1）の `agents/worker.md` に、
+`tool_usage` の記入指示を追加した。**プラグインを更新すると上書きされて消える**ので、更新後は次で当て直す。
+```bash
+cd ~/.claude/plugins/cache/Chachamaru127-claude-code-harness/claude-code-harness/<version>
+patch -p1 --dry-run < <ai-platform-template>/harness-proposals/patches/2026-09-28-worker-tool-usage.patch  # 当たるか確認
+patch -p1 < <ai-platform-template>/harness-proposals/patches/2026-09-28-worker-tool-usage.patch
+```
+当たらない（上流で worker.md が変わった）場合は、パッチを見ながら手で追記する。
+
+```json
+"tool_usage": {
+  "read_calls": 0,             // Read・cat など、ファイルを読んだ回数
+  "search_calls": 0,           // Grep・Glob・find など、探した回数
+  "bash_calls": 0,             // 検索以外のコマンドを実行した回数
+  "edit_calls": 0,             // Edit・Write など、書いた回数
+  "largest_output_lines": 0,   // 1回で最大の出力行数（肥大化の兆候）
+  "reread_files": []           // 同じタスク内で2回以上読んだファイル
+}
+```
+
+### チェック項目（提案5のチェック 1〜3 に続けて行う）
+
+4. **ツール使用の内訳**: 直近10タスクを集計する。
+   ```bash
+   python scripts/token_breakdown.py            # テキスト出力
+   python scripts/token_breakdown.py --json     # タスク別の詳細つき
+   ```
+   読み込み＋検索＋コマンドの比率が 60% を超えたら、改善余地は「検索の賢さ」にある。
+   モデルを強くする前に、ツールセット（提案4）を見直す。
+5. **読み直し**: 複数タスクで同じファイルが読み直されていたら、そのディレクトリに GOTCHAS.md
+   または要点メモを置くことを検討する。
+6. **自己申告の確かさ**: `--json` の `per_task` で、`largest_output_lines` と
+   `commands.stdout.log` の行数（`stdout_log_lines`）を見比べる。大きくずれるタスクが続くなら、
+   自己申告をやめてフックでの自動計測に切り替えるかを人間が判断する（フック追加は設定変更のため人間の作業）。
+
+### 読み取り専用タスクの検索結果の共有
+
+codex-companion review やクロスレビューなど、コードを書かないバックグラウンドタスクは、
+Worker の `files_changed` と `git diff --stat` を共通の入力として受け取る。
+各タスクがリポジトリ全体を探し直さない。
+
+### 判断
+
+- `scripts/token_breakdown.py` の出力は advisory（通知のみ）。ハーネスを自動で変更しない。
+- 集計はトークン数ではなく呼び出し回数による近似。傾向を見るために使い、細かい数値の差で判断しない。

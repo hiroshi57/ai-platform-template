@@ -1,0 +1,49 @@
+--- a/agents/worker.md
++++ b/agents/worker.md
+@@ -76,6 +76,7 @@
+   - `effort_sufficient`
+   - `turns_used`
+   - `task_complexity_note`
++  - `tool_usage`（任意。下記「ツール使用の内訳」参照）
+ 
+ ## 実行フロー
+ 
+@@ -268,6 +269,14 @@
+   "effort_sufficient": true,
+   "turns_used": 12,
+   "task_complexity_note": "次回への申し送り",
++  "tool_usage": {
++    "read_calls": 14,
++    "search_calls": 6,
++    "bash_calls": 5,
++    "edit_calls": 4,
++    "largest_output_lines": 320,
++    "reread_files": ["src/router.ts"]
++  },
+   "self_review": [
+     { "rule": "dry-violation-none", "verified": true, "evidence": "実装と import を grep で確認: 重複定義ゼロ、既存 util を 2 箇所で再利用" },
+     { "rule": "plans-cc-markers-untouched", "verified": true, "evidence": "git diff HEAD -- Plans.md | grep -E '^[+-].*cc:' → 0 行" },
+@@ -290,6 +299,23 @@
+ 
+ project ごとの追加 rule は `harness.toml` の `[worker.self_review]` で override する（scaffolder が雛形を生成）。
+ 
++### ツール使用の内訳 (`tool_usage`)
++
++retro で「トークンがどこに使われているか」を見るための**任意項目**。取れる範囲で自己申告する。
++未記入でも Lead は差し戻さない。数値は概算でよい（正確さより記入の継続を優先）。
++
++| キー | 数えるもの |
++|------|-----------|
++| `read_calls` | Read・cat・head など、ファイルを読んだ回数 |
++| `search_calls` | Grep・Glob・find・rg など、探した回数 |
++| `bash_calls` | 検索以外のコマンドを実行した回数（テスト・ビルド・git 等） |
++| `edit_calls` | Edit・Write など、ファイルを書いた回数 |
++| `largest_output_lines` | 1 回のツール呼び出しで返った最大の出力行数 |
++| `reread_files` | このタスク内で 2 回以上読んだファイルのパス |
++
++- 集計は project 側の `scripts/token_breakdown.py`（あれば）で行う。Worker は記入するだけ
++- 失敗時 JSON・advisor-request には付けなくてよい
++
+ ### Advisor 相談時
+ 
+ ```json
