@@ -1,20 +1,7 @@
-# agent-harness — AIエージェントを安全に動かす「ハーネス・エンジニアリング 6層」
+# agent-harness — 5分で6層すべてを動かす
 
-> 目標に向けて AI が **「行動し・成果を証明し・失敗から回復する」** ための環境（ハーネス）を、
-> 依存パッケージゼロの Node.js で最小実装したデモ＋教材。
-
-## 使い方（要旨）
-
-```bash
-git clone https://github.com/hiroshi57/ai-platform-template.git
-cd ai-platform-template
-node agent-harness/src/harness.mjs      # ① 6層デモ: 失敗→自動修復→全チェック通過→人間承認で停止
-node agent-harness/src/orchestrate.mjs  # ② 案件を自動分類→6層で処理（ヨシケイ例・ドライランで安全）
-```
-
-- **必要環境**: Node.js v18 以上（追加インストール不要・依存パッケージゼロ）
-- **読む順**: この下の「実行」→ `agent-harness/AGENTS.md`（6層の対応表）→「★自分で壊して学ぶ」
-- **共有資料**: `agent-harness/docs/harness-engineering.pptx`（9スライド）/ `agent-harness/docs/harness-demo.gif`
+依存パッケージゼロの Node.js（v18+）で「ハーネス・エンジニアリング 6層」を最小構成で実装したデモ。
+`AGENTS.md` の対応表を参照。
 
 ## 実行
 
@@ -38,6 +25,27 @@ node agent-harness/src/harness.mjs
 
 実行すると `state/current.json`（層4）と `runs/traces.jsonl`（層6）、
 `artifacts/export.csv`（成果物）が生成される。
+
+### 状態パッチ（層4）
+
+状態の更新はすべて `src/state-patch.mjs` の `applyPatch` 経由で行う。モデルに状態を丸ごと書き直させない。
+
+- パッチに書かれていないキーは残る（既存キーを落とす上書き事故が起きない）
+- 削除は `null` を明示したときだけ
+- 追記型の配列は既定で追加のみ。訂正したいときだけ `{ "$set": [...] }` で置き換える
+- 追記型の配列は `maxItems` で頭打ちにし、古いものから捨てる（状態が試行回数に比例して伸びない）
+- 型違反・未知のキー・変更不可キーの変更を含むパッチは、**一部だけ適用せず**状態を変えずに差し戻す
+- 配列は要素の型（`items`）まで検査する。キーの並び順が違う同じ内容は重複とみなす
+
+再試行で同じ修復を繰り返さないよう、試した仮説は `state.tested_hypotheses` に残してコンテキストへ渡す。
+`propose()` は「何を試すか」をこの記録から決めるので、記録を隠すと同じ失敗を繰り返す（「★自分で壊して学ぶ」5）。
+
+> 着想は arXiv:2608.26263（SKILL.state）だが、**同論文が示す効果量は根拠として採用していない**。
+> 理由は `src/state-patch.mjs` の冒頭コメントを参照。
+
+```bash
+node --test agent-harness/test/*.test.mjs
+```
 
 ## 案件を自動で「分類 → 6層処理」する（実業務・実ツール・ドライラン）
 
@@ -87,6 +95,11 @@ node agent-harness/src/orchestrate.mjs
    → モデルが失敗の証拠を「見られなく」なり、同じ間違いを繰り返してエスカレーション。
      再試行がやめられないのはモデルのせいではなく、環境が証拠を返していないから。
 
+5. **試した記録を消す（層4）**: `src/context.mjs` の `tested_hypotheses` 行を消して再実行。
+   → 「直す必要がある」ことは分かるのに「もう試して駄目だった」が分からず、同じ日付形式を
+     選び直してエスカレーションする。証拠（4）と試行履歴（5）は別物で、**両方ないと前に進めない**。
+     会話履歴を丸ごと渡さなくても、この1項目を構造化して残せば足りる。
+
 ## ディレクトリ
 
 ```
@@ -104,9 +117,11 @@ agent-harness/
 │   ├── gateway.mjs           # 層3 ツール・ゲートウェイ
 │   ├── verify.mjs            # 層5 証拠ゲート
 │   ├── state.mjs             # 層4 永続状態 ＋ 層6 トレース
+│   ├── state-patch.mjs       # 層4 状態パッチの検証・マージ・rollback
 │   └── harness.mjs           # ループ本体
 ├── state/current.json        # 実行で生成
 ├── runs/traces.jsonl         # 実行で生成
 ├── artifacts/export.csv      # 成果物（実行で生成）
+├── test/state-patch.test.mjs  # node --test
 └── lessons/harness-updates.md
 ```
