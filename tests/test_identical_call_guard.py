@@ -1,9 +1,10 @@
 """identical-call-guard hook の回帰テスト.
 
 仕様: `decision-boundaries.md` ルール1「機械的な検出」（hiroshi57/harness-rules の `.claude/rules/`）
-  - 同じツール名・同じ引数の呼び出しが 5 回連続 → 注意を 1 回だけ
-  - 同じツール名・同じ引数で失敗した呼び出しが 5 回連続 → 同上
-  - 同じツール名・同じ引数で失敗した呼び出しが 8 回連続 → 停止
+  - 同じツール名・同じ引数の呼び出しの「失敗」を数える。間に別の呼び出し（Edit など）を挟んでも数え続け、
+    その呼び出しが成功したら数え直す。直近 50 件より前は数えない
+  - 失敗が 5 回 → 注意を 1 回だけ／失敗が 8 回 → 停止
+  - 成功した呼び出しは数えない（成功が続いても注意しない）
 """
 
 from __future__ import annotations
@@ -79,10 +80,10 @@ def test_no_output_below_notice_threshold(tmp_path):
     assert outs == [None, None, None, None]
 
 
-def test_notice_once_at_five_identical_calls(tmp_path):
-    outs = _repeat(tmp_path, 7)
-    assert [_is_notice(o) for o in outs] == [False, False, False, False, True, False, False]
-    assert not any(_is_stop(o) for o in outs)
+def test_identical_successes_never_notice(tmp_path):
+    """確認コマンド（gh pr checks など）を成功のまま繰り返しても注意しない."""
+    outs = _repeat(tmp_path, 12)
+    assert outs == [None] * 12
 
 
 def test_notice_once_for_five_identical_failures(tmp_path):
@@ -91,10 +92,10 @@ def test_notice_once_for_five_identical_failures(tmp_path):
 
 
 def test_notice_mentions_rule1_options(tmp_path):
-    outs = _repeat(tmp_path, 5)
+    outs = _repeat(tmp_path, 5, failed=True)
     ctx = outs[4]["hookSpecificOutput"]["additionalContext"]
     assert "decision-boundaries.md" in ctx
-    assert outs[4]["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert outs[4]["hookSpecificOutput"]["hookEventName"] == "PostToolUseFailure"
 
 
 # --- 停止 ---------------------------------------------------------------
@@ -130,18 +131,50 @@ def test_failure_via_tool_response_flag(tmp_path):
 # --- 連続の判定 ---------------------------------------------------------
 
 
-def test_different_args_break_streak(tmp_path):
-    _repeat(tmp_path, 4)
-    _run(tmp_path, _payload(tool_input={"command": "ls"}))
-    outs = _repeat(tmp_path, 4)
-    assert not any(_is_notice(o) for o in outs)
+def _edit(i):
+    return _payload(
+        tool="Edit", tool_input={"file_path": "a.py", "old_string": f"v{i}", "new_string": f"v{i + 1}"}
+    )
 
 
-def test_different_tool_breaks_streak(tmp_path):
-    _repeat(tmp_path, 7, failed=True)
-    _run(tmp_path, _payload(tool="Read", tool_input={"file_path": "a.py"}, failed=True))
+def test_retry_loop_with_edits_interleaved(tmp_path):
+    """よくあるやり直し（テスト失敗 → Edit → 同じテスト失敗 …）を検出する."""
+    fails = []
+    for i in range(8):
+        fails.append(_run(tmp_path, _payload(failed=True))[0])
+        assert _run(tmp_path, _edit(i))[0] is None  # 成功した Edit は数えない
+    assert [_is_notice(o) for o in fails] == [False, False, False, False, True, False, False, False]
+    assert not any(_is_stop(o) for o in fails[:7])
+    assert _is_stop(fails[7])
+
+
+def test_other_failures_are_counted_separately(tmp_path):
+    """別の呼び出しの失敗は、自分の回数には足さない（間に挟まっても数え直しにもならない）."""
+    _repeat(tmp_path, 4, failed=True)
+    other = [_run(tmp_path, _payload(tool_input={"command": "ls"}, failed=True))[0] for _ in range(4)]
+    assert not any(_is_notice(o) for o in other)
     outs = _repeat(tmp_path, 1, failed=True)
-    assert not _is_stop(outs[0])
+    assert _is_notice(outs[0])  # pytest の5回目
+
+
+def test_success_between_resets_count_even_when_interleaved(tmp_path):
+    for i in range(7):
+        _run(tmp_path, _payload(failed=True))
+        _run(tmp_path, _edit(i))
+    _run(tmp_path, _payload(failed=False))  # 一度通った
+    outs = []
+    for i in range(7):
+        outs.append(_run(tmp_path, _payload(failed=True))[0])
+        _run(tmp_path, _edit(100 + i))
+    assert not any(_is_stop(o) for o in outs)
+
+
+def test_failures_older_than_window_are_not_counted(tmp_path):
+    _repeat(tmp_path, 4, failed=True)
+    for i in range(guard.MAX_HISTORY):
+        _run(tmp_path, _edit(i))
+    outs = _repeat(tmp_path, 1, failed=True)
+    assert outs == [None]
 
 
 def test_argument_key_order_does_not_matter():
@@ -152,8 +185,8 @@ def test_argument_key_order_does_not_matter():
 
 
 def test_sessions_are_isolated(tmp_path):
-    _repeat(tmp_path, 4, session="A")
-    outs = _repeat(tmp_path, 1, session="B")
+    _repeat(tmp_path, 4, session="A", failed=True)
+    outs = _repeat(tmp_path, 1, session="B", failed=True)
     assert outs == [None]
 
 
@@ -238,7 +271,7 @@ def test_shell_entrypoint_runs(tmp_path):
 
 def test_shell_entrypoint_handles_utf8_and_emits_json(tmp_path):
     """日本語を含む引数（UTF-8）でも壊れず、注意を UTF-8 の JSON で返すこと（Windows の cp932 対策）."""
-    payload = _payload(tool_input={"command": "echo 日本語のテスト"})
+    payload = _payload(tool_input={"command": "echo 日本語のテスト"}, failed=True)
     env = {"IDENTICAL_CALL_NOTICE": "2"}
     _run_shell(tmp_path, payload, env)
     proc = _run_shell(tmp_path, payload, env)
