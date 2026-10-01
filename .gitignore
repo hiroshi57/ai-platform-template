@@ -19,3 +19,6 @@ pricing.json
 # frontend
 node_modules/
 dist/
+
+# harness-logs は生ログ（検証コマンドの出力・タスク入力）を逐語で保存する。公開リポジトリに push しない
+.claude/harness-logs/

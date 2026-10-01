@@ -8,7 +8,11 @@
     python scripts/token_breakdown.py --logs-dir <path>     # ログの場所を指定
 
 注意:
-- 元データの tool_usage は **Worker の自己申告**。判定の根拠にはしない（CLAUDE.md §7）。傾向を見るだけに使う
+- 候補の隣に tool-usage.measured[.<n>].json があればそれを使う
+  （scripts/harness_log.py がトランスクリプトから実測したもの）。
+  無いときだけ worker-report の tool_usage（Worker の自己申告）を使う
+- 自己申告は判定の根拠にしない（CLAUDE.md §7）。
+  出力の data_source / measured_records で、どちらを使ったかを確かめる
 - 数えているのはトークン数ではなく、ツールの呼び出し回数
 - 閾値による通知は出さない。テストの実行もコマンドに数えるため、健全なタスクでも比率は高くなる。
   比べるのは同じ数え方での月ごとの変化だけ
@@ -23,7 +27,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 DEFAULT_LOGS_DIR = Path(".claude/harness-logs")
-CALL_KEYS = ("read_calls", "search_calls", "bash_calls", "edit_calls")
+CALL_KEYS = ("read_calls", "search_calls", "bash_calls", "edit_calls", "other_calls")
+MEASURED_STEM = "tool-usage.measured"   # scripts/harness_log.py がトランスクリプトから実測して置くファイル
 RETRIEVAL_KEYS = ("read_calls", "search_calls", "bash_calls")
 REPORT_NAME = re.compile(r"^worker-report(?:\.(\d+))?\.json$")   # 候補が複数あれば worker-report.<n>.json
 REREAD_MIN_TASKS = 2
@@ -76,10 +81,27 @@ def collect_reports(logs_dir: Path, limit: int = 10) -> dict:
         except (OSError, json.JSONDecodeError) as e:
             skipped.append({"file": f.as_posix(), "reason": type(e).__name__})
             continue
-        usage, problems = _clean_usage(report.get("tool_usage") if isinstance(report, dict) else None)
+        measured_file = f.parent / f"{MEASURED_STEM}{'.' + str(cand) if cand else ''}.json"
+        source = "self_report"
+        raw_usage = report.get("tool_usage") if isinstance(report, dict) else None
+        if measured_file.is_file():
+            try:
+                raw_usage = json.loads(measured_file.read_text(encoding="utf-8"))
+                source = "measured"
+            except (OSError, json.JSONDecodeError):
+                skipped.append({"file": measured_file.as_posix(), "reason": "JSONDecodeError"})
+        usage, problems = _clean_usage(raw_usage)
         records.append({"project": f.parent.parent.parent.name, "month": month, "task_id": f.parent.name,
+                        "source": source if usage else None,
                         "candidate": cand, "tool_usage": usage, "problems": problems})
     return {"records": records, "skipped": skipped}
+
+
+def _overall_source(records: list[dict]) -> str | None:
+    kinds = {r.get("source") for r in records} - {None}
+    if not kinds:
+        return None
+    return kinds.pop() if len(kinds) == 1 else "mixed"
 
 
 def summarize(collected: dict) -> dict:
@@ -108,7 +130,11 @@ def summarize(collected: dict) -> dict:
     frequent = [{"file": p, "tasks": n} for p, n in sorted(reread.items(), key=lambda kv: (-kv[1], kv[0]))
                 if n >= REREAD_MIN_TASKS]
     return {
-        "data_source": "self_report",   # Worker の自己申告。判定の根拠にしない
+        # measured = トランスクリプトからの実測（外部の証跡）
+        # self_report = Worker の自己申告（判定の根拠にしない）
+        "data_source": _overall_source(records),
+        "measured_records": sum(1 for r in records if r.get("source") == "measured"),
+        "self_report_records": sum(1 for r in records if r.get("source") == "self_report"),
         "records": len(records),
         "records_without_tool_usage": without,
         "skipped_files": collected["skipped"],
@@ -123,7 +149,8 @@ def summarize(collected: dict) -> dict:
 
 def _format_text(s: dict) -> str:
     lines = [
-        "※ Worker の自己申告による呼び出し回数。判定の根拠にはせず、傾向を見るだけに使う",
+        f"※ 呼び出し回数。実測 {s['measured_records']} 件・自己申告 {s['self_report_records']} 件"
+        "（自己申告は判定の根拠にしない）",
         f"対象: {s['records']} 件（tool_usage なし {s['records_without_tool_usage']} 件・"
         f"読めなかったファイル {len(s['skipped_files'])} 件・"
         f"形の違う項目あり {len(s['invalid_fields'])} 件）",
@@ -133,7 +160,7 @@ def _format_text(s: dict) -> str:
     else:
         t = s["totals"]
         lines.append(f"合計: 読み込み {t['read_calls']} / 検索 {t['search_calls']} / "
-                     f"コマンド {t['bash_calls']} / 編集 {t['edit_calls']}")
+                     f"コマンド {t['bash_calls']} / 編集 {t['edit_calls']} / その他 {t['other_calls']}")
         lines.append("月ごとの「読み込み+検索+コマンド」の割合:")
         lines.extend(f"  {m['month']}: {m['retrieval_share']:.0%}" for m in s["trend_by_month"]
                      if m["retrieval_share"] is not None)

@@ -39,7 +39,8 @@ def _run(logs: Path, limit: int = 10) -> dict:
 def test_totals_and_retrieval_share(tmp_path):
     _write(tmp_path, "202609", "1.1", _u(read=6, search=2, bash=2, edit=10))
     s = _run(tmp_path)
-    assert s["totals"] == {"read_calls": 6, "search_calls": 2, "bash_calls": 2, "edit_calls": 10}
+    assert s["totals"] == {"read_calls": 6, "search_calls": 2, "bash_calls": 2, "edit_calls": 10,
+                         "other_calls": 0}
     assert s["retrieval_share"] == pytest.approx(0.5)
     assert s["data_source"] == "self_report"
 
@@ -102,3 +103,41 @@ def test_missing_tool_usage_and_broken_json_are_counted_not_failed(tmp_path):
 def test_no_logs_returns_empty_summary(tmp_path):
     s = _run(tmp_path / "missing")
     assert s["records"] == 0 and s["retrieval_share"] is None and s["trend_by_month"] == []
+
+
+def _measured(logs: Path, month: str, task_id: str, usage: dict, suffix: str = "") -> None:
+    d = logs / "proj" / month / task_id
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"tool-usage.measured{suffix}.json").write_text(json.dumps({"data_source": "measured", **usage}),
+                                                         encoding="utf-8")
+
+
+def test_measured_usage_is_preferred_over_self_report(tmp_path):
+    _write(tmp_path, "202610", "1.1", _u(read=99, edit=1))           # 自己申告は 99
+    _measured(tmp_path, "202610", "1.1", _u(read=2, edit=1))         # 実測は 2
+    s = _run(tmp_path)
+    assert s["totals"]["read_calls"] == 2
+    assert (s["data_source"], s["measured_records"], s["self_report_records"]) == ("measured", 1, 0)
+
+
+def test_measured_file_is_matched_to_its_candidate_number(tmp_path):
+    _write(tmp_path, "202610", "1.1", _u(read=50), name="worker-report.json")
+    _write(tmp_path, "202610", "1.1", _u(read=50), name="worker-report.2.json")
+    _measured(tmp_path, "202610", "1.1", _u(read=1))                 # 1件目の実測
+    _measured(tmp_path, "202610", "1.1", _u(read=3), suffix=".2")    # 2件目の実測
+    s = _run(tmp_path)
+    assert s["totals"]["read_calls"] == 4 and s["measured_records"] == 2
+
+
+def test_mixed_sources_are_reported_as_mixed(tmp_path):
+    _write(tmp_path, "202610", "1.1", _u(read=1))
+    _measured(tmp_path, "202610", "1.1", _u(read=1))
+    _write(tmp_path, "202610", "1.2", _u(read=1))                    # こちらは自己申告のみ
+    assert _run(tmp_path)["data_source"] == "mixed"
+
+
+def test_other_calls_from_measurement_are_counted(tmp_path):
+    _write(tmp_path, "202610", "1.1")
+    _measured(tmp_path, "202610", "1.1", {**_u(read=1), "other_calls": 3})
+    s = _run(tmp_path)
+    assert s["totals"]["other_calls"] == 3 and s["retrieval_share"] == pytest.approx(0.25)

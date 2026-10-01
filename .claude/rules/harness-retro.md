@@ -56,6 +56,24 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
 背景: コーディングエージェントのトークンの大半は、コードを書くことではなく読み込み・検索・コマンド出力に
 使われる（元資料の推定で約3分の2、コード記述は1割未満）。どこを削れば効くかを判断するため、内訳を測る。
 
+### 保存と実測（Lead が Worker の結果を受け取るたびに行う）
+
+> [追加: 2026-10-01] これまで harness-logs に書き込む仕組みが無く、集計が0件だったため追加した。
+
+1. **いつ**: Worker の結果（worker-report）を受け取ったとき。review を出したときも同じコマンドで足す。
+2. **何をするか**: 生のファイルをそのまま保存し、Worker のトランスクリプトがあればツール呼び出しを実測する。
+   ```bash
+   python scripts/harness_log.py save --project <slug> --task-id <task_id>      --task task.json --worker-report worker-report.json --stdout-log commands.stdout.log      [--review review.json] [--retries retries.log] [--advisor advisor.json]      [--transcript <Worker のトランスクリプト .jsonl>] [--sidechain-only]
+   ```
+   - 2件目の worker-report / review は `<名前>.<n>.json` で残り、上書きされない（§7 提案10）
+   - `commands.stdout.log` / `retries.log` は区切り行付きで追記される
+   - `--transcript` を付けると `tool-usage.measured[.<n>].json` が候補の隣にできる。
+     数とファイルパスだけを残し、メッセージ・コマンド・出力の中身とトランスクリプト本体は保存しない
+   - トランスクリプトは Claude Code が `~/.claude/projects/<作業フォルダを変換した名前>/` に JSON Lines で残す。
+     サブエージェントの記録が親と同じファイルに入っている場合は `--sidechain-only` で Worker 側だけを数える
+3. **どう確かめるか**: `python scripts/token_breakdown.py` で `measured_records` が増えていること。
+4. `.claude/harness-logs/` は `.gitignore` 対象。生ログには検証コマンドの出力がそのまま入るので、push しない。
+
 ### worker-report の任意フィールド `tool_usage`
 
 Worker は取れる範囲で自己申告する。**任意項目で、未記入でも review で差し戻さない**。
@@ -89,7 +107,11 @@ Worker 定義への記入指示は、使っているハーネスのプラグイ�
    （テストの実行もコマンドに数えるので、健全なタスクでも高くなる）。
 5. **読み直し**: 複数タスクで同じファイルが読み直されていたら、そのディレクトリに GOTCHAS.md
    または要点メモを置くことを検討する。
-6. **自己申告であることを忘れない**: `tool_usage` は Worker の自己申告で、出力にも `data_source: self_report` と出る。
+6. **実測か自己申告かを確かめる**: 出力の `data_source` が `measured`（トランスクリプトからの実測）なら外部の証跡として
+   使える。`self_report` / `mixed` のときは、自己申告の分を判定の根拠にしない。
+   - [更新: 2026-10-01] `scripts/harness_log.py --transcript` による実測を追加し、実測があればそちらを優先するようにした。
+     以下は自己申告しか無い場合の扱い。
+   `tool_usage` は Worker の自己申告で、出力にも `data_source: self_report` と出る。
    判定や合否の根拠にはしない（CLAUDE.md §7）。数字をきちんと使いたくなったら、フックでの自動計測
    （PostToolUse でツール名を数えてログに追記する）に切り替える。フックの追加は設定変更なので人間が行う。
    - [更新: 2026-10-01] 旧チェック6（`largest_output_lines` と `commands.stdout.log` の行数を見比べる）は削除した。
@@ -97,7 +119,9 @@ Worker 定義への記入指示は、使っているハーネスのプラグイ�
    - [更新: 2026-10-01] 旧チェック4の「60% を超えたら」の閾値は削除した。元資料の「約3分の2」はトークンの割合で、
      こちらは呼び出し回数の割合のため、同じ閾値で比べられなかった（典型的な TDD タスクで78%になり、毎回通知が出た）。
 7. **ログが書かれているか**: `.claude/harness-logs/` に worker-report が保存されていなければ、集計は0件になる。
-   0件が続くときは、ログを保存する仕組みが動いているかを先に確かめる。
+   0件が続くときは、Lead が `scripts/harness_log.py save` を実行しているかを先に確かめる。
+   - [更新: 2026-10-01] 保存の仕組み（`scripts/harness_log.py`）を追加した。毎回の実行は Lead の手順で、自動ではない。
+     自動にするなら SubagentStop などのフックから呼ぶ（フックの追加は設定変更なので人間が行う）。
 
 ### 読み取り専用タスクの検索結果の共有
 
