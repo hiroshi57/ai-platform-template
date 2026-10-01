@@ -14,22 +14,32 @@
 ## 行き（Lead → Worker / サブエージェント）
 
 1. 渡すのは `task` / `files` / `contract` と、関係する GOTCHAS.md のパスだけ。会話履歴は渡さない。
+   （GOTCHAS.md は提案 B が未実装のため、置かれているディレクトリだけが対象）
 2. 「念のため」の追加資料は付けない。必要なら Worker が `files` の範囲で自分で読む。
 
 ## 戻り（Worker → Lead）
 
-1. Lead はまず worker-report.v1（`summary` / `self_review` の evidence / `files_changed`）を読む。
-2. 全文 diff を読むのは、次のどれかに当てはまるときだけ。それ以外は `git diff --stat` とレポートで判断する。
-   - (a) `self_review` に `verified: false` がある
+1. Lead はまず worker-report.v1（`summary` / `files_changed`）と、検証コマンドの生出力を読む。
+2. 全文 diff を読むかは、**外部の証跡だけ**で決める。Worker の自己申告（`self_review.verified` など）は
+   判定に使わない（CLAUDE.md §7「自己申告は判定の根拠にしない」）。次のどれかに当てはまれば全文を読む。
+   - (a) 検証コマンドの生出力（`commands.stdout.log`）が無い・空・失敗を含む
    - (b) Reviewer が指摘した
-   - (c) security-sensitive なタスク
-   - (d) 生成ファイルを除いた変更行数が **300 行**を超える
-3. (d) の行数は次のコマンドで数える。`*.lock` / `package-lock.json` / `dist/` / `*.min.*` は数えない。
+   - (c) contract が security-sensitive、**または**変更したパスが認証・秘密情報・権限・CI・インフラに当たる
+     （印の付け忘れに頼らない）
+   - (d) 生成ファイル（`dist/` `build/` 配下、`*.lock`、`package-lock.json`、`pnpm-lock.yaml`、`*.min.*`）を
+     除いた変更行数が **300 行**を超える
+   どれにも当たらなければ `git diff --stat` とレポートで判断する。
+3. 判定はスクリプトで行う。手で数えない。
    ```bash
-   git diff --numstat "$BASE"...HEAD \
-     | grep -vE '(\.lock|package-lock\.json|(^|/)dist/|\.min\.)' \
-     | awk '{a+=$1; d+=$2} END {print a+d}'
+   python scripts/needs_full_diff.py --stdout-log <harness-logs の commands.stdout.log>
+   # 基準を変えるとき: --base <ref>（既定は origin/main との merge-base）
+   # Reviewer の指摘・contract の印: --reviewer-flagged / --security-sensitive
    ```
+   証跡が足りないときは「読む」側に倒す（ログを渡さなければ必ず「読む」になる）。
+   - [更新: 2026-10-01] 旧 (a)「`self_review` に `verified: false` がある」は削除した。自己申告に頼る条件で、
+     しかも `verified: false` のレポートは Worker 契約上 Lead に届く前に自動で差し戻されるため、発動しなかった。
+     旧 3 の行数コマンドは、先頭にある `dist/` を除外できず（`--numstat` の出力ではパスの前がタブのため）、
+     `$BASE` も未定義だったので、スクリプトに置き換えた。
 4. 生ログは `harness-logs/` に逐語で残す（要約しない。`memory-curation.md` ルール4）。
    「Lead が読むか」と「ログに残すか」は別の判断で、読まないログも消さない。
 

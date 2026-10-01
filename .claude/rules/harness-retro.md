@@ -61,14 +61,10 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
 Worker は取れる範囲で自己申告する。**任意項目で、未記入でも review で差し戻さない**。
 既存のフィールドは変えない。
 
-Worker 定義への追記（2026-09-28 適用済み）: claude-code-harness プラグイン（4.3.1）の `agents/worker.md` に、
-`tool_usage` の記入指示を追加した。**プラグインを更新すると上書きされて消える**ので、更新後は次で当て直す。
-```bash
-cd ~/.claude/plugins/cache/Chachamaru127-claude-code-harness/claude-code-harness/<version>
-patch -p1 --dry-run < <ai-platform-template>/harness-proposals/patches/2026-09-28-worker-tool-usage.patch  # 当たるか確認
-patch -p1 < <ai-platform-template>/harness-proposals/patches/2026-09-28-worker-tool-usage.patch
-```
-当たらない（上流で worker.md が変わった）場合は、パッチを見ながら手で追記する。
+Worker 定義への記入指示は、使っているハーネスのプラグイン側に入れる必要がある。入れ方と、
+プラグイン更新後の当て直し手順は `harness-proposals/patches/README.md` を参照（環境ごとのパスはそちらに置く）。
+- [更新: 2026-10-01] 当て直し手順（プラグインのパス・版つき）をここから `patches/README.md` に移した。
+  共通ルールに特定環境のパスを混ぜないため（CLAUDE.md §7「共通ルールへの diff に案件専用の記述が混ざっていないか」）。
 
 ```json
 "tool_usage": {
@@ -83,18 +79,25 @@ patch -p1 < <ai-platform-template>/harness-proposals/patches/2026-09-28-worker-t
 
 ### チェック項目（提案5のチェック 1〜3 に続けて行う）
 
-4. **ツール使用の内訳**: 直近10タスクを集計する。
+4. **ツール使用の内訳（傾向）**: 直近10件を集計し、月ごとの変化を見る。
    ```bash
    python scripts/token_breakdown.py            # テキスト出力
-   python scripts/token_breakdown.py --json     # タスク別の詳細つき
+   python scripts/token_breakdown.py --json     # 形の違う項目・読めなかったファイルの一覧つき
    ```
-   読み込み＋検索＋コマンドの比率が 60% を超えたら、改善余地は「検索の賢さ」にある。
-   モデルを強くする前に、ツールセット（提案4）を見直す。
+   読み込み＋検索＋コマンドの割合が**月を追って上がり続けている**なら、検索の賢さに改善余地がある。
+   モデルを強くする前に、ツールセット（提案4）を見直す。割合の高さそのものでは判断しない
+   （テストの実行もコマンドに数えるので、健全なタスクでも高くなる）。
 5. **読み直し**: 複数タスクで同じファイルが読み直されていたら、そのディレクトリに GOTCHAS.md
    または要点メモを置くことを検討する。
-6. **自己申告の確かさ**: `--json` の `per_task` で、`largest_output_lines` と
-   `commands.stdout.log` の行数（`stdout_log_lines`）を見比べる。大きくずれるタスクが続くなら、
-   自己申告をやめてフックでの自動計測に切り替えるかを人間が判断する（フック追加は設定変更のため人間の作業）。
+6. **自己申告であることを忘れない**: `tool_usage` は Worker の自己申告で、出力にも `data_source: self_report` と出る。
+   判定や合否の根拠にはしない（CLAUDE.md §7）。数字をきちんと使いたくなったら、フックでの自動計測
+   （PostToolUse でツール名を数えてログに追記する）に切り替える。フックの追加は設定変更なので人間が行う。
+   - [更新: 2026-10-01] 旧チェック6（`largest_output_lines` と `commands.stdout.log` の行数を見比べる）は削除した。
+     前者は全ツールで1回の最大出力、後者は検証コマンドの出力の合計で、測っているものが違い、申告の確かさを確かめられなかった。
+   - [更新: 2026-10-01] 旧チェック4の「60% を超えたら」の閾値は削除した。元資料の「約3分の2」はトークンの割合で、
+     こちらは呼び出し回数の割合のため、同じ閾値で比べられなかった（典型的な TDD タスクで78%になり、毎回通知が出た）。
+7. **ログが書かれているか**: `.claude/harness-logs/` に worker-report が保存されていなければ、集計は0件になる。
+   0件が続くときは、ログを保存する仕組みが動いているかを先に確かめる。
 
 ### 読み取り専用タスクの検索結果の共有
 
@@ -104,5 +107,6 @@ Worker の `files_changed` と `git diff --stat` を共通の入力として受�
 
 ### 判断
 
-- `scripts/token_breakdown.py` の出力は advisory（通知のみ）。ハーネスを自動で変更しない。
+- `scripts/token_breakdown.py` の出力は傾向の表示だけ。通知や判定はせず、ハーネスを自動で変更しない。
+- 候補が複数あるタスク（`worker-report.<n>.json`）も1件ずつ数える。
 - 集計はトークン数ではなく呼び出し回数による近似。傾向を見るために使い、細かい数値の差で判断しない。
