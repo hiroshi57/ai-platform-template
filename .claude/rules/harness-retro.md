@@ -83,6 +83,14 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
      | `no-subagent-yet` | まだ一度も Worker が動いていない | Worker を1回動かしてから再確認する |
    - [確認: 2026-10-01] この PC では `no-subagent-yet`。全128件のトランスクリプトに Worker の起動・記録が無く、
      置き場所は未確定。初めて Worker を動かしたら `locate` を実行し、結果をこの行に追記する
+   - [確認: 2026-10-01 追記] テスト用のサブエージェントを1回動かして確かめた結果、**`separate-files`**（Claude Code 2.1.266）。
+     Worker の記録は `~/.claude/projects/<作業フォルダを変換した名前>/<親セッションID>/subagents/agent-<ID>.jsonl` に
+     別ファイルで残る（隣に `agent-<ID>.meta.json`）。中の行はすべて `isSidechain: true`。
+     実測は合っていた（Worker 側: 検索1回、親側: Worker の起動1回）。`save` には次のように渡す:
+     `--transcript ~/.claude/projects/<変換した名前>/<親セッションID>/subagents/agent-<ID>.jsonl`（`--sidechain-only` は不要）
+   - [確認: 2026-10-01] それまで記録が0件だった理由: 共通設定 `~/.claude/settings.json` の `"agent"` が
+     `claude-code-harness:worker` で、すべてのセッションが最初から Worker 役で起動していた。Worker は他のエージェントを
+     起動しない（NG-3）ため、Lead → Worker の2段の流れが一度も起きていなかった
 3. **どう確かめるか**: `python scripts/token_breakdown.py` で `measured_records` が増えていること。
 4. `.claude/harness-logs/` は `.gitignore` 対象。生ログには検証コマンドの出力がそのまま入るので、push しない。
 
