@@ -134,3 +134,41 @@ def test_save_with_transcript_writes_measured_usage_next_to_candidate(tmp_path):
 def test_harness_logs_are_gitignored():
     text = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert ".claude/harness-logs/" in text
+
+
+# --- locate（Worker のトランスクリプトがどこに残るかの判定） --------------------
+
+def test_project_dir_name_matches_claude_code_encoding():
+    name = hl.encode_project_dir(r"C:\Users\hiroshi_takizawa\ai-platform-template\.claude\worktrees\paper-x")
+    assert name == "C--Users-hiroshi-takizawa-ai-platform-template--claude-worktrees-paper-x"
+
+
+def _jsonl(path: Path, entries: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8")
+
+
+def test_locate_reports_no_subagent_when_none_ran(tmp_path):
+    _jsonl(tmp_path / "s1.jsonl", [_tool_use("Read", file_path="/a")])
+    r = hl.locate(tmp_path)
+    assert r["layout"] == "no-subagent-yet"
+    assert r["files"][0]["tool_use"] == 1 and r["files"][0]["agent_launches"] == 0
+
+
+def test_locate_detects_separate_subagent_files(tmp_path):
+    _jsonl(tmp_path / "s1.jsonl", [_tool_use("Agent", subagent_type="worker")])
+    _jsonl(tmp_path / "s1" / "subagents" / "agent-abc.jsonl", [_tool_use("Edit", file_path="/a")])
+    r = hl.locate(tmp_path)
+    assert r["layout"] == "separate-files"
+    assert any(f["path"].endswith("agent-abc.jsonl") for f in r["subagent_files"])
+
+
+def test_locate_detects_sidechain_entries_in_main_file(tmp_path):
+    _jsonl(tmp_path / "s1.jsonl", [_tool_use("Task", subagent_type="worker"),
+                                   {**_tool_use("Edit", file_path="/a"), "isSidechain": True}])
+    assert hl.locate(tmp_path)["layout"] == "sidechain-in-main"
+
+
+def test_locate_flags_launch_without_any_subagent_record(tmp_path):
+    _jsonl(tmp_path / "s1.jsonl", [_tool_use("Agent", subagent_type="worker")])
+    assert hl.locate(tmp_path)["layout"] == "launched-but-not-recorded"

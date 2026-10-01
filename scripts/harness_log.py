@@ -6,6 +6,7 @@
         [--review review.json] [--retries retries.log] [--advisor advisor.json] \\
         [--transcript <Worker のトランスクリプト .jsonl>] [--sidechain-only] [--month YYYYMM]
     python scripts/harness_log.py measure --transcript <.jsonl> [--sidechain-only]
+    python scripts/harness_log.py locate [--cwd <作業フォルダ>]   # Worker の記録がどこに残るかを判定する
 
 保存先: .claude/harness-logs/<project>/<YYYYMM>/<task_id>/（CLAUDE.md §7 のファイル名に合わせる）
 - 中身は整形も要約もせず、そのままコピーする（memory-curation.md ルール4）
@@ -166,6 +167,70 @@ def measure(transcript: Path, sidechain_only: bool = False) -> dict:
     }
 
 
+# --- 記録の場所の判定 ------------------------------------------------------------
+
+AGENT_TOOLS = {"Agent", "Task"}
+
+
+def encode_project_dir(cwd: str) -> str:
+    """Claude Code が ~/.claude/projects/ の下に作るフォルダ名（英数字以外を '-' にする）."""
+    return re.sub(r"[^A-Za-z0-9]", "-", cwd)
+
+
+def _scan(path: Path) -> dict:
+    tool_use = side = launches = 0
+    last = None
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(e, dict):
+                continue
+            last = e.get("timestamp") or last
+            if e.get("isSidechain"):
+                side += 1
+            m = e.get("message")
+            content = m.get("content") if isinstance(m, dict) else None
+            for c in content if isinstance(content, list) else []:
+                if isinstance(c, dict) and c.get("type") == "tool_use":
+                    tool_use += 1
+                    launches += c.get("name") in AGENT_TOOLS
+    return {"tool_use": tool_use, "sidechain_entries": side, "agent_launches": launches,
+            "last_timestamp": last}
+
+
+def locate(project_dir: Path) -> dict:
+    """トランスクリプトの置き方を判定する。数だけを返し、中身は読まない.
+
+    layout:
+      separate-files            … サブエージェントの記録が別ファイル（subagents/ や agent-*.jsonl）
+      sidechain-in-main         … 親のファイルに isSidechain の行として入っている（--sidechain-only で数える）
+      launched-but-not-recorded … 起動の記録はあるが、サブエージェント側の記録が見当たらない
+      no-subagent-yet           … まだ一度もサブエージェントが動いていない
+    """
+    files = sorted(Path(project_dir).rglob("*.jsonl"))
+    scanned = []
+    for p in files:
+        info = {"path": p.as_posix(), **_scan(p)}
+        info["is_subagent_file"] = "subagents" in p.parts or p.name.startswith("agent-")
+        scanned.append(info)
+    sub_files = [f for f in scanned if f["is_subagent_file"]]
+    launches = sum(f["agent_launches"] for f in scanned)
+    side = sum(f["sidechain_entries"] for f in scanned if not f["is_subagent_file"])
+    if sub_files:
+        layout = "separate-files"
+    elif side:
+        layout = "sidechain-in-main"
+    elif launches:
+        layout = "launched-but-not-recorded"
+    else:
+        layout = "no-subagent-yet"
+    return {"project_dir": Path(project_dir).as_posix(), "layout": layout, "agent_launches": launches,
+            "subagent_files": sub_files, "files": scanned}
+
+
 # --- 保存 --------------------------------------------------------------------
 
 def save(logs_dir: Path, project: str, task_id: str, month: str, files: dict[str, Path],
@@ -236,9 +301,21 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--transcript", type=Path, required=True)
     m.add_argument("--sidechain-only", action="store_true")
 
+    lo = sub.add_parser("locate", help="Worker（サブエージェント）の記録がどこに残るかを判定する")
+    lo.add_argument("--cwd", default=str(Path.cwd()), help="作業フォルダ（既定: 今のフォルダ）")
+    lo.add_argument("--projects-dir", type=Path, default=Path.home() / ".claude" / "projects")
+
     a = p.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    if a.cmd == "locate":
+        d = a.projects_dir / encode_project_dir(str(Path(a.cwd).resolve()))
+        if not d.is_dir():
+            raise SystemExit(f"トランスクリプトのフォルダがありません: {d}")
+        r = locate(d)
+        r["files"] = r["files"][-10:]          # 多いときは新しい順に10件だけ表示
+        print(json.dumps(r, ensure_ascii=False, indent=2))
+        return 0
     if a.cmd == "measure":
         print(json.dumps(measure(a.transcript, a.sidechain_only), ensure_ascii=False, indent=2))
         return 0

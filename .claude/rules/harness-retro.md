@@ -71,6 +71,18 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
      数とファイルパスだけを残し、メッセージ・コマンド・出力の中身とトランスクリプト本体は保存しない
    - トランスクリプトは Claude Code が `~/.claude/projects/<作業フォルダを変換した名前>/` に JSON Lines で残す。
      サブエージェントの記録が親と同じファイルに入っている場合は `--sidechain-only` で Worker 側だけを数える
+   - **Worker の記録がどこに残るかは、最初の1回で必ず確かめる**:
+     ```bash
+     python scripts/harness_log.py locate          # 作業フォルダのトランスクリプトを調べる（数だけ・中身は読まない）
+     ```
+     | `layout` | 意味 | `save` の指定 |
+     |---|---|---|
+     | `separate-files` | Worker の記録が別ファイル（`subagents/` や `agent-*.jsonl`） | `--transcript <その別ファイル>` |
+     | `sidechain-in-main` | 親のファイルに `isSidechain` の行として入っている | `--transcript <親のファイル> --sidechain-only` |
+     | `launched-but-not-recorded` | 起動の記録はあるが、Worker 側の記録が無い | 実測できない。自己申告の扱いになる |
+     | `no-subagent-yet` | まだ一度も Worker が動いていない | Worker を1回動かしてから再確認する |
+   - [確認: 2026-10-01] この PC では `no-subagent-yet`。全128件のトランスクリプトに Worker の起動・記録が無く、
+     置き場所は未確定。初めて Worker を動かしたら `locate` を実行し、結果をこの行に追記する
 3. **どう確かめるか**: `python scripts/token_breakdown.py` で `measured_records` が増えていること。
 4. `.claude/harness-logs/` は `.gitignore` 対象。生ログには検証コマンドの出力がそのまま入るので、push しない。
 
