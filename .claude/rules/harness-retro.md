@@ -91,6 +91,16 @@ retro 実行時、または `/harness-release` 前に以下を確認する。
    - [確認: 2026-10-01] それまで記録が0件だった理由: 共通設定 `~/.claude/settings.json` の `"agent"` が
      `claude-code-harness:worker` で、すべてのセッションが最初から Worker 役で起動していた。Worker は他のエージェントを
      起動しない（NG-3）ため、Lead → Worker の2段の流れが一度も起きていなかった
+   - **1段の運用（いまの既定）**: セッションが最初から Worker 役で動き、Worker を別に起動しない場合は、
+     セッション自身の記録を、タスクを始めた時刻以降だけ数える。
+     ```bash
+     python scripts/harness_log.py save --project <slug> --task-id <task_id>        --worker-report worker-report.json --stdout-log commands.stdout.log        --transcript latest-session --since <タスクを始めた時刻 ISO 8601>
+     ```
+     `--since` を付けないと、同じセッションで前にやった別タスクまで数えてしまう。
+   - **2段の運用**: Lead が Worker を起動した場合は `--transcript latest-subagent`（いちばん新しい Worker の記録）
+     か、`locate` で確かめた Worker の記録のパスを渡す。
+   - [追加: 2026-10-01] `latest-session` / `latest-subagent` / `--since` を追加した。既定の `"agent"` が Worker で
+     2段の流れが起きない運用でも、実測できるようにするため。
 3. **どう確かめるか**: `python scripts/token_breakdown.py` で `measured_records` が増えていること。
 4. `.claude/harness-logs/` は `.gitignore` 対象。生ログには検証コマンドの出力がそのまま入るので、push しない。
 

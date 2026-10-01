@@ -172,3 +172,45 @@ def test_locate_detects_sidechain_entries_in_main_file(tmp_path):
 def test_locate_flags_launch_without_any_subagent_record(tmp_path):
     _jsonl(tmp_path / "s1.jsonl", [_tool_use("Agent", subagent_type="worker")])
     assert hl.locate(tmp_path)["layout"] == "launched-but-not-recorded"
+
+
+# --- 1段の運用（セッション自身の記録を、タスクの開始時刻以降だけ数える） ------------
+
+def _at(entry: dict, ts: str) -> dict:
+    return {**entry, "timestamp": ts}
+
+
+def test_measure_since_counts_only_entries_after_task_start(tmp_path):
+    t = _transcript(tmp_path, [
+        _at(_tool_use("Read", file_path="/old"), "2026-10-01T00:00:00Z"),       # 前のタスク
+        _at(_tool_use("Edit", file_path="/new"), "2026-10-01T02:00:00Z"),
+        _at(_tool_result("a\nb"), "2026-10-01T02:00:01Z"),
+        _tool_use("Read", file_path="/no-timestamp"),                            # 時刻なしは数えない
+    ])
+    m = hl.measure(t, since="2026-10-01T01:00:00+00:00")
+    assert (m["read_calls"], m["edit_calls"], m["largest_output_lines"]) == (0, 1, 2)
+    assert m["since"] == "2026-10-01T01:00:00+00:00"
+
+
+def test_measure_since_rejects_bad_time(tmp_path):
+    with pytest.raises(ValueError):
+        hl.measure(_transcript(tmp_path, []), since="yesterday")
+
+
+def test_resolve_latest_session_and_latest_subagent(tmp_path):
+    import os
+    old = tmp_path / "s-old.jsonl"
+    new = tmp_path / "s-new.jsonl"
+    sub = tmp_path / "s-new" / "subagents" / "agent-1.jsonl"
+    for i, p in enumerate((old, new, sub)):
+        _jsonl(p, [{}])
+        os.utime(p, (1_000 + i, 1_000 + i))
+    assert hl.resolve_transcript("latest-session", tmp_path) == new
+    assert hl.resolve_transcript("latest-subagent", tmp_path) == sub
+    assert hl.resolve_transcript(str(old), tmp_path) == old                 # パスはそのまま
+
+
+def test_resolve_latest_subagent_errors_when_none(tmp_path):
+    _jsonl(tmp_path / "s.jsonl", [{}])
+    with pytest.raises(ValueError, match="サブエージェント"):
+        hl.resolve_transcript("latest-subagent", tmp_path)

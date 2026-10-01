@@ -107,8 +107,21 @@ def _result_lines(content: object) -> int:
     return len(text.splitlines())   # 末尾の改行で1行増やさない
 
 
-def measure(transcript: Path, sidechain_only: bool = False) -> dict:
-    """トランスクリプト（JSON Lines）からツール呼び出しを種類ごとに数える。中身は写さない."""
+def _parse_time(value: str) -> datetime:
+    try:
+        t = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, ValueError) as e:
+        raise ValueError(f"時刻は ISO 8601 にしてください（例: 2026-10-01T10:30:00+09:00）: {value!r}") from e
+    return t if t.tzinfo else t.astimezone()      # タイムゾーンなしは、この PC の時刻とみなす
+
+
+def measure(transcript: Path, sidechain_only: bool = False, since: str | None = None) -> dict:
+    """トランスクリプト（JSON Lines）からツール呼び出しを種類ごとに数える。中身は写さない.
+
+    since を渡すと、その時刻以降の行だけを数える（1つのセッションで複数のタスクをこなす1段の運用向け）。
+    時刻の無い行は、since を渡したときは数えない。
+    """
+    start = _parse_time(since) if since is not None else None
     counts = Counter()
     reads: Counter[str] = Counter()
     largest = 0
@@ -125,6 +138,13 @@ def measure(transcript: Path, sidechain_only: bool = False) -> dict:
             lines_read += 1
             if not isinstance(entry, dict) or (sidechain_only and not entry.get("isSidechain")):
                 continue
+            if start is not None:
+                ts = entry.get("timestamp")
+                try:
+                    if not isinstance(ts, str) or _parse_time(ts) < start:
+                        continue
+                except ValueError:
+                    continue
             message = entry.get("message")
             content = message.get("content") if isinstance(message, dict) else None
             if not isinstance(content, list):
@@ -163,6 +183,7 @@ def measure(transcript: Path, sidechain_only: bool = False) -> dict:
         "transcript_entries": lines_read,
         "transcript_bad_lines": bad_lines,
         "sidechain_only": sidechain_only,
+        "since": since,
         "measured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
@@ -201,6 +222,28 @@ def _scan(path: Path) -> dict:
             "last_timestamp": last}
 
 
+LATEST = ("latest-session", "latest-subagent")
+
+
+def resolve_transcript(spec: str, project_dir: Path) -> Path:
+    """--transcript の値を実際のファイルにする.
+
+    latest-session  … 作業フォルダの記録のうち、いちばん新しいセッション（1段の運用で自分自身の記録）
+    latest-subagent … いちばん新しいサブエージェント（Worker）の記録（2段の運用）
+    それ以外        … ファイルのパスとしてそのまま使う
+    """
+    if spec not in LATEST:
+        return Path(spec)
+    d = Path(project_dir)
+    if spec == "latest-session":
+        files, label = list(d.glob("*.jsonl")), "セッション"
+    else:
+        files, label = list(d.glob("*/subagents/*.jsonl")), "サブエージェント（Worker）"
+    if not files:
+        raise ValueError(f"{d} に{label}の記録がありません")
+    return max(files, key=lambda p: p.stat().st_mtime)
+
+
 def locate(project_dir: Path) -> dict:
     """トランスクリプトの置き方を判定する。数だけを返し、中身は読まない.
 
@@ -234,7 +277,8 @@ def locate(project_dir: Path) -> dict:
 # --- 保存 --------------------------------------------------------------------
 
 def save(logs_dir: Path, project: str, task_id: str, month: str, files: dict[str, Path],
-         transcript: Path | None = None, sidechain_only: bool = False, warn=None) -> list[str]:
+         transcript: Path | None = None, sidechain_only: bool = False, warn=None,
+         since: str | None = None) -> list[str]:
     _check("project", project)
     _check("task_id", task_id)
     if not re.fullmatch(r"\d{6}", month or ""):
@@ -277,8 +321,8 @@ def save(logs_dir: Path, project: str, task_id: str, month: str, files: dict[str
         dest = d / f"{stem}{report_suffix}{ext}" if report_suffix is not None else _numbered(d, MEASURED_NAME)
         if dest.exists():
             dest = _numbered(d, MEASURED_NAME)
-        dest.write_text(json.dumps(measure(transcript, sidechain_only), ensure_ascii=False, indent=2) + "\n",
-                        encoding="utf-8")
+        usage = {**measure(transcript, sidechain_only, since), "transcript": Path(transcript).name}
+        dest.write_text(json.dumps(usage, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         saved.append(dest.name)
     return saved
 
@@ -294,37 +338,46 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--logs-dir", type=Path, default=DEFAULT_LOGS_DIR)
     for kind in KINDS:
         s.add_argument(f"--{kind.replace('_', '-')}", type=Path, dest=kind)
-    s.add_argument("--transcript", type=Path, help="Worker のトランスクリプト（ツール呼び出しの実測に使う）")
-    s.add_argument("--sidechain-only", action="store_true", help="サブエージェント側の記録だけを数える")
-
     m = sub.add_parser("measure", help="トランスクリプトからツール呼び出しを数えて表示する")
-    m.add_argument("--transcript", type=Path, required=True)
-    m.add_argument("--sidechain-only", action="store_true")
-
     lo = sub.add_parser("locate", help="Worker（サブエージェント）の記録がどこに残るかを判定する")
-    lo.add_argument("--cwd", default=str(Path.cwd()), help="作業フォルダ（既定: 今のフォルダ）")
-    lo.add_argument("--projects-dir", type=Path, default=Path.home() / ".claude" / "projects")
+
+    for sp, required in ((s, False), (m, True)):
+        sp.add_argument("--transcript", required=required,
+                        help="トランスクリプトのパス、または latest-session（1段: 自分自身の記録）/ "
+                             "latest-subagent（2段: いちばん新しい Worker の記録）")
+        sp.add_argument("--sidechain-only", action="store_true", help="サブエージェント側の記録だけを数える")
+        sp.add_argument("--since",
+                        help="この時刻以降だけを数える（ISO 8601。1段の運用でタスクの開始時刻を渡す）")
+    for sp in (s, m, lo):
+        sp.add_argument("--cwd", default=str(Path.cwd()), help="作業フォルダ（既定: 今のフォルダ）")
+        sp.add_argument("--projects-dir", type=Path, default=Path.home() / ".claude" / "projects")
 
     a = p.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    project_dir = a.projects_dir / encode_project_dir(str(Path(a.cwd).resolve()))
     if a.cmd == "locate":
-        d = a.projects_dir / encode_project_dir(str(Path(a.cwd).resolve()))
-        if not d.is_dir():
-            raise SystemExit(f"トランスクリプトのフォルダがありません: {d}")
-        r = locate(d)
+        if not project_dir.is_dir():
+            raise SystemExit(f"トランスクリプトのフォルダがありません: {project_dir}")
+        r = locate(project_dir)
         r["files"] = r["files"][-10:]          # 多いときは新しい順に10件だけ表示
         print(json.dumps(r, ensure_ascii=False, indent=2))
         return 0
-    if a.cmd == "measure":
-        print(json.dumps(measure(a.transcript, a.sidechain_only), ensure_ascii=False, indent=2))
-        return 0
+    try:
+        transcript = resolve_transcript(a.transcript, project_dir) if a.transcript else None
+        if a.cmd == "measure":
+            usage = {**measure(transcript, a.sidechain_only, a.since), "transcript": transcript.name}
+            print(json.dumps(usage, ensure_ascii=False, indent=2))
+            return 0
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
 
     files = {k: getattr(a, k) for k in KINDS if getattr(a, k) is not None}
     if not files and a.transcript is None:
         raise SystemExit("保存するファイルを1つ以上指定してください")
     try:
-        saved = save(a.logs_dir, a.project, a.task_id, a.month, files, a.transcript, a.sidechain_only)
+        saved = save(a.logs_dir, a.project, a.task_id, a.month, files, transcript, a.sidechain_only,
+                     since=a.since)
     except (ValueError, OSError) as e:
         raise SystemExit(str(e)) from e
     print(json.dumps({"dir": (a.logs_dir / a.project / a.month / a.task_id).as_posix(), "saved": saved},
