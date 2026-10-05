@@ -214,3 +214,74 @@ def test_resolve_latest_subagent_errors_when_none(tmp_path):
     _jsonl(tmp_path / "s.jsonl", [{}])
     with pytest.raises(ValueError, match="サブエージェント"):
         hl.resolve_transcript("latest-subagent", tmp_path)
+
+
+# --- hook（Claude Code のフックから自動で呼ばれる） ------------------------------
+
+def _session(tmp_path: Path, sid: str = "s1") -> tuple[Path, Path]:
+    """作業フォルダと、そのセッションのトランスクリプトを作る."""
+    cwd = tmp_path / "repo"
+    cwd.mkdir(exist_ok=True)
+    tr = tmp_path / "projects" / f"{sid}.jsonl"
+    _jsonl(tr, [_tool_use("Read", file_path="/a"), _tool_use("Edit", file_path="/a")])
+    return cwd, tr
+
+
+def test_hook_stop_records_session_usage_and_updates_it(tmp_path):
+    cwd, tr = _session(tmp_path)
+    payload = {"hook_event_name": "Stop", "session_id": "s1", "transcript_path": str(tr), "cwd": str(cwd)}
+    out = hl.run_hook(payload, month="202610")
+    f = cwd / ".claude" / "harness-logs" / "repo" / "202610" / "session-s1" / "tool-usage.measured.json"
+    assert out == f and json.loads(f.read_text())["edit_calls"] == 1
+    _jsonl(tr, [_tool_use("Read", file_path="/a"), _tool_use("Edit", file_path="/a"),
+                _tool_use("Edit", file_path="/b")])                       # セッションが進んだ
+    hl.run_hook(payload, month="202610")
+    data = json.loads(f.read_text())
+    assert data["edit_calls"] == 2 and data["event"] == "Stop"           # 累計で上書き（派生データのため）
+
+
+def test_hook_subagent_stop_uses_newest_subagent_file(tmp_path):
+    import os
+    cwd, tr = _session(tmp_path)
+    sub_dir = tr.with_suffix("") / "subagents"
+    old, new = sub_dir / "agent-old.jsonl", sub_dir / "agent-new.jsonl"
+    _jsonl(old, [_tool_use("Read", file_path="/x")])
+    _jsonl(new, [_tool_use("Grep", pattern="y")])
+    os.utime(old, (1_000, 1_000))
+    os.utime(new, (2_000, 2_000))
+    payload = {"hook_event_name": "SubagentStop", "session_id": "s1", "transcript_path": str(tr), "cwd": str(cwd)}
+    out = hl.run_hook(payload, month="202610")
+    assert out.parent.name == "agent-new"
+    assert json.loads(out.read_text())["search_calls"] == 1
+
+
+def test_hook_prefers_agent_transcript_path_when_given(tmp_path):
+    cwd, tr = _session(tmp_path)
+    agent = tmp_path / "elsewhere" / "agent-zz.jsonl"
+    _jsonl(agent, [_tool_use("Glob", pattern="*")])
+    payload = {"hook_event_name": "SubagentStop", "session_id": "s1", "transcript_path": str(tr),
+               "agent_transcript_path": str(agent), "cwd": str(cwd)}
+    assert hl.run_hook(payload, month="202610").parent.name == "agent-zz"
+
+
+def test_hook_ignores_other_events_bad_payloads_and_opt_out(tmp_path, monkeypatch):
+    cwd, tr = _session(tmp_path)
+    assert hl.run_hook({"hook_event_name": "PreToolUse", "cwd": str(cwd)}) is None
+    assert hl.run_hook({"hook_event_name": "Stop", "cwd": str(cwd)}) is None            # transcript なし
+    monkeypatch.setenv("HARNESS_LOG_DISABLE", "1")
+    payload = {"hook_event_name": "Stop", "session_id": "s1", "transcript_path": str(tr), "cwd": str(cwd)}
+    assert hl.run_hook(payload) is None
+
+
+def test_hook_cli_never_fails_even_on_garbage(monkeypatch, capsys):
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO("this is not json"))
+    assert hl.main(["hook"]) == 0                                       # セッションを止めない
+    assert "harness_log hook" in capsys.readouterr().err
+
+
+def test_hook_project_name_can_be_overridden(tmp_path, monkeypatch):
+    cwd, tr = _session(tmp_path)
+    monkeypatch.setenv("HARNESS_LOG_PROJECT", "my-proj")
+    payload = {"hook_event_name": "Stop", "session_id": "s1", "transcript_path": str(tr), "cwd": str(cwd)}
+    assert hl.run_hook(payload, month="202610").parts[-4] == "my-proj"

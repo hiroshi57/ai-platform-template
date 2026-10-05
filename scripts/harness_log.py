@@ -274,6 +274,72 @@ def locate(project_dir: Path) -> dict:
             "subagent_files": sub_files, "files": scanned}
 
 
+# --- フック（Claude Code から自動で呼ばれる） ------------------------------------
+
+HOOK_EVENTS = {"Stop", "SubagentStop"}
+
+
+def _slug(value: str) -> str:
+    s = re.sub(r"[^A-Za-z0-9._-]", "-", value).strip(".-")
+    return s or "unknown"
+
+
+def _project_slug(cwd: Path) -> str:
+    """プロジェクト名。HARNESS_LOG_PROJECT があればそれ。git なら本体リポジトリ名（worktree でも同じ名前）."""
+    import os
+    import subprocess
+
+    if os.environ.get("HARNESS_LOG_PROJECT"):
+        return _slug(os.environ["HARNESS_LOG_PROJECT"])
+    try:
+        common = subprocess.run(  # noqa: S603
+            ["git", "-C", str(cwd), "rev-parse", "--path-format=absolute", "--git-common-dir"],  # noqa: S607
+            capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+        return _slug(Path(common).parent.name)
+    except (OSError, subprocess.SubprocessError):
+        return _slug(Path(cwd).name)
+
+
+def run_hook(payload: dict, month: str | None = None) -> Path | None:
+    """Stop / SubagentStop のフックから呼ばれ、実測を harness-logs に置く。書いたファイルを返す.
+
+    Stop         … セッション全体を数え、session-<セッションID>/tool-usage.measured.json を累計で更新する
+    SubagentStop … 終わった Worker の記録を数え、agent-<ID>/tool-usage.measured.json に置く
+    実測はトランスクリプトから作り直せる派生データなので、更新時は上書きする（生ログの逐語保存とは別扱い）。
+    HARNESS_LOG_DISABLE=1 なら何もしない。
+    """
+    import os
+
+    if os.environ.get("HARNESS_LOG_DISABLE") == "1" or not isinstance(payload, dict):
+        return None
+    event = payload.get("hook_event_name")
+    tr = payload.get("transcript_path")
+    if event not in HOOK_EVENTS or not isinstance(tr, str) or not Path(tr).is_file():
+        return None
+    cwd = Path(payload.get("cwd") or Path.cwd())
+
+    if event == "Stop":
+        target = Path(tr)
+        task_id = f"session-{_slug(str(payload.get('session_id') or target.stem))}"
+    else:
+        agent = payload.get("agent_transcript_path")
+        if isinstance(agent, str) and Path(agent).is_file():
+            target = Path(agent)
+        else:
+            subs = list(Path(tr).with_suffix("").glob("subagents/*.jsonl"))
+            if not subs:
+                return None
+            target = max(subs, key=lambda p: p.stat().st_mtime)
+        task_id = f"agent-{_slug(target.stem.removeprefix('agent-'))}"
+
+    d = cwd / DEFAULT_LOGS_DIR / _project_slug(cwd) / (month or datetime.now().strftime("%Y%m")) / task_id
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / MEASURED_NAME
+    usage = {**measure(target), "transcript": target.name, "event": event}
+    dest.write_text(json.dumps(usage, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return dest
+
+
 # --- 保存 --------------------------------------------------------------------
 
 def save(logs_dir: Path, project: str, task_id: str, month: str, files: dict[str, Path],
@@ -352,10 +418,21 @@ def main(argv: list[str] | None = None) -> int:
         sp.add_argument("--cwd", default=str(Path.cwd()), help="作業フォルダ（既定: 今のフォルダ）")
         sp.add_argument("--projects-dir", type=Path, default=Path.home() / ".claude" / "projects")
 
+    sub.add_parser("hook", help="Claude Code のフック（Stop / SubagentStop）から呼ぶ。標準入力の JSON を読む")
+
     a = p.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    project_dir = a.projects_dir / encode_project_dir(str(Path(a.cwd).resolve()))
+    if a.cmd == "hook":
+        # フックの失敗でセッションを止めない: どんな失敗でも終了コード 0 で返し、理由だけ stderr に出す
+        try:
+            dest = run_hook(json.loads(sys.stdin.read() or "{}"))
+            if dest is not None:
+                print(f"harness_log hook: {dest.as_posix()}", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"harness_log hook: skipped ({type(e).__name__}: {e})", file=sys.stderr)
+        return 0
+    project_dir =a.projects_dir / encode_project_dir(str(Path(a.cwd).resolve()))
     if a.cmd == "locate":
         if not project_dir.is_dir():
             raise SystemExit(f"トランスクリプトのフォルダがありません: {project_dir}")

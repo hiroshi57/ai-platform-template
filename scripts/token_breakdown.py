@@ -72,10 +72,27 @@ def collect_reports(logs_dir: Path, limit: int = 10) -> dict:
             m = REPORT_NAME.match(f.name)
             if m:
                 found.append((f.parent.parent.name, _natural(f.parent.name), int(m.group(1) or 0), f))
+        # フック（scripts/harness_log.py hook）が作る session-* / agent-* フォルダには worker-report が無い。
+        # worker-report の無いフォルダの実測ファイルも、それぞれ1件として数える
+        report_dirs = {f.parent for *_, f in found}
+        for f in logs_dir.glob(f"*/*/*/{MEASURED_STEM}*.json"):
+            m = re.match(rf"^{re.escape(MEASURED_STEM)}(?:\.(\d+))?\.json$", f.name)
+            if m and f.parent not in report_dirs:
+                found.append((f.parent.parent.name, _natural(f.parent.name), int(m.group(1) or 0), f))
     found.sort(key=lambda x: x[:3], reverse=True)
 
     records, skipped = [], []
     for month, _, cand, f in found[:limit]:
+        if f.name.startswith(MEASURED_STEM):
+            try:
+                usage, problems = _clean_usage(json.loads(f.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError) as e:
+                skipped.append({"file": f.as_posix(), "reason": type(e).__name__})
+                continue
+            records.append({"project": f.parent.parent.parent.name, "month": month, "task_id": f.parent.name,
+                            "source": "measured" if usage else None,
+                            "candidate": cand, "tool_usage": usage, "problems": problems})
+            continue
         try:
             report = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as e:

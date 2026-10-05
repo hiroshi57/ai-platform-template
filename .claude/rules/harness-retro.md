@@ -152,6 +152,10 @@ Worker 定義への記入指示は、使っているハーネスのプラグイ�
    0件が続くときは、Lead が `scripts/harness_log.py save` を実行しているかを先に確かめる。
    - [更新: 2026-10-01] 保存の仕組み（`scripts/harness_log.py`）を追加した。毎回の実行は Lead の手順で、自動ではない。
      自動にするなら SubagentStop などのフックから呼ぶ（フックの追加は設定変更なので人間が行う）。
+   - [更新: 2026-10-05] 自動化の部品を用意した。`scripts/harness_log.py hook` を Stop / SubagentStop のフックから呼ぶと、
+     セッションごと（`session-<ID>`）と Worker ごと（`agent-<ID>`）の実測が自動で残り、`token_breakdown.py` も
+     worker-report の無いこれらのフォルダを1件ずつ数える。設定例は `harness-proposals/patches/settings.harness-log-hook.json`、
+     入れ方は `harness-proposals/patches/README.md`。**設定に入れるのは人間**（入れるまでは自動にならない）。
 
 ### 読み取り専用タスクの検索結果の共有
 

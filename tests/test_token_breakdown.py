@@ -141,3 +141,13 @@ def test_other_calls_from_measurement_are_counted(tmp_path):
     _measured(tmp_path, "202610", "1.1", {**_u(read=1), "other_calls": 3})
     s = _run(tmp_path)
     assert s["totals"]["other_calls"] == 3 and s["retrieval_share"] == pytest.approx(0.25)
+
+
+def test_measured_only_dirs_from_hook_are_counted(tmp_path):
+    # フックが作る session-* / agent-* フォルダには worker-report が無い。実測だけでも1件として数える
+    _measured(tmp_path, "202610", "session-abc", _u(read=4, edit=1))
+    _measured(tmp_path, "202610", "agent-xyz", _u(search=2))
+    _write(tmp_path, "202610", "1.1", _u(read=1))                    # 通常のタスク（自己申告）
+    s = _run(tmp_path)
+    assert s["records"] == 3 and s["measured_records"] == 2 and s["self_report_records"] == 1
+    assert s["totals"]["read_calls"] == 5 and s["totals"]["search_calls"] == 2
