@@ -2,7 +2,7 @@
 
 > **原題**: *How to Build an Autonomous Hypothesis Generation Agent That Learns What Survives Validation and Searches Toward It*
 > （検証を生き残るものを学習し、それを目指して探索する自律的仮説生成エージェントの作り方）
-> **原典**: Google Drive PDF（6ページ, PDF 1.5, iLovePDF 生成）— [ファイル](https://drive.google.com/file/d/1lby5eiN48qWaXEZx5n44-__GYPXMZUHJ/view)
+> **原典**: Google Drive PDF（6ページ, PDF 1.5, iLovePDF 生成）（入手元のリンクは非公開で管理）
 > **和訳日**: 2026-09-17 / **訳者**: Claude Code (Worker)
 > **分野**: 定量投資（systematic / quant trading）におけるアルファ発見の自動化。強化学習で戦略仮説を生成するエージェント **AHGA** の設計論文。
 
