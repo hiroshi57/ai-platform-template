@@ -18,6 +18,7 @@ import {
   loadContract,
   loadPermissions,
 } from "./state.mjs";
+import { applyPatch } from "./state-patch.mjs";
 
 const DECISION = "既存のエクスポートエンドポイントを再利用";
 const ARTIFACT = "artifacts/export.csv";
@@ -32,6 +33,15 @@ let toolCalls = 0;
 let stateChanges = 0;
 let retries = 0;
 let stopReason = "loop_exhausted";
+
+// 状態の更新はすべてパッチで行い、検証・マージはランタイム（state-patch.mjs）が担う。
+// 検証に落ちたパッチは状態を変えない（rollback）。デモのパッチはコードが組むので、
+// 落ちたらランタイムの不具合として即座に止める。
+function commit(patch) {
+  const result = applyPatch(state, patch);
+  if (!result.ok) throw new Error(`state patch rejected: ${result.errors.join("; ")}`);
+  state = result.state;
+}
 
 while (step < MAX_STEPS) {
   step++;
@@ -58,30 +68,38 @@ while (step < MAX_STEPS) {
 
   // obs.status === "ok": ツールが実行された
   if (request.name === "write_workspace") {
-    if (!state.artifacts.includes(ARTIFACT)) state.artifacts.push(ARTIFACT);
-    if (!state.decisions.includes(DECISION)) state.decisions.push(DECISION);
+    commit({ artifacts: [ARTIFACT], decisions: [DECISION] });
 
     const result = verify(ARTIFACT);
-    state.last_evidence = result.evidence;
+    commit({ last_evidence: result.evidence });
     stateChanges++;
 
     if (result.status === "accept") {
       console.log(`  ✅ 全チェック通過: ${result.evidence.map((c) => c.name).join(", ")}`);
-      if (!state.completed.includes("implementation")) state.completed.push("implementation");
-      if (!state.completed.includes("verification")) state.completed.push("verification");
-      state.status = "verified";
+      commit({ completed: ["implementation", "verification"], status: "verified" });
     } else {
       console.log(`  ❌ 失敗: ${JSON.stringify(result.failed)}`);
+      const names = result.failed.map((c) => c.name).join(", ");
+      // 提案B: 何を試してどう落ちたかを構造化して残す（推論や観測の全文は残さない）。
+      // ここに hypothesis を入れるから、次の propose が同じ候補を選び直さずに済む。
+      commit({
+        tested_hypotheses: [
+          {
+            attempt: state.repairs + 1,
+            action: request.name,
+            hypothesis: request.hypothesis ?? {},
+            failed_checks: names,
+          },
+        ],
+      });
       if (result.status === "retry" && state.repairs < task.max_repairs) {
-        state.repairs++;
+        commit({ repairs: state.repairs + 1 });
         retries++;
         console.log(`  🔧 限定修復 ${state.repairs}/${task.max_repairs} 回目へ`);
       } else {
         stopReason = "escalate";
-        const names = result.failed.map((c) => c.name).join(", ");
         console.log(`  ⤴ エスカレーション: 修復上限 or 修復不能 (${names})`);
-        state.status = "escalated";
-        state.open_risks.push(`unresolved: ${names}`);
+        commit({ status: "escalated", open_risks: [`unresolved: ${names}`] });
         saveState(state);
         break;
       }

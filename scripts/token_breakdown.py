@@ -1,6 +1,6 @@
 """harness-logs の worker-report から、ツール使用の内訳を月ごとの傾向として出す.
 
-（提案 D / harness-retro 提案6）
+（提案 D / hiroshi57/harness-rules の .claude/rules/harness-retro.md 提案18）
 
 使い方:
     python scripts/token_breakdown.py                       # 直近10件・テキスト出力
