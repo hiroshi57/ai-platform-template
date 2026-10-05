@@ -1,9 +1,12 @@
 """同じツール呼び出しの連続を検出する Claude Code hook（PostToolUse / PostToolUseFailure）.
 
 仕様: `decision-boundaries.md` ルール1「機械的な検出」（hiroshi57/harness-rules の `.claude/rules/`）
-  - 同じツール名・同じ引数の呼び出しが NOTICE 回連続        → 注意を1回だけ context に入れる
-  - 同じツール名・同じ引数で失敗した呼び出しが NOTICE 回連続 → 同上
-  - 同じツール名・同じ引数で失敗した呼び出しが STOP 回連続   → 実行を止める（escalated を促す）
+  同じツール名・同じ引数の呼び出しの「失敗」を数える。
+  - 間に別の呼び出し（Edit・Read など）を挟んでも数え続ける
+    （よくあるやり直し「失敗 → 編集 → 同じテスト」を拾うため）
+  - その呼び出しが1回でも成功したら数え直す。直近 MAX_HISTORY 件より前は数えない
+  - 成功した呼び出しは数えない（確認コマンドを成功のまま繰り返しても注意しない）
+  - 失敗が NOTICE 回 → 注意を1回だけ context に入れる／失敗が STOP 回 → 実行を止める（escalated を促す）
 既定値 NOTICE=5 / STOP=8（arXiv:2609.20804 の設定値。暫定）。環境変数
 IDENTICAL_CALL_NOTICE / IDENTICAL_CALL_STOP で変えられる。
 
@@ -29,12 +32,15 @@ MAX_HISTORY = 50
 STATE_SUBDIR = Path(".claude") / "state" / "identical-call-guard"
 
 NOTICE_TEXT = (
-    "[identical-call-guard] 同じツール（{tool}）を同じ引数で {n} 回続けて呼んでいます{fail}。"
+    "[identical-call-guard] 同じツール（{tool}）の同じ引数の呼び出しが、"
+    "一度も成功しないまま {n} 回失敗しています"
+    "（間に編集などを挟んだ回も含む）。"
     "次の試行では `decision-boundaries.md`（harness-rules）ルール1の4つ"
     "（証拠を足す・仮説を変える・範囲を絞る・エスカレーション）のどれかを必ず選んでください。"
 )
 STOP_TEXT = (
-    "[identical-call-guard] 同じツール（{tool}）を同じ引数で {n} 回続けて失敗しました。"
+    "[identical-call-guard] 同じツール（{tool}）の同じ引数の呼び出しが、"
+    "一度も成功しないまま {n} 回失敗しました。"
     "実行を止めます。Worker は status: escalated、"
     'escalation_reason: "identical-failing-calls" で返してください。'
 )
@@ -67,34 +73,34 @@ def is_failure(payload: dict) -> bool:
     return False
 
 
-def _streaks(history: list[dict]) -> tuple[int, int, bool]:
-    """末尾から見た (同じ呼び出しの連続数, 同じ失敗の連続数, その連続中に注意済みか)."""
-    if not history:
-        return 0, 0, False
+def _failures(history: list[dict]) -> tuple[int, bool]:
+    """今回の呼び出しと同じ呼び出しについて、最後に成功してからの (失敗回数, その間に注意済みか).
+
+    間に挟まった別の呼び出しは飛ばして数える。今回が成功なら (0, False)。
+    """
+    if not history or not history[-1]["f"]:
+        return 0, False
     key = history[-1]["k"]
-    same = 0
-    noticed = False
-    for h in reversed(history):
-        if h["k"] != key:
-            break
-        same += 1
-        noticed = noticed or h.get("a") == "notice"
     fail = 0
-    for h in reversed(history):
-        if h["k"] != key or not h["f"]:
+    noticed = False
+    for h in reversed(history[-MAX_HISTORY:]):
+        if h["k"] != key:
+            continue
+        if not h["f"]:
             break
         fail += 1
-    return same, fail, noticed
+        noticed = noticed or h.get("a") == "notice"
+    return fail, noticed
 
 
-def decide(history: list[dict], notice: int, stop: int) -> tuple[str, int, int]:
+def decide(history: list[dict], notice: int, stop: int) -> tuple[str, int]:
     """直近の履歴（最後の要素が今回の呼び出し）から動作を決める: none / notice / stop."""
-    same, fail, noticed = _streaks(history)
+    fail, noticed = _failures(history)
     if fail >= stop:
-        return "stop", same, fail
-    if not noticed and (same >= notice or fail >= notice):
-        return "notice", same, fail
-    return "none", same, fail
+        return "stop", fail
+    if fail >= notice and not noticed:
+        return "notice", fail
+    return "none", fail
 
 
 def _int_env(env: dict, name: str, default: int) -> int:
@@ -130,7 +136,7 @@ def _save(path: Path, history: list[dict]) -> None:
     path.write_text("".join(json.dumps(h, separators=(",", ":")) + "\n" for h in tail), encoding="utf-8")
 
 
-def _log_retry(env: dict, action: str, tool: str, key: str, same: int, fail: int) -> None:
+def _log_retry(env: dict, action: str, tool: str, key: str, fail: int) -> None:
     log = env.get("HARNESS_RETRIES_LOG")
     if not log:
         return
@@ -141,8 +147,7 @@ def _log_retry(env: dict, action: str, tool: str, key: str, same: int, fail: int
         action,
         f"tool={tool}",
         f"key={key[:12]}",
-        f"streak={same}",
-        f"fail_streak={fail}",
+        f"fail_count={fail}",
     ]
     line = "\t".join(fields) + "\n"
     p = Path(log)
@@ -171,18 +176,17 @@ def run(stdin_text: str, state_dir: Path, env: dict) -> tuple[str, int]:
     path = _state_file(Path(state_dir), str(payload.get("session_id") or "default"))
     history = _load(path)
     history.append({"k": key, "f": failed, "a": None})
-    action, same, fail = decide(history, notice, stop)
+    action, fail = decide(history, notice, stop)
     history[-1]["a"] = None if action == "none" else action
     _save(path, history)
 
     if action == "none":
         return "", 0
-    _log_retry(env, action, tool, key, same, fail)
+    _log_retry(env, action, tool, key, fail)
 
     event = payload.get("hook_event_name") or "PostToolUse"
     if action == "notice":
-        n = max(same, fail)
-        msg = NOTICE_TEXT.format(tool=tool, n=n, fail="（うち失敗が連続）" if fail >= notice else "")
+        msg = NOTICE_TEXT.format(tool=tool, n=fail)
         out = {"hookSpecificOutput": {"hookEventName": event, "additionalContext": msg}}
     else:
         msg = STOP_TEXT.format(tool=tool, n=fail)
