@@ -15,10 +15,19 @@ import path from "node:path";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (rel) => readFileSync(path.join(ROOT, rel), "utf8").trim();
 
-export function buildContext(task, state) {
+// spec を渡すと、手順書を repo の文書から読まずにその文字列で差し替える。
+// ベンチのように「測定値を repo の文書の増減で動かしたくない」場合に使う。
+// 省略時の挙動は従来どおり（AGENTS.md と product-rules.md を読む）。
+export function buildContext(task, state, { spec } = {}) {
+  const procedure =
+    spec !== undefined
+      ? [spec]
+      : [
+          `# map (AGENTS.md)\n${read("AGENTS.md").split("\n").slice(0, 4).join("\n")}`,
+          `# product-rules\n${read("context/product-rules.md")}`,
+        ];
   return [
-    `# map (AGENTS.md)\n${read("AGENTS.md").split("\n").slice(0, 4).join("\n")}`,
-    `# product-rules\n${read("context/product-rules.md")}`,
+    ...procedure,
     `goal: ${task.goal}`,
     `constraints: ${task.constraints.join(" / ")}`,
     `completed: ${state.completed.join(", ") || "(none)"}`,

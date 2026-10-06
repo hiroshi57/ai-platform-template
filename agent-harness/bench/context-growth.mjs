@@ -8,13 +8,24 @@
 //   A: state   = 本 repo の buildContext（手順書 + 構造化した状態 + 直近の証拠のみ）
 //   B: history = 比較用に、過去の観測と行動を全部ためて渡す素朴な方式
 //
-// どちらも同じ手順書・同じ観測列を使う。違いは「履歴を渡すかどうか」だけ。
+// どちらも同じ手順書（SPEC）・同じ観測列を使う。違いは「履歴を渡すかどうか」だけ。
+// 手順書は固定文字列なので、repo の文書を編集しても測定値は動かない。
 //
 // 実行: node agent-harness/bench/context-growth.mjs
 
 import { buildContext } from "../src/context.mjs";
 import { applyPatch } from "../src/state-patch.mjs";
 import { initState } from "../src/state.mjs";
+
+// 手順書（P）。両方式に同じものを渡す。
+// repo の文書を読むと、他案件の編集で測定値が動いてしまうため固定文字列にする。
+// 以前の版は A だけが手順書を含み、B は含んでいなかった。比較が不公平だったので直した。
+const SPEC = `# spec
+あなたは倉庫の在庫を管理するエージェントである。
+- 行動は Store / Ship / Move / Wait のいずれか
+- 棚が空であることを確認してから Store する
+- 日付は ISO 8601 で書く
+- 新しい依存関係を追加しない`;
 
 const TASK = {
   goal: "分析ダッシュボードに CSV エクスポートを追加する",
@@ -35,13 +46,14 @@ const action = (t) => `write_workspace artifacts/export_${t}.csv`;
 
 // A: 状態だけを渡す（本 repo の実装）
 function statePrompt(state, t) {
-  return `${buildContext(TASK, state)}\n---\nlatest_observation: ${observation(t)}`;
+  return `${buildContext(TASK, state, { spec: SPEC })}\n---\nlatest_observation: ${observation(t)}`;
 }
 
 // B: 過去の観測と行動を全部ためて渡す
 function historyPrompt(history, t) {
   const lines = history.map((h, i) => `Observation: ${h.obs}\nAction: ${h.act}`).join("\n");
   return [
+    SPEC,
     `goal: ${TASK.goal}`,
     `constraints: ${TASK.constraints.join(" / ")}`,
     `history:\n${lines}`,
