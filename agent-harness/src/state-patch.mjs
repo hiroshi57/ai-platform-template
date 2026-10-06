@@ -178,6 +178,37 @@ export function applyPatch(state, patch, schema = WORKER_STATE_SCHEMA) {
   return { ok: true, state: next };
 }
 
+// 差し戻されたパッチを作り直させて再試行する。
+//
+// 検証に落ちたパッチは状態を変えない（applyPatch の保証）。そのうえで、落ちた理由を
+// 作り手に返してもう一度作らせる。本物のモデルを繋ぐときは buildPatch の中で
+// モデルを呼び、errors をプロンプトに入れる。
+//
+//   buildPatch(attempt, errors) -> patch
+//     attempt : 1 から始まる試行回数
+//     errors  : 前回の差し戻し理由（初回は []）
+//
+// 戻り値: { ok, state, attempts, errors }
+//   ok:false のとき state は呼び出し時のまま（部分適用しない）。例外は投げない。
+//   既定の maxAttempts は 3（「同じ原因の自動修正は最大3回」に合わせる）。
+export function applyPatchWithRetry(state, buildPatch, { maxAttempts = 3, schema = WORKER_STATE_SCHEMA } = {}) {
+  let errors = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let patch;
+    try {
+      patch = buildPatch(attempt, errors);
+    } catch (e) {
+      // 作り手が落ちても状態は壊さない。理由を残して次の試行へ。
+      errors = [`パッチ生成で例外: ${e.message}`];
+      continue;
+    }
+    const result = applyPatch(state, patch, schema);
+    if (result.ok) return { ok: true, state: result.state, attempts: attempt, errors: [] };
+    errors = result.errors;
+  }
+  return { ok: false, state, attempts: maxAttempts, errors };
+}
+
 // モデル出力から ```json ブロックを取り出し、{ state_patch, action } を返す。
 // 推論部分（ブロックの外側）は返さない = 次のプロンプトに持ち越さない。
 // 戻り値: { ok: true, state_patch, action } | { ok: false, errors: [...] }

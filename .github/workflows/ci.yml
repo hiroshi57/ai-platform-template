@@ -81,6 +81,9 @@ jobs:
       - name: Run the demo loop
         # テストは state-patch のみを見る。ループ全体が最後まで進むことは別に担保する。
         run: node agent-harness/src/harness.mjs
+      - name: Run the context-growth bench
+        # ベンチが壊れたまま放置されないようにする（実行は1秒未満）
+        run: node agent-harness/bench/context-growth.mjs
 
   frontend:
     runs-on: ubuntu-latest

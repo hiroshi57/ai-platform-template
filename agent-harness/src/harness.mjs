@@ -18,7 +18,7 @@ import {
   loadContract,
   loadPermissions,
 } from "./state.mjs";
-import { applyPatch } from "./state-patch.mjs";
+import { applyPatchWithRetry } from "./state-patch.mjs";
 
 const DECISION = "既存のエクスポートエンドポイントを再利用";
 const ARTIFACT = "artifacts/export.csv";
@@ -35,12 +35,23 @@ let retries = 0;
 let stopReason = "loop_exhausted";
 
 // 状態の更新はすべてパッチで行い、検証・マージはランタイム（state-patch.mjs）が担う。
-// 検証に落ちたパッチは状態を変えない（rollback）。デモのパッチはコードが組むので、
-// 落ちたらランタイムの不具合として即座に止める。
+// 検証に落ちたパッチは状態を変えない（rollback）。そのうえで作り直させて再試行し、
+// 上限まで落ち続けたら例外ではなくエスカレーションで終える。
+//
+// デモのパッチはコードが組むので、作り直しても同じものになる（= 3回落ちて escalate）。
+// 本物のモデルを繋ぐときは、buildPatch の中でモデルを呼び、errors をプロンプトに入れる。
+let patchRejection = null;
+
 function commit(patch) {
-  const result = applyPatch(state, patch);
-  if (!result.ok) throw new Error(`state patch rejected: ${result.errors.join("; ")}`);
+  // 一度差し戻されたら、その周回の後続の更新は行わない（中途半端な状態を作らない）
+  if (patchRejection) return false;
+  const result = applyPatchWithRetry(state, () => patch);
+  if (!result.ok) {
+    patchRejection = result;
+    return false;
+  }
   state = result.state;
+  return true;
 }
 
 while (step < MAX_STEPS) {
@@ -104,6 +115,16 @@ while (step < MAX_STEPS) {
         break;
       }
     }
+  }
+
+  // パッチが作り直しても通らなかった場合は、例外で落とさずエスカレーションで終える
+  if (patchRejection) {
+    stopReason = "escalate";
+    console.log(`  ⤴ エスカレーション: 状態パッチが ${patchRejection.attempts} 回とも差し戻された`);
+    console.log(`     理由: ${patchRejection.errors.join("; ")}`);
+    state.status = "escalated";
+    saveState(state);
+    break;
   }
 
   saveState(state);
