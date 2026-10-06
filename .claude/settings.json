@@ -26,6 +26,20 @@
           { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/identical-call-guard.sh\"" }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/harness-log.sh\"", "timeout": 30 }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/harness-log.sh\"", "timeout": 30 }
+        ]
+      }
     ]
   }
 }
