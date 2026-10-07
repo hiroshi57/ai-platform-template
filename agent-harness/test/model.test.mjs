@@ -32,6 +32,23 @@ function stateWithTriedSlash() {
   }).state;
 }
 
+test("buildContext: spec を渡すと repo の文書を読まずに固定の手順書を使う", () => {
+  const s = baseState();
+  const withSpec = buildContext(TASK, s, { spec: "# spec\n固定の手順書" });
+  assert.match(withSpec, /固定の手順書/);
+  // 既定で入る repo 由来の見出しが消えていること（= ファイルを読んでいない）
+  assert.doesNotMatch(withSpec, /# map \(AGENTS\.md\)/);
+  assert.doesNotMatch(withSpec, /# product-rules/);
+  // 状態側の項目は今までどおり入る
+  assert.match(withSpec, /tested_hypotheses:/);
+  assert.match(withSpec, /last_evidence:/);
+
+  // 既定（spec なし）は従来どおり repo の文書を読む
+  const def = buildContext(TASK, s);
+  assert.match(def, /# map \(AGENTS\.md\)/);
+  assert.match(def, /# product-rules/);
+});
+
 test("propose は試した仮説を返す（ランタイムが記録できる）", () => {
   const s = baseState();
   const r = propose(buildContext(TASK, s), s);
